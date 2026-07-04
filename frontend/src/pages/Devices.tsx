@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { RefreshCw, Plus, WifiOff } from 'lucide-react'
 import { getDevices, createDevice } from '../api/devices'
 import { getSerialPorts } from '../api/system'
 import { useDeviceStore } from '../store/devices'
 import { DeviceStatusBadge } from '../components/Devices/DeviceStatusBadge'
+import { FavoriteToggle } from '../components/Devices/FavoriteToggle'
 import { EmptyState } from '../components/UI/EmptyState'
 import { PageSpinner } from '../components/UI/Spinner'
 import type { Device } from '../types/device'
@@ -14,7 +15,8 @@ type Tab = 'list' | 'add'
 export default function Devices() {
   const { devices, setDevices } = useDeviceStore()
   const [loading, setLoading] = useState(devices.length === 0)
-  const [tab, setTab] = useState<Tab>('list')
+  const [searchParams] = useSearchParams()
+  const [tab, setTab] = useState<Tab>(searchParams.get('tab') === 'add' ? 'add' : 'list')
 
   const refresh = async () => {
     setLoading(true)
@@ -85,7 +87,10 @@ function DeviceCard({ device }: { device: Device }) {
           <h3 className="font-medium text-ink truncate">{device.name}</h3>
           <p className="text-xs text-ink-muted mt-0.5">Adres {device.modbus_address} · {device.port}</p>
         </div>
-        <DeviceStatusBadge status={device.status} />
+        <div className="flex items-center gap-2 shrink-0">
+          <FavoriteToggle deviceId={device.id} />
+          <DeviceStatusBadge status={device.status} />
+        </div>
       </div>
       {firstReading ? (
         <div className="mt-2">

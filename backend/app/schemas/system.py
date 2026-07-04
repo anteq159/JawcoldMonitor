@@ -12,6 +12,15 @@ class SystemStats(BaseModel):
     disk_used_gb: float
     disk_total_gb: float
     uptime_seconds: float
+    net_sent_bytes_per_sec: float = 0.0
+    net_recv_bytes_per_sec: float = 0.0
+    net_connected: bool = True
+
+
+class ServiceStatus(BaseModel):
+    name: str
+    status: str  # online | offline
+    detail: Optional[str] = None
 
 
 class RS485PortStats(BaseModel):

@@ -13,6 +13,10 @@ interface DeviceState {
   systemStats: SystemStats | null
   newDeviceCandidate: Device | null
   wsStatus: WsStatus
+  favoriteIds: Set<number>
+  setFavoriteIds: (ids: Set<number>) => void
+  addFavoriteId: (id: number) => void
+  removeFavoriteId: (id: number) => void
   setDevices: (devices: Device[]) => void
   setSensors: (sensors: Sensor[]) => void
   updateDeviceStatus: (deviceId: number, status: Device['status']) => void
@@ -32,6 +36,15 @@ export const useDeviceStore = create<DeviceState>()((set) => ({
   systemStats: null,
   newDeviceCandidate: null,
   wsStatus: 'connecting',
+  favoriteIds: new Set(),
+  setFavoriteIds: (ids) => set({ favoriteIds: ids }),
+  addFavoriteId: (id) => set((s) => ({ favoriteIds: new Set(s.favoriteIds).add(id) })),
+  removeFavoriteId: (id) =>
+    set((s) => {
+      const next = new Set(s.favoriteIds)
+      next.delete(id)
+      return { favoriteIds: next }
+    }),
   setDevices: (devices) => set({ devices }),
   setSensors: (sensors) => set({ sensors }),
   updateDeviceStatus: (deviceId, status) =>

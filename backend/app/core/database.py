@@ -53,5 +53,6 @@ async def init_db() -> None:
     import app.models.audit  # noqa
     import app.models.map  # noqa
     import app.models.visibility  # noqa
+    import app.models.favorite  # noqa
 
     await asyncio.to_thread(_run_migrations_sync)

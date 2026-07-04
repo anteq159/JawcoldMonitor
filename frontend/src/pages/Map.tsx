@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { Upload, Trash2, MapPin, X, Save, Plus } from 'lucide-react'
 import { getMaps, uploadMap, savePositions, deleteMap, type FloorMap, type MapPosition } from '../api/maps'
 import { getDevices } from '../api/devices'
@@ -12,11 +13,12 @@ import toast from 'react-hot-toast'
 import type { Device } from '../types/device'
 
 export default function Map() {
+  const [searchParams] = useSearchParams()
   const [maps, setMaps] = useState<FloorMap[]>([])
   const [devices, setDevices] = useState<Device[]>([])
   const [activeMap, setActiveMap] = useState<FloorMap | null>(null)
   const [loading, setLoading] = useState(true)
-  const [showUpload, setShowUpload] = useState(false)
+  const [showUpload, setShowUpload] = useState(searchParams.get('upload') === '1')
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
 
   const load = async () => {

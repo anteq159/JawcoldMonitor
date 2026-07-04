@@ -1,17 +1,21 @@
 import glob
+from datetime import datetime, timezone
+from typing import List
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 
 from app.core.database import get_db
 from app.core.config import settings
+from app.core.redis import get_redis
 from app.models.user import User
 from app.models.device import Device
 from app.models.sensor import Sensor
 from app.models.alert import AlertEvent
 from app.models.reading import Reading
-from app.schemas.system import SystemStats, RS485Stats, RS485PortStats
+from app.schemas.system import SystemStats, RS485Stats, RS485PortStats, ServiceStatus
 from app.services.system_stats import get_system_stats
+from app.services import scanner
 from app.api.deps import get_current_user
 
 router = APIRouter(prefix="/system", tags=["system"])
@@ -40,6 +44,36 @@ async def rs485_status(
         "known_scan_interval": settings.KNOWN_SCAN_INTERVAL,
         "discovery_interval": settings.DISCOVERY_SCAN_INTERVAL,
     }
+
+
+@router.get("/services", response_model=List[ServiceStatus])
+async def services_status(
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    services: List[ServiceStatus] = []
+
+    try:
+        await db.execute(select(1))
+        services.append(ServiceStatus(name="PostgreSQL", status="online"))
+    except Exception as e:
+        services.append(ServiceStatus(name="PostgreSQL", status="offline", detail=str(e)))
+
+    try:
+        await get_redis().ping()
+        services.append(ServiceStatus(name="Redis", status="online"))
+    except Exception as e:
+        services.append(ServiceStatus(name="Redis", status="offline", detail=str(e)))
+
+    last_tick = scanner.get_last_tick()
+    scanner_alive = last_tick is not None and (datetime.now(timezone.utc) - last_tick).total_seconds() < 10
+    services.append(ServiceStatus(
+        name="Skaner RS485/Dallas",
+        status="online" if scanner_alive else "offline",
+        detail=None if scanner_alive else "Brak aktywności pętli skanującej",
+    ))
+
+    return services
 
 
 @router.get("/ports")

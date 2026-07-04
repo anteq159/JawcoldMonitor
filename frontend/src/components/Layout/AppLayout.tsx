@@ -1,10 +1,12 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 import { Sidebar } from './Sidebar'
 import { Header } from './Header'
 import { Toaster } from 'react-hot-toast'
 import { useWebSocket } from '../../hooks/useWebSocket'
 import { NewDeviceModal } from '../Alerts/NewDeviceModal'
+import { getFavorites } from '../../api/favorites'
+import { useDeviceStore } from '../../store/devices'
 
 const TITLES: Record<string, string> = {
   '/': 'Dashboard',
@@ -21,7 +23,12 @@ const TITLES: Record<string, string> = {
 export function AppLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const location = useLocation()
+  const setFavoriteIds = useDeviceStore((s) => s.setFavoriteIds)
   useWebSocket()
+
+  useEffect(() => {
+    getFavorites().then((favs) => setFavoriteIds(new Set(favs.map((f) => f.device_id)))).catch(() => {})
+  }, [])
 
   const title = Object.entries(TITLES).find(([path]) =>
     path === '/' ? location.pathname === '/' : location.pathname.startsWith(path)

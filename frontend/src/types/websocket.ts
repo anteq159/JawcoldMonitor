@@ -23,4 +23,13 @@ export interface SystemStats {
   disk_used_gb: number
   disk_total_gb: number
   uptime_seconds: number
+  net_sent_bytes_per_sec: number
+  net_recv_bytes_per_sec: number
+  net_connected: boolean
+}
+
+export interface ServiceStatus {
+  name: string
+  status: 'online' | 'offline'
+  detail: string | null
 }

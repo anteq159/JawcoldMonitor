@@ -8,6 +8,7 @@ import type { ParameterReadings } from '../types/reading'
 import { ParameterGrid } from '../components/Devices/ParameterGrid'
 import { TimeSeriesChart } from '../components/Charts/TimeSeriesChart'
 import { DeviceStatusBadge } from '../components/Devices/DeviceStatusBadge'
+import { FavoriteToggle } from '../components/Devices/FavoriteToggle'
 import { Card } from '../components/UI/Card'
 import { PageSpinner } from '../components/UI/Spinner'
 import { useDeviceStore } from '../store/devices'
@@ -93,6 +94,7 @@ export default function DeviceDetail() {
           )}
           <p className="text-xs text-ink-muted">Adres {device.modbus_address} · {device.port} · {device.baudrate} baud</p>
         </div>
+        <FavoriteToggle deviceId={device.id} />
         <DeviceStatusBadge status={device.status} />
       </div>
 

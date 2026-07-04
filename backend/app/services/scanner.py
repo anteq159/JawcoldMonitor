@@ -24,6 +24,13 @@ _dallas_driver = None
 _last_discovery: Optional[datetime] = None
 _last_dallas_scan: Optional[datetime] = None
 _last_stats_broadcast: Optional[datetime] = None
+_last_tick: Optional[datetime] = None
+
+
+def get_last_tick() -> Optional[datetime]:
+    """Timestamp of the last completed scanner loop iteration - used by the
+    /system/services health check to tell if the background loop is alive."""
+    return _last_tick
 
 
 def init_drivers():
@@ -43,6 +50,7 @@ def init_drivers():
 
 
 async def scanner_loop():
+    global _last_tick
     init_drivers()
     while True:
         try:
@@ -54,6 +62,7 @@ async def scanner_loop():
             raise
         except Exception as e:
             logger.error("Scanner error: %s", e)
+        _last_tick = datetime.now(timezone.utc)
         await asyncio.sleep(1)
 
 
