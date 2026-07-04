@@ -9,6 +9,7 @@ from app.core.limiter import limiter
 from app.models.user import User
 from app.schemas.auth import LoginRequest, TokenResponse, RefreshRequest, ChangePasswordRequest
 from app.api.deps import get_current_user
+from app.services.audit import record_audit
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -24,6 +25,10 @@ async def login(request: Request, body: LoginRequest, db: AsyncSession = Depends
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Konto jest nieaktywne")
 
     user.last_login = datetime.now(timezone.utc)
+    await record_audit(
+        db, user.id, "auth.login", "user", user.id,
+        ip_address=request.client.host if request.client else None,
+    )
     await db.commit()
 
     payload = {"sub": str(user.id)}

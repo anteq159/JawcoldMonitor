@@ -1,6 +1,6 @@
 import { NavLink } from 'react-router-dom'
 import {
-  LayoutDashboard, Cpu, Thermometer, Bell, TrendingUp, FileText, Users, ShieldCheck, Map, Settings, X, LogOut, Snowflake
+  LayoutDashboard, Cpu, Thermometer, Bell, TrendingUp, FileText, Users, ShieldCheck, Activity, Map, Settings, X, LogOut, Snowflake
 } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
 
@@ -35,6 +35,7 @@ const NAV_GROUPS: { label: string | null; items: NavItem[] }[] = [
     items: [
       { to: '/users', label: 'Użytkownicy', icon: Users, adminOnly: true },
       { to: '/roles', label: 'Role i uprawnienia', icon: ShieldCheck, adminOnly: true },
+      { to: '/diagnostics', label: 'Diagnostyka', icon: Activity, adminOnly: true },
       { to: '/settings', label: 'Ustawienia', icon: Settings },
     ],
   },

@@ -1,5 +1,5 @@
 from typing import List
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
@@ -9,6 +9,7 @@ from app.core.security import hash_password
 from app.models.user import User, Role
 from app.schemas.user import UserOut, UserCreate, UserUpdate
 from app.api.deps import require_role
+from app.services.audit import record_audit
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -26,9 +27,10 @@ async def list_users(
 
 @router.post("/", response_model=UserOut, status_code=201)
 async def create_user(
+    request: Request,
     body: UserCreate,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(require_role("Admin")),
+    current_user: User = Depends(require_role("Admin")),
 ):
     existing = await db.execute(select(User).where(User.username == body.username))
     if existing.scalar_one_or_none():
@@ -48,6 +50,11 @@ async def create_user(
             await db.execute(
                 user_roles.insert().values(user_id=user.id, role_id=role.id)
             )
+    await record_audit(
+        db, current_user.id, "user.create", "user", user.id,
+        new_value={"username": user.username, "role_ids": body.role_ids},
+        ip_address=request.client.host if request.client else None,
+    )
     await db.commit()
     result = await db.execute(
         select(User).options(selectinload(User.roles)).where(User.id == user.id)
@@ -57,10 +64,11 @@ async def create_user(
 
 @router.put("/{user_id}", response_model=UserOut)
 async def update_user(
+    request: Request,
     user_id: int,
     body: UserUpdate,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(require_role("Admin")),
+    current_user: User = Depends(require_role("Admin")),
 ):
     result = await db.execute(
         select(User).options(selectinload(User.roles)).where(User.id == user_id)
@@ -68,6 +76,7 @@ async def update_user(
     user = result.scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=404, detail="Użytkownik nie znaleziony")
+    old_value = {"email": user.email, "is_active": user.is_active, "role_ids": [r.id for r in user.roles]}
     if body.email is not None:
         user.email = body.email
     if body.is_active is not None:
@@ -79,6 +88,12 @@ async def update_user(
         await db.execute(user_roles.delete().where(user_roles.c.user_id == user_id))
         for rid in body.role_ids:
             await db.execute(user_roles.insert().values(user_id=user_id, role_id=rid))
+    await record_audit(
+        db, current_user.id, "user.update", "user", user_id,
+        old_value=old_value,
+        new_value={"email": body.email, "is_active": body.is_active, "role_ids": body.role_ids},
+        ip_address=request.client.host if request.client else None,
+    )
     await db.commit()
     result = await db.execute(
         select(User).options(selectinload(User.roles)).where(User.id == user_id)
@@ -88,6 +103,7 @@ async def update_user(
 
 @router.delete("/{user_id}", status_code=204)
 async def delete_user(
+    request: Request,
     user_id: int,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role("Admin")),
@@ -98,5 +114,10 @@ async def delete_user(
     user = result.scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=404, detail="Użytkownik nie znaleziony")
+    await record_audit(
+        db, current_user.id, "user.delete", "user", user_id,
+        old_value={"username": user.username},
+        ip_address=request.client.host if request.client else None,
+    )
     await db.delete(user)
     await db.commit()

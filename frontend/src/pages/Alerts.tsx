@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
+import toast from 'react-hot-toast'
 import { Bell, CheckCircle, Plus, Trash2, Download } from 'lucide-react'
 import { getAlertRules, getAlertEvents, acknowledgeEvent, deleteAlertRule, createAlertRule } from '../api/alerts'
+import { downloadAlerts } from '../api/export'
 import { getDevices } from '../api/devices'
 import { Badge } from '../components/UI/Badge'
 import { Modal } from '../components/UI/Modal'
@@ -188,10 +190,18 @@ export default function Alerts() {
 function ExportAlertsModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [fmt, setFmt] = useState('csv')
   const [range, setRange] = useState<TimeRange>('24h')
+  const [downloading, setDownloading] = useState(false)
 
-  const download = () => {
-    window.open(`/api/v1/export/alerts?format=${fmt}&range=${range}`)
-    onClose()
+  const download = async () => {
+    setDownloading(true)
+    try {
+      await downloadAlerts(fmt, range)
+      onClose()
+    } catch {
+      toast.error('Błąd pobierania pliku')
+    } finally {
+      setDownloading(false)
+    }
   }
 
   return (
@@ -214,8 +224,12 @@ function ExportAlertsModal({ open, onClose }: { open: boolean; onClose: () => vo
             </select>
           </div>
         </div>
-        <button onClick={download} className="w-full flex items-center justify-center gap-2 bg-accent hover:bg-accent-strong text-white text-sm py-2 rounded-lg transition-colors">
-          <Download size={14} /> Pobierz {fmt.toUpperCase()}
+        <button
+          onClick={download}
+          disabled={downloading}
+          className="w-full flex items-center justify-center gap-2 bg-accent hover:bg-accent-strong disabled:opacity-50 text-white text-sm py-2 rounded-lg transition-colors"
+        >
+          <Download size={14} /> {downloading ? 'Pobieranie…' : `Pobierz ${fmt.toUpperCase()}`}
         </button>
       </div>
     </Modal>

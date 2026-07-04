@@ -15,6 +15,7 @@ from app.core.database import init_db, AsyncSessionLocal
 from app.core.redis import init_redis, close_redis, get_redis
 from app.core.security import hash_password
 from app.core.limiter import limiter
+from app.core.diagnostics import install_handler as install_diagnostics_handler
 from app.models.user import User, Role, Permission, role_permissions, user_roles
 from app.websocket.manager import ws_manager
 from app.services.scanner import scanner_loop
@@ -22,6 +23,7 @@ from app.api.router import api_router
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+install_diagnostics_handler()
 
 DEFAULT_PERMISSIONS = [
     ("device:read", "Odczyt urządzeń"),

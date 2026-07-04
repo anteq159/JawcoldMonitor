@@ -16,7 +16,8 @@ from app.models.reading import Reading
 from app.schemas.system import SystemStats, RS485Stats, RS485PortStats, ServiceStatus
 from app.services.system_stats import get_system_stats
 from app.services import scanner
-from app.api.deps import get_current_user
+from app.core.diagnostics import get_recent, DiagnosticEntry
+from app.api.deps import get_current_user, require_role
 
 router = APIRouter(prefix="/system", tags=["system"])
 
@@ -43,6 +44,36 @@ async def rs485_status(
         "preview_mode": settings.PREVIEW_MODE,
         "known_scan_interval": settings.KNOWN_SCAN_INTERVAL,
         "discovery_interval": settings.DISCOVERY_SCAN_INTERVAL,
+    }
+
+
+@router.get("/diagnostics", response_model=List[DiagnosticEntry])
+async def diagnostics(
+    limit: int = 100,
+    _: User = Depends(require_role("Admin")),
+):
+    """Recent WARNING+ log records from the app's own loggers (scanner
+    errors, driver failures, etc.) that previously only existed in the
+    server console. Admin-only since messages can include internal detail."""
+    return get_recent(limit)
+
+
+@router.get("/update-check")
+async def update_check(_: User = Depends(require_role("Admin"))):
+    """Simulated - Etap 1 is demo/simulation stage per the project brief,
+    real self-update infrastructure (git/Docker image rollout) is Stage 3
+    deployment territory, not something to fake convincingly here."""
+    return {
+        "current_version": "1.0.0",
+        "latest_version": "1.0.0",
+        "up_to_date": True,
+        "checked_at": datetime.now(timezone.utc).isoformat(),
+        "changelog": [
+            {
+                "version": "1.0.0",
+                "notes": "Wersja demonstracyjna Etapu 1 — pełny interfejs, symulacja sterowników Danfoss/Carel/Eliwell.",
+            },
+        ],
     }
 
 

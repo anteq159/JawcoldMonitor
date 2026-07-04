@@ -13,6 +13,8 @@ interface DeviceState {
   systemStats: SystemStats | null
   newDeviceCandidate: Device | null
   wsStatus: WsStatus
+  wizardOpen: boolean
+  setWizardOpen: (open: boolean) => void
   favoriteIds: Set<number>
   setFavoriteIds: (ids: Set<number>) => void
   addFavoriteId: (id: number) => void
@@ -36,6 +38,8 @@ export const useDeviceStore = create<DeviceState>()((set) => ({
   systemStats: null,
   newDeviceCandidate: null,
   wsStatus: 'connecting',
+  wizardOpen: false,
+  setWizardOpen: (open) => set({ wizardOpen: open }),
   favoriteIds: new Set(),
   setFavoriteIds: (ids) => set({ favoriteIds: ids }),
   addFavoriteId: (id) => set((s) => ({ favoriteIds: new Set(s.favoriteIds).add(id) })),

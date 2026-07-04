@@ -5,6 +5,7 @@ import { Header } from './Header'
 import { Toaster } from 'react-hot-toast'
 import { useWebSocket } from '../../hooks/useWebSocket'
 import { NewDeviceModal } from '../Alerts/NewDeviceModal'
+import { SetupWizard, isWizardCompleted } from '../Wizard/SetupWizard'
 import { getFavorites } from '../../api/favorites'
 import { useDeviceStore } from '../../store/devices'
 
@@ -18,6 +19,7 @@ const TITLES: Record<string, string> = {
   '/logs': 'Logi zdarzeń',
   '/users': 'Użytkownicy',
   '/roles': 'Role i uprawnienia',
+  '/diagnostics': 'Diagnostyka',
   '/settings': 'Ustawienia',
 }
 
@@ -25,10 +27,12 @@ export function AppLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const location = useLocation()
   const setFavoriteIds = useDeviceStore((s) => s.setFavoriteIds)
+  const setWizardOpen = useDeviceStore((s) => s.setWizardOpen)
   useWebSocket()
 
   useEffect(() => {
     getFavorites().then((favs) => setFavoriteIds(new Set(favs.map((f) => f.device_id)))).catch(() => {})
+    if (!isWizardCompleted()) setWizardOpen(true)
   }, [])
 
   const title = Object.entries(TITLES).find(([path]) =>
@@ -71,6 +75,7 @@ export function AppLayout() {
         }}
       />
       <NewDeviceModal />
+      <SetupWizard />
     </div>
   )
 }
