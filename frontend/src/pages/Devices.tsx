@@ -6,6 +6,7 @@ import { getSerialPorts } from '../api/system'
 import { useDeviceStore } from '../store/devices'
 import { DeviceStatusBadge } from '../components/Devices/DeviceStatusBadge'
 import { FavoriteToggle } from '../components/Devices/FavoriteToggle'
+import { ManufacturerBadge } from '../components/Devices/ManufacturerBadge'
 import { EmptyState } from '../components/UI/EmptyState'
 import { PageSpinner } from '../components/UI/Spinner'
 import type { Device } from '../types/device'
@@ -86,6 +87,9 @@ function DeviceCard({ device }: { device: Device }) {
         <div className="min-w-0">
           <h3 className="font-medium text-ink truncate">{device.name}</h3>
           <p className="text-xs text-ink-muted mt-0.5">Adres {device.modbus_address} · {device.port}</p>
+          <div className="mt-1.5">
+            <ManufacturerBadge profile={device.profile} />
+          </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <FavoriteToggle deviceId={device.id} />

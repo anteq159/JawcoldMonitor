@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal
 from app.models.device import Device
+from app.models.device_profile import DeviceProfile
 from app.models.sensor import Sensor
 from app.models.reading import Reading
 from app.models.alert import AlertRule, AlertEvent
@@ -141,9 +142,19 @@ async def _maybe_discovery():
             mock_info = {}
             if hasattr(_rs485_driver, "get_mock_device_info"):
                 mock_info = _rs485_driver.get_mock_device_info(addr)
+
+            profile_id = None
+            manufacturer = mock_info.get("manufacturer")
+            if manufacturer:
+                profile_result = await db.execute(
+                    select(DeviceProfile.id).where(DeviceProfile.manufacturer == manufacturer)
+                )
+                profile_id = profile_result.scalar_one_or_none()
+
             device = Device(
                 name=mock_info.get("name", f"Urządzenie #{addr}"),
                 modbus_address=addr,
+                profile_id=profile_id,
                 status="online",
                 first_seen=datetime.now(timezone.utc),
                 last_seen=datetime.now(timezone.utc),
@@ -193,8 +204,9 @@ async def _scan_dallas():
                 db.add(log)
 
             try:
-                temp = await _dallas_driver.read_temperature(rom_id)
-                if temp is not None:
+                raw_temp = await _dallas_driver.read_temperature(rom_id)
+                if raw_temp is not None:
+                    temp = round(raw_temp + sensor.calibration_offset, 2)
                     r = Reading(
                         sensor_id=sensor.id,
                         parameter_name="Temperatura",

@@ -12,6 +12,7 @@ class SensorOut(BaseModel):
     room: Optional[str] = None
     description: Optional[str] = None
     status: str
+    calibration_offset: float = 0.0
     first_seen: Optional[datetime] = None
     last_seen: Optional[datetime] = None
     created_at: datetime
@@ -24,3 +25,4 @@ class SensorUpdate(BaseModel):
     location: Optional[str] = None
     room: Optional[str] = None
     description: Optional[str] = None
+    calibration_offset: Optional[float] = None

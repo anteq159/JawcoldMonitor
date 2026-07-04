@@ -3,12 +3,14 @@ import { useParams, Link } from 'react-router-dom'
 import { ChevronLeft, Pencil, Check, X } from 'lucide-react'
 import { getDevice, updateDevice } from '../api/devices'
 import { getDeviceReadings } from '../api/readings'
+import { getDeviceProfile, type DeviceProfileDetail } from '../api/deviceProfiles'
 import type { Device } from '../types/device'
 import type { ParameterReadings } from '../types/reading'
 import { ParameterGrid } from '../components/Devices/ParameterGrid'
 import { TimeSeriesChart } from '../components/Charts/TimeSeriesChart'
 import { DeviceStatusBadge } from '../components/Devices/DeviceStatusBadge'
 import { FavoriteToggle } from '../components/Devices/FavoriteToggle'
+import { ManufacturerBadge } from '../components/Devices/ManufacturerBadge'
 import { Card } from '../components/UI/Card'
 import { PageSpinner } from '../components/UI/Spinner'
 import { useDeviceStore } from '../store/devices'
@@ -22,6 +24,7 @@ export default function DeviceDetail() {
   const deviceId = Number(id)
   const [device, setDevice] = useState<Device | null>(null)
   const [readings, setReadings] = useState<ParameterReadings[]>([])
+  const [profile, setProfile] = useState<DeviceProfileDetail | null>(null)
   const [range, setRange] = useState<Range>('1h')
   const [loading, setLoading] = useState(true)
 
@@ -32,7 +35,11 @@ export default function DeviceDetail() {
   const updateDeviceInStore = useDeviceStore(s => s.updateDeviceStatus)
 
   useEffect(() => {
-    getDevice(deviceId).then(d => { setDevice(d); setNameInput(d.name) }).finally(() => setLoading(false))
+    getDevice(deviceId).then(d => {
+      setDevice(d)
+      setNameInput(d.name)
+      if (d.profile) getDeviceProfile(d.profile.id).then(setProfile).catch(() => {})
+    }).finally(() => setLoading(false))
   }, [deviceId])
 
   useEffect(() => {
@@ -92,7 +99,10 @@ export default function DeviceDetail() {
               </button>
             </div>
           )}
-          <p className="text-xs text-ink-muted">Adres {device.modbus_address} · {device.port} · {device.baudrate} baud</p>
+          <div className="flex items-center gap-2 mt-1">
+            <p className="text-xs text-ink-muted">Adres {device.modbus_address} · {device.port} · {device.baudrate} baud</p>
+            <ManufacturerBadge profile={device.profile} />
+          </div>
         </div>
         <FavoriteToggle deviceId={device.id} />
         <DeviceStatusBadge status={device.status} />
@@ -136,6 +146,38 @@ export default function DeviceDetail() {
               </div>
             ))}
           </div>
+        </Card>
+      )}
+
+      {profile && profile.registers.length > 0 && (
+        <Card title={`Mapa rejestrów — profil ${profile.name}`}>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border text-left">
+                  <th className="px-5 py-2 text-xs font-semibold text-ink-muted uppercase tracking-wide">Adres</th>
+                  <th className="px-3 py-2 text-xs font-semibold text-ink-muted uppercase tracking-wide">Nazwa</th>
+                  <th className="px-3 py-2 text-xs font-semibold text-ink-muted uppercase tracking-wide">Jednostka</th>
+                  <th className="px-3 py-2 text-xs font-semibold text-ink-muted uppercase tracking-wide">Typ danych</th>
+                  <th className="px-5 py-2 text-xs font-semibold text-ink-muted uppercase tracking-wide">Skala</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {profile.registers.map((r) => (
+                  <tr key={r.id}>
+                    <td className="px-5 py-2 font-mono text-ink-muted">{r.address}</td>
+                    <td className="px-3 py-2 text-ink">{r.name}</td>
+                    <td className="px-3 py-2 text-ink-muted">{r.unit || '—'}</td>
+                    <td className="px-3 py-2 font-mono text-ink-muted">{r.data_type}</td>
+                    <td className="px-5 py-2 font-mono text-ink-muted">{r.scale_factor}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="px-5 py-3 text-xs text-ink-muted border-t border-border">
+            Reprezentatywna mapa rejestrów producenta — zweryfikuj z oficjalną dokumentacją modelu przed użyciem z rzeczywistym urządzeniem.
+          </p>
         </Card>
       )}
     </div>

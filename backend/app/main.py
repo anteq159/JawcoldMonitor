@@ -97,6 +97,44 @@ async def _init_defaults():
         await db.commit()
 
 
+async def _init_manufacturer_profiles():
+    """Seed one built-in DeviceProfile per registered manufacturer driver, so
+    the demo has real, browsable register maps for Danfoss/Carel/Eliwell
+    without requiring anyone to hand-enter them via the API first."""
+    import app.drivers.manufacturers  # noqa: F401 - triggers registration
+    from app.drivers.registry import all_drivers
+    from app.models.device_profile import DeviceProfile, RegisterDefinition
+
+    async with AsyncSessionLocal() as db:
+        for manufacturer, driver_cls in all_drivers().items():
+            result = await db.execute(select(DeviceProfile).where(DeviceProfile.manufacturer == manufacturer))
+            if result.scalar_one_or_none():
+                continue
+            driver = driver_cls()
+            model = driver.identify()
+            profile = DeviceProfile(
+                name=f"{manufacturer} {model.model}",
+                manufacturer=manufacturer,
+                model=model.model,
+                description=model.description,
+                source="builtin",
+                registers=[
+                    RegisterDefinition(
+                        address=r.address,
+                        name=r.name,
+                        unit=r.unit,
+                        description=r.description,
+                        data_type=r.data_type,
+                        scale_factor=r.scale_factor,
+                    )
+                    for r in driver.default_register_map()
+                ],
+            )
+            db.add(profile)
+            logger.info("Seeded built-in device profile for %s", manufacturer)
+        await db.commit()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Starting JawcoldMonitor (PREVIEW=%s)", settings.PREVIEW_MODE)
@@ -106,6 +144,7 @@ async def lifespan(app: FastAPI):
     ws_manager.init_redis(redis)
     await ws_manager.start_listener()
     await _init_defaults()
+    await _init_manufacturer_profiles()
     scanner_task = asyncio.create_task(scanner_loop())
     yield
     scanner_task.cancel()

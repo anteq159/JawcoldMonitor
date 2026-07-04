@@ -11,8 +11,8 @@ import { useDeviceStore } from '../../store/devices'
 const TITLES: Record<string, string> = {
   '/': 'Dashboard',
   '/map': 'Mapa',
-  '/devices': 'Urządzenia RS485',
-  '/sensors': 'Czujniki Dallas',
+  '/devices': 'Sterowniki',
+  '/sensors': 'Czujniki',
   '/alerts': 'Alerty',
   '/logs': 'Logi zdarzeń',
   '/users': 'Użytkownicy',

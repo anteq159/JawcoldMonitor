@@ -23,8 +23,8 @@ const NAV_GROUPS: { label: string | null; items: NavItem[] }[] = [
   {
     label: 'Monitorowanie',
     items: [
-      { to: '/devices', label: 'Urządzenia RS485', icon: Cpu },
-      { to: '/sensors', label: 'Czujniki Dallas', icon: Thermometer },
+      { to: '/devices', label: 'Sterowniki', icon: Cpu },
+      { to: '/sensors', label: 'Czujniki', icon: Thermometer },
       { to: '/alerts', label: 'Alerty', icon: Bell },
       { to: '/logs', label: 'Logi', icon: FileText },
     ],

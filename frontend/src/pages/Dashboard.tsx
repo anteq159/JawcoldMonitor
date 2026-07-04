@@ -124,7 +124,7 @@ export default function Dashboard() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <StatCard label="Urządzenia online" value={devicesOnline} color="green" icon={<Cpu size={20} />} />
         <StatCard label="Urządzenia offline" value={devicesOffline} color="red" icon={<Cpu size={20} />} />
-        <StatCard label="Czujniki Dallas" value={sensors.length} color="blue" icon={<Thermometer size={20} />} />
+        <StatCard label="Czujniki" value={sensors.length} color="blue" icon={<Thermometer size={20} />} />
         <StatCard label="Aktywne alerty" value={dashboard?.active_alerts ?? 0} color={dashboard?.active_alerts ? 'red' : 'green'} icon={<Bell size={20} />} />
       </div>
 
@@ -256,7 +256,7 @@ export default function Dashboard() {
             {w.id === 'map' && <MapWidget />}
 
             {w.id === 'devices' && (
-              <WidgetCard title="Urządzenia RS485" action={<Link to="/devices" className="text-xs text-accent hover:text-accent-strong shrink-0">Zobacz wszystkie</Link>}>
+              <WidgetCard title="Sterowniki" action={<Link to="/devices" className="text-xs text-accent hover:text-accent-strong shrink-0">Zobacz wszystkie</Link>}>
                 <div className="divide-y divide-border">
                   {devices.slice(0, 8).map((d) => (
                     <Link key={d.id} to={`/devices/${d.id}`} className="flex items-center justify-between px-4 py-2.5 hover:bg-surface-2 transition-colors">

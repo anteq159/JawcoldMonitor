@@ -7,6 +7,7 @@ export interface Sensor {
   room: string | null
   description: string | null
   status: 'online' | 'offline' | 'unknown'
+  calibration_offset: number
   first_seen: string | null
   last_seen: string | null
   created_at: string

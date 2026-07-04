@@ -31,7 +31,7 @@ export default function Login() {
             <Snowflake size={26} className="text-accent" strokeWidth={2.25} />
             JawcoldMonitor
           </div>
-          <p className="text-ink-muted text-sm mt-1">Panel monitorowania RS485</p>
+          <p className="text-ink-muted text-sm mt-1">Monitoring sterowników chłodniczych</p>
         </div>
 
         <form onSubmit={handleSubmit} className="bg-surface border border-border rounded-xl shadow-panel p-6 space-y-4">

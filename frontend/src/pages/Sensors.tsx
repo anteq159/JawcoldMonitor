@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
-import { Thermometer, Pencil, Check, X } from 'lucide-react'
+import { Thermometer, Pencil, Check, X, SlidersHorizontal } from 'lucide-react'
 import { getSensors, updateSensor } from '../api/sensors'
 import { getSensorReadings } from '../api/readings'
 import { useDeviceStore } from '../store/devices'
 import { DeviceStatusBadge } from '../components/Devices/DeviceStatusBadge'
 import { TimeSeriesChart } from '../components/Charts/TimeSeriesChart'
+import { CalibrationModal } from '../components/Devices/CalibrationModal'
 import { EmptyState } from '../components/UI/EmptyState'
 import { PageSpinner } from '../components/UI/Spinner'
 import { format } from 'date-fns'
@@ -17,6 +18,7 @@ export default function Sensors() {
   const [loading, setLoading] = useState(sensors.length === 0)
   const [selected, setSelected] = useState<Sensor | null>(null)
   const [chart, setChart] = useState<ParameterReadings[]>([])
+  const [calibrating, setCalibrating] = useState<Sensor | null>(null)
 
   useEffect(() => {
     getSensors().then((s) => { setSensors(s); if (!selected && s.length) setSelected(s[0]) }).finally(() => setLoading(false))
@@ -32,6 +34,12 @@ export default function Sensors() {
     setSensors(updated)
     if (selected?.id === sensor.id) setSelected({ ...selected, name: newName })
     toast.success('Nazwa czujnika zaktualizowana')
+  }
+
+  const handleCalibrated = (sensor: Sensor, offset: number) => {
+    const updated = sensors.map(s => s.id === sensor.id ? { ...s, calibration_offset: offset } : s)
+    setSensors(updated)
+    if (selected?.id === sensor.id) setSelected({ ...selected, calibration_offset: offset })
   }
 
   if (loading) return <PageSpinner />
@@ -51,6 +59,7 @@ export default function Sensors() {
               selected={selected?.id === s.id}
               onSelect={() => setSelected(s)}
               onRename={(name) => handleRename(s, name)}
+              onCalibrate={() => setCalibrating(s)}
             />
           )
         })}
@@ -71,16 +80,26 @@ export default function Sensors() {
           </div>
         </div>
       )}
+
+      {calibrating && (
+        <CalibrationModal
+          sensor={calibrating}
+          currentTemp={liveSensorTemps[calibrating.id]?.temp ?? null}
+          onClose={() => setCalibrating(null)}
+          onSaved={(offset) => handleCalibrated(calibrating, offset)}
+        />
+      )}
     </div>
   )
 }
 
-function SensorCard({ sensor, live, selected, onSelect, onRename }: {
+function SensorCard({ sensor, live, selected, onSelect, onRename, onCalibrate }: {
   sensor: Sensor
   live: { temp: number; ts: number } | undefined
   selected: boolean
   onSelect: () => void
   onRename: (name: string) => void
+  onCalibrate: () => void
 }) {
   const [editing, setEditing] = useState(false)
   const [nameInput, setNameInput] = useState(sensor.name)
@@ -138,7 +157,16 @@ function SensorCard({ sensor, live, selected, onSelect, onRename }: {
             <p className="text-xs text-ink-muted font-mono">{sensor.rom_id}</p>
           </div>
         </div>
-        <DeviceStatusBadge status={sensor.status} />
+        <div className="flex items-center gap-1.5 shrink-0">
+          <button
+            onClick={(e) => { e.stopPropagation(); onCalibrate() }}
+            className="text-ink-muted hover:text-accent transition-colors p-0.5"
+            title="Kalibracja"
+          >
+            <SlidersHorizontal size={14} />
+          </button>
+          <DeviceStatusBadge status={sensor.status} />
+        </div>
       </div>
       <div>
         <span className="text-2xl font-bold text-accent">
@@ -147,6 +175,11 @@ function SensorCard({ sensor, live, selected, onSelect, onRename }: {
         <span className="text-ink-muted ml-1 text-sm">°C</span>
         {live && <p className="text-xs text-ink-muted mt-1">{format(live.ts, 'HH:mm:ss')}</p>}
       </div>
+      {sensor.calibration_offset !== 0 && (
+        <p className="text-xs text-accent mt-1">
+          Kalibracja: {sensor.calibration_offset > 0 ? '+' : ''}{sensor.calibration_offset.toFixed(1)}°C
+        </p>
+      )}
       {sensor.location && <p className="text-xs text-ink-muted mt-2">{sensor.location}</p>}
     </button>
   )
