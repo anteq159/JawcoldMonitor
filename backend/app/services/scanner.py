@@ -226,7 +226,22 @@ async def _scan_dallas():
         await db.commit()
 
 
+def _evaluate_condition(rule: AlertRule, value: float) -> bool:
+    if rule.condition == "gt" and rule.threshold_value is not None and value > rule.threshold_value:
+        return True
+    if rule.condition == "lt" and rule.threshold_value is not None and value < rule.threshold_value:
+        return True
+    if rule.threshold_min is not None and rule.threshold_max is not None:
+        if value < rule.threshold_min or value > rule.threshold_max:
+            return True
+    return False
+
+
 async def _check_alerts(db: AsyncSession, device_id, sensor_id, readings: dict):
+    """Edge-triggered: one AlertEvent per rule per trigger, not one per scan
+    cycle. A rule stays 'active' (resolved_at is NULL) for as long as the
+    condition holds, so a 10-minute alarm produces one row with a duration,
+    not ~600 duplicate rows at a 1s scan interval."""
     try:
         q = select(AlertRule).where(AlertRule.enabled == True)
         if device_id is not None:
@@ -239,21 +254,23 @@ async def _check_alerts(db: AsyncSession, device_id, sensor_id, readings: dict):
             if rule.parameter_name not in readings:
                 continue
             value = readings[rule.parameter_name]["value"]
-            triggered = False
-            if rule.condition == "gt" and rule.threshold_value is not None and value > rule.threshold_value:
-                triggered = True
-            elif rule.condition == "lt" and rule.threshold_value is not None and value < rule.threshold_value:
-                triggered = True
-            elif rule.threshold_min is not None and rule.threshold_max is not None:
-                if value < rule.threshold_min or value > rule.threshold_max:
-                    triggered = True
-            if triggered:
+            triggered = _evaluate_condition(rule, value)
+
+            active_result = await db.execute(
+                select(AlertEvent)
+                .where(AlertEvent.rule_id == rule.id, AlertEvent.resolved_at.is_(None))
+                .order_by(AlertEvent.timestamp.desc())
+            )
+            active_event = active_result.scalars().first()
+
+            if triggered and not active_event:
                 event = AlertEvent(
                     rule_id=rule.id,
                     device_id=device_id,
                     sensor_id=sensor_id,
                     value=value,
                     severity=rule.severity,
+                    category=rule.category,
                     message=f"{rule.name}: wartość {value} przekroczyła próg",
                     timestamp=datetime.now(timezone.utc),
                 )
@@ -268,8 +285,16 @@ async def _check_alerts(db: AsyncSession, device_id, sensor_id, readings: dict):
                     "sensor_id": sensor_id,
                     "value": value,
                     "severity": rule.severity,
+                    "category": rule.category,
                     "message": event.message,
                 }))
+            elif not triggered and active_event:
+                active_event.resolved_at = datetime.now(timezone.utc)
+                await db.commit()
+                await ws_manager.broadcast(ws_events.alert_resolved(active_event.id, active_event.resolved_at.isoformat()))
+            elif triggered and active_event:
+                active_event.value = value
+                await db.commit()
     except Exception as e:
         logger.warning("Alert check error: %s", e)
 

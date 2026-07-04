@@ -31,6 +31,10 @@ def alert_acknowledged(event_id: int) -> dict:
     return {"type": "alert_acknowledged", "data": {"event_id": event_id}}
 
 
+def alert_resolved(event_id: int, resolved_at: str) -> dict:
+    return {"type": "alert_resolved", "data": {"event_id": event_id, "resolved_at": resolved_at}}
+
+
 def new_device_found(device_data: dict) -> dict:
     return {"type": "new_device_found", "data": device_data}
 

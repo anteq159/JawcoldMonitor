@@ -74,8 +74,13 @@ function handleMessage(msg: WSMessage, store: ReturnType<typeof useDeviceStore.g
     }
     case 'alert_triggered': {
       const ev = msg.data
-      const label = ev.severity === 'critical' ? '🔴' : ev.severity === 'warning' ? '🟡' : '🔵'
-      toast.error(`${label} Alert: ${ev.rule_name} — ${ev.value}`, { duration: 8000 })
+      const label = ev.severity === 'critical' ? 'Krytyczny' : ev.severity === 'warning' ? 'Ostrzeżenie' : 'Informacja'
+      toast.error(`${label}: ${ev.rule_name} — ${ev.value}`, { duration: 8000 })
+      break
+    }
+    case 'alert_resolved': {
+      // Quieter than a new alarm - no toast. Alerts page/widgets pick up the
+      // resolved state on their next fetch.
       break
     }
     case 'new_device_found': {

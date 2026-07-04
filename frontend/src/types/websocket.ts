@@ -5,6 +5,7 @@ export type WSEventType =
   | 'sensor_reading'
   | 'alert_triggered'
   | 'alert_acknowledged'
+  | 'alert_resolved'
   | 'new_device_found'
   | 'system_stats'
 

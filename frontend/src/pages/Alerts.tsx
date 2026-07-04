@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Bell, CheckCircle, Plus, Trash2 } from 'lucide-react'
+import { Bell, CheckCircle, Plus, Trash2, Download } from 'lucide-react'
 import { getAlertRules, getAlertEvents, acknowledgeEvent, deleteAlertRule, createAlertRule } from '../api/alerts'
 import { getDevices } from '../api/devices'
 import { Badge } from '../components/UI/Badge'
@@ -8,7 +8,32 @@ import { EmptyState } from '../components/UI/EmptyState'
 import { PageSpinner } from '../components/UI/Spinner'
 import { format } from 'date-fns'
 import type { AlertRule, AlertEvent } from '../types/alert'
+import { ALERT_CATEGORIES } from '../types/alert'
 import type { Device } from '../types/device'
+
+type TimeRange = '1h' | '6h' | '24h' | '7d' | '30d'
+const RANGES: { label: string; value: TimeRange }[] = [
+  { label: '1h', value: '1h' },
+  { label: '6h', value: '6h' },
+  { label: '24h', value: '24h' },
+  { label: '7d', value: '7d' },
+  { label: '30d', value: '30d' },
+]
+const RANGE_MS: Record<TimeRange, number> = {
+  '1h': 3600_000, '6h': 6 * 3600_000, '24h': 24 * 3600_000, '7d': 7 * 86400_000, '30d': 30 * 86400_000,
+}
+
+function formatDuration(start: string, end: string | null): string {
+  const startMs = new Date(start).getTime()
+  const endMs = end ? new Date(end).getTime() : Date.now()
+  const totalSeconds = Math.max(0, Math.floor((endMs - startMs) / 1000))
+  const h = Math.floor(totalSeconds / 3600)
+  const m = Math.floor((totalSeconds % 3600) / 60)
+  const s = totalSeconds % 60
+  if (h > 0) return `${h}h ${m}min`
+  if (m > 0) return `${m}min ${s}s`
+  return `${s}s`
+}
 
 export default function Alerts() {
   const [rules, setRules] = useState<AlertRule[]>([])
@@ -17,13 +42,24 @@ export default function Alerts() {
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState<'events' | 'rules'>('events')
   const [showAdd, setShowAdd] = useState(false)
+  const [showExport, setShowExport] = useState(false)
+
+  const [filterSeverity, setFilterSeverity] = useState('')
+  const [filterCategory, setFilterCategory] = useState('')
+  const [filterRange, setFilterRange] = useState<TimeRange>('24h')
 
   const load = async () => {
-    const [r, e, d] = await Promise.all([getAlertRules(), getAlertEvents(), getDevices()])
+    const since = new Date(Date.now() - RANGE_MS[filterRange]).toISOString()
+    const [r, e, d] = await Promise.all([
+      getAlertRules(),
+      getAlertEvents({ severity: filterSeverity || undefined, category: filterCategory || undefined, since }),
+      getDevices(),
+    ])
     setRules(r); setEvents(e); setDevices(d)
   }
 
   useEffect(() => { load().finally(() => setLoading(false)) }, [])
+  useEffect(() => { if (!loading) load() }, [filterSeverity, filterCategory, filterRange])
 
   const ack = async (id: number) => {
     await acknowledgeEvent(id)
@@ -35,14 +71,14 @@ export default function Alerts() {
     setRules(r => r.filter(ru => ru.id !== id))
   }
 
-  const sevColor = (s: string) => ({ critical: 'red' as const, warning: 'yellow' as const, info: 'blue' as const }[s] ?? 'gray' as const)
+  const sevColor = (s: string) => ({ critical: 'red' as const, warning: 'yellow' as const, info: 'blue' as const }[s] ?? ('gray' as const))
   const sevIconColor = (s: string) => ({ critical: 'text-crit', warning: 'text-warn', info: 'text-info' }[s] ?? 'text-ink-muted')
 
   if (loading) return <PageSpinner />
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-2">
         <div className="flex gap-1 bg-surface border border-border rounded-lg p-1">
           {(['events', 'rules'] as const).map(t => (
             <button key={t} onClick={() => setTab(t)}
@@ -51,26 +87,61 @@ export default function Alerts() {
             </button>
           ))}
         </div>
-        {tab === 'rules' && (
-          <button onClick={() => setShowAdd(true)} className="flex items-center gap-2 bg-accent hover:bg-accent-strong text-white text-sm px-4 py-2 rounded-lg">
-            <Plus size={14} /> Dodaj regułę
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          {tab === 'events' && (
+            <button onClick={() => setShowExport(true)} className="flex items-center gap-2 text-ink-muted hover:text-ink border border-border text-sm px-3 py-2 rounded-lg transition-colors">
+              <Download size={14} /> Eksportuj
+            </button>
+          )}
+          {tab === 'rules' && (
+            <button onClick={() => setShowAdd(true)} className="flex items-center gap-2 bg-accent hover:bg-accent-strong text-white text-sm px-4 py-2 rounded-lg">
+              <Plus size={14} /> Dodaj regułę
+            </button>
+          )}
+        </div>
       </div>
 
       {tab === 'events' && (
+        <div className="flex flex-wrap items-center gap-2">
+          <select value={filterSeverity} onChange={e => setFilterSeverity(e.target.value)} className="input !w-auto text-xs py-1.5">
+            <option value="">Wszystkie ważności</option>
+            <option value="info">Info</option>
+            <option value="warning">Warning</option>
+            <option value="critical">Critical</option>
+          </select>
+          <select value={filterCategory} onChange={e => setFilterCategory(e.target.value)} className="input !w-auto text-xs py-1.5">
+            <option value="">Wszystkie kategorie</option>
+            {ALERT_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
+          <div className="flex gap-1">
+            {RANGES.map(r => (
+              <button key={r.value} onClick={() => setFilterRange(r.value)}
+                className={`text-xs px-2.5 py-1.5 rounded-md transition-colors ${filterRange === r.value ? 'bg-accent text-white' : 'text-ink-muted hover:text-ink border border-border'}`}>
+                {r.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {tab === 'events' && (
         <div className="bg-surface border border-border rounded-xl shadow-panel divide-y divide-border">
-          {events.length === 0 && <EmptyState message="Brak zdarzeń alertów" />}
+          {events.length === 0 && <EmptyState message="Brak zdarzeń alertów w wybranym zakresie" />}
           {events.map(ev => (
-            <div key={ev.id} className={`flex items-center justify-between px-5 py-3 ${ev.acknowledged ? 'opacity-50' : ''}`}>
-              <div className="flex items-center gap-3">
-                <Bell size={14} className={sevIconColor(ev.severity)} />
-                <div>
-                  <p className="text-sm text-ink">{ev.message}</p>
-                  <p className="text-xs text-ink-muted">{format(new Date(ev.timestamp), 'dd.MM.yyyy HH:mm:ss')}</p>
+            <div key={ev.id} className={`flex items-center justify-between gap-3 px-5 py-3 ${ev.acknowledged ? 'opacity-50' : ''}`}>
+              <div className="flex items-center gap-3 min-w-0">
+                <Bell size={14} className={`shrink-0 ${sevIconColor(ev.severity)}`} />
+                <div className="min-w-0">
+                  <p className="text-sm text-ink truncate">{ev.message}</p>
+                  <p className="text-xs text-ink-muted">
+                    {format(new Date(ev.timestamp), 'dd.MM.yyyy HH:mm:ss')}
+                    {' · '}
+                    {ev.resolved_at ? `trwał ${formatDuration(ev.timestamp, ev.resolved_at)}` : `aktywny od ${formatDuration(ev.timestamp, null)}`}
+                  </p>
                 </div>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 shrink-0">
+                <Badge variant="gray">{ev.category}</Badge>
                 <Badge variant={sevColor(ev.severity)}>{ev.severity}</Badge>
                 {!ev.acknowledged && (
                   <button onClick={() => ack(ev.id)} className="text-ink-muted hover:text-good transition-colors" title="Potwierdź">
@@ -97,6 +168,7 @@ export default function Alerts() {
                 </p>
               </div>
               <div className="flex items-center gap-2">
+                <Badge variant="gray">{r.category}</Badge>
                 <Badge variant={sevColor(r.severity)}>{r.severity}</Badge>
                 <button onClick={() => delRule(r.id)} className="text-ink-muted hover:text-crit transition-colors">
                   <Trash2 size={14} />
@@ -108,7 +180,45 @@ export default function Alerts() {
       )}
 
       <AddRuleModal open={showAdd} onClose={() => setShowAdd(false)} devices={devices} onAdded={load} />
+      <ExportAlertsModal open={showExport} onClose={() => setShowExport(false)} />
     </div>
+  )
+}
+
+function ExportAlertsModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const [fmt, setFmt] = useState('csv')
+  const [range, setRange] = useState<TimeRange>('24h')
+
+  const download = () => {
+    window.open(`/api/v1/export/alerts?format=${fmt}&range=${range}`)
+    onClose()
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} title="Eksportuj historię alarmów">
+      <div className="space-y-4">
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="block text-xs text-ink-muted mb-1.5">Format</label>
+            <select value={fmt} onChange={e => setFmt(e.target.value)} className="input">
+              <option value="csv">CSV</option>
+              <option value="json">JSON</option>
+              <option value="xlsx">Excel (.xlsx)</option>
+              <option value="pdf">PDF</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs text-ink-muted mb-1.5">Zakres czasowy</label>
+            <select value={range} onChange={e => setRange(e.target.value as TimeRange)} className="input">
+              {RANGES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+            </select>
+          </div>
+        </div>
+        <button onClick={download} className="w-full flex items-center justify-center gap-2 bg-accent hover:bg-accent-strong text-white text-sm py-2 rounded-lg transition-colors">
+          <Download size={14} /> Pobierz {fmt.toUpperCase()}
+        </button>
+      </div>
+    </Modal>
   )
 }
 
@@ -121,6 +231,7 @@ function AddRuleModal({ open, onClose, devices, onAdded }: {
   const [condition, setCondition] = useState('gt')
   const [threshold, setThreshold] = useState('')
   const [severity, setSeverity] = useState('warning')
+  const [category, setCategory] = useState('Inne')
   const [loading, setLoading] = useState(false)
 
   const selectedDevice = devices.find(d => String(d.id) === deviceId)
@@ -142,9 +253,10 @@ function AddRuleModal({ open, onClose, devices, onAdded }: {
         condition,
         threshold_value: Number(threshold),
         severity: severity as 'info' | 'warning' | 'critical',
+        category,
       })
       onAdded(); onClose()
-      setDeviceId(''); setParamName(''); setName(''); setThreshold('')
+      setDeviceId(''); setParamName(''); setName(''); setThreshold(''); setCategory('Inne')
     } finally {
       setLoading(false)
     }
@@ -199,13 +311,21 @@ function AddRuleModal({ open, onClose, devices, onAdded }: {
           </div>
         </div>
 
-        <div>
-          <label className="block text-xs text-ink-muted mb-1">Ważność</label>
-          <select value={severity} onChange={e => setSeverity(e.target.value)} className="input">
-            <option value="info">Info</option>
-            <option value="warning">Warning</option>
-            <option value="critical">Critical</option>
-          </select>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs text-ink-muted mb-1">Ważność</label>
+            <select value={severity} onChange={e => setSeverity(e.target.value)} className="input">
+              <option value="info">Info</option>
+              <option value="warning">Warning</option>
+              <option value="critical">Critical</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs text-ink-muted mb-1">Kategoria</label>
+            <select value={category} onChange={e => setCategory(e.target.value)} className="input">
+              {ALERT_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
         </div>
 
         <div className="flex gap-3 pt-2">

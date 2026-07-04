@@ -7,6 +7,7 @@ import Devices from './pages/Devices'
 import DeviceDetail from './pages/DeviceDetail'
 import Sensors from './pages/Sensors'
 import Alerts from './pages/Alerts'
+import Trends from './pages/Trends'
 import Logs from './pages/Logs'
 import Users from './pages/Users'
 import Roles from './pages/Roles'
@@ -31,6 +32,7 @@ export const router = createBrowserRouter([
       { path: 'devices/:id', element: <DeviceDetail /> },
       { path: 'sensors', element: <Sensors /> },
       { path: 'alerts', element: <Alerts /> },
+      { path: 'trendy', element: <Trends /> },
       { path: 'map', element: <Map /> },
       { path: 'logs', element: <Logs /> },
       { path: 'users', element: <Users /> },

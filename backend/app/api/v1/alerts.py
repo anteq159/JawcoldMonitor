@@ -70,6 +70,11 @@ async def delete_rule(
 @router.get("/events", response_model=List[AlertEventOut])
 async def list_events(
     unacknowledged_only: bool = Query(False),
+    severity: Optional[str] = Query(None),
+    category: Optional[str] = Query(None),
+    device_id: Optional[int] = Query(None),
+    since: Optional[datetime] = Query(None),
+    until: Optional[datetime] = Query(None),
     limit: int = Query(100, le=500),
     db: AsyncSession = Depends(get_db),
     _: User = Depends(get_current_user),
@@ -77,6 +82,16 @@ async def list_events(
     q = select(AlertEvent).order_by(AlertEvent.timestamp.desc()).limit(limit)
     if unacknowledged_only:
         q = q.where(AlertEvent.acknowledged == False)
+    if severity:
+        q = q.where(AlertEvent.severity == severity)
+    if category:
+        q = q.where(AlertEvent.category == category)
+    if device_id:
+        q = q.where(AlertEvent.device_id == device_id)
+    if since:
+        q = q.where(AlertEvent.timestamp >= since)
+    if until:
+        q = q.where(AlertEvent.timestamp <= until)
     result = await db.execute(q)
     return result.scalars().all()
 

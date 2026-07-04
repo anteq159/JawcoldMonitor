@@ -19,6 +19,7 @@ class AlertRule(Base, TimestampMixin):
     threshold_min: Mapped[Optional[float]] = mapped_column(Float)
     threshold_max: Mapped[Optional[float]] = mapped_column(Float)
     severity: Mapped[str] = mapped_column(String(16), default="warning")  # info, warning, critical
+    category: Mapped[str] = mapped_column(String(32), default="Inne")  # Temperatura, Komunikacja, Drzwi, Zasilanie, Sprzęt, Inne
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     notify_channels: Mapped[Optional[List]] = mapped_column(JSONB, default=list)
 
@@ -34,12 +35,14 @@ class AlertEvent(Base):
     sensor_id: Mapped[Optional[int]] = mapped_column(ForeignKey("sensors.id"))
     value: Mapped[Optional[float]] = mapped_column(Float)
     severity: Mapped[str] = mapped_column(String(16), default="warning")
+    category: Mapped[str] = mapped_column(String(32), default="Inne")
     message: Mapped[Optional[str]] = mapped_column(String(512))
     timestamp: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
         nullable=False,
     )
+    resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     acknowledged: Mapped[bool] = mapped_column(Boolean, default=False)
     acknowledged_by: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"))
     acknowledged_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))

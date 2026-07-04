@@ -1,14 +1,14 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Cpu, Thermometer, Bell, Settings, Plus, X, RotateCcw } from 'lucide-react'
+import { Cpu, Thermometer, Bell, Settings, RotateCcw } from 'lucide-react'
 import { StatCard } from '../components/UI/Card'
 import { useDeviceStore } from '../store/devices'
 import { getDashboard } from '../api/system'
 import { getDevices } from '../api/devices'
 import { getSensors } from '../api/sensors'
-import { getDeviceReadings, type TimeRange } from '../api/readings'
+import type { TimeRange } from '../api/readings'
 import { DeviceStatusBadge } from '../components/Devices/DeviceStatusBadge'
-import { TimeSeriesChart } from '../components/Charts/TimeSeriesChart'
+import { ComparisonPicker } from '../components/Charts/ComparisonPicker'
 import { PageSpinner } from '../components/UI/Spinner'
 import { WidgetGrid, useWidgetLayout, type WidgetDef } from '../components/Dashboard/WidgetGrid'
 import { WidgetCard } from '../components/Dashboard/WidgetCard'
@@ -17,8 +17,8 @@ import { QuickActionsWidget } from '../components/Dashboard/widgets/QuickActions
 import { MapWidget } from '../components/Dashboard/widgets/MapWidget'
 import { RpiMonitorWidget } from '../components/Dashboard/widgets/RpiMonitorWidget'
 import { AlarmHistoryWidget } from '../components/Dashboard/widgets/AlarmHistoryWidget'
+import { useComparisonSeries } from '../hooks/useComparisonSeries'
 import { format } from 'date-fns'
-import type { ParameterReadings } from '../types/reading'
 
 const WIDGETS: WidgetDef[] = [
   { id: 'comparison', label: 'Porównanie urządzeń', defaultLayout: { x: 0, y: 0, w: 8, h: 8, minW: 4, minH: 4 } },
@@ -42,13 +42,6 @@ function loadVisibility(): Record<string, boolean> {
   return Object.fromEntries(WIDGETS.map((w) => [w.id, true]))
 }
 
-interface CompSeries {
-  deviceId: number
-  deviceName: string
-  paramName: string
-  data: ParameterReadings[]
-}
-
 const RANGES: { label: string; value: TimeRange }[] = [
   { label: '1h', value: '1h' },
   { label: '6h', value: '6h' },
@@ -66,12 +59,7 @@ export default function Dashboard() {
   const [visibility, setVisibility] = useState<Record<string, boolean>>(loadVisibility)
   const [showConfig, setShowConfig] = useState(false)
   const { layout, setLayout, resetLayout } = useWidgetLayout(LAYOUT_KEY, WIDGETS)
-
-  // Comparison chart
-  const [compSeries, setCompSeries] = useState<CompSeries[]>([])
-  const [compRange, setCompRange] = useState<TimeRange>('1h')
-  const [showAddSeries, setShowAddSeries] = useState(false)
-  const [pickDevice, setPickDevice] = useState<number | null>(null)
+  const comparison = useComparisonSeries('1h')
 
   useEffect(() => {
     Promise.all([getDashboard(), getDevices(), getSensors()]).then(([dash, devs, sens]) => {
@@ -87,35 +75,10 @@ export default function Dashboard() {
     localStorage.setItem(VISIBILITY_KEY, JSON.stringify(next))
   }
 
-  const addSeries = async (deviceId: number, paramName: string) => {
-    const device = devices.find(d => d.id === deviceId)
-    if (!device) return
-    const data = await getDeviceReadings(deviceId, compRange, paramName)
-    const labeled = data.map(r => ({ ...r, parameter_name: `${device.name} · ${r.parameter_name}` }))
-    setCompSeries(prev => [...prev, { deviceId, deviceName: device.name, paramName, data: labeled }])
-    setShowAddSeries(false)
-    setPickDevice(null)
-  }
-
-  const removeSeries = (i: number) => setCompSeries(prev => prev.filter((_, idx) => idx !== i))
-
-  const refreshChart = async (range: TimeRange) => {
-    setCompRange(range)
-    const updated = await Promise.all(
-      compSeries.map(async s => {
-        const data = await getDeviceReadings(s.deviceId, range, s.paramName)
-        const labeled = data.map(r => ({ ...r, parameter_name: `${s.deviceName} · ${r.parameter_name}` }))
-        return { ...s, data: labeled }
-      })
-    )
-    setCompSeries(updated)
-  }
-
   if (loading) return <PageSpinner />
 
   const devicesOnline = devices.filter((d) => d.status === 'online').length
   const devicesOffline = devices.filter((d) => d.status === 'offline').length
-  const mergedChart: ParameterReadings[] = compSeries.flatMap(s => s.data)
   const visibleWidgets = WIDGETS.filter((w) => visibility[w.id] !== false)
 
   return (
@@ -170,81 +133,19 @@ export default function Dashboard() {
             {w.id === 'comparison' && (
               <WidgetCard
                 title="Porównanie urządzeń"
-                action={
-                  <div className="flex items-center gap-2">
-                    {compSeries.length > 0 && (
-                      <div className="flex gap-1">
-                        {RANGES.map(r => (
-                          <button key={r.value} onClick={() => refreshChart(r.value)}
-                            className={`text-xs px-2 py-0.5 rounded-md transition-colors ${compRange === r.value ? 'bg-accent text-white' : 'text-ink-muted hover:text-ink'}`}>
-                            {r.label}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                    <button
-                      onClick={() => { setShowAddSeries(true); setPickDevice(null) }}
-                      className="flex items-center gap-1 text-xs bg-accent hover:bg-accent-strong text-white px-2 py-1 rounded-lg transition-colors"
-                    >
-                      <Plus size={12} /> Dodaj
-                    </button>
-                  </div>
-                }
+                action={<Link to="/trendy" className="text-xs text-accent hover:text-accent-strong shrink-0">Pełny widok</Link>}
               >
-                <div className="p-3 h-full flex flex-col">
-                  {showAddSeries && (
-                    <div className="mb-3 space-y-2 shrink-0">
-                      <div>
-                        <p className="text-xs text-ink-muted mb-1.5">1. Wybierz urządzenie:</p>
-                        <div className="flex flex-wrap gap-1.5">
-                          {devices.map(d => (
-                            <button key={d.id} onClick={() => setPickDevice(d.id)}
-                              className={`text-xs px-2.5 py-1 rounded-lg border transition-colors ${pickDevice === d.id ? 'bg-accent border-accent text-white' : 'border-border text-ink-muted hover:text-ink'}`}>
-                              {d.name}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                      {pickDevice !== null && (() => {
-                        const dev = devices.find(d => d.id === pickDevice)
-                        return dev && dev.parameters.length > 0 ? (
-                          <div>
-                            <p className="text-xs text-ink-muted mb-1.5">2. Wybierz parametr:</p>
-                            <div className="flex flex-wrap gap-1.5">
-                              {dev.parameters.map(p => (
-                                <button key={p.id} onClick={() => addSeries(pickDevice, p.name)}
-                                  className="text-xs px-2.5 py-1 rounded-lg border border-border text-ink-body hover:text-ink hover:border-border-strong transition-colors">
-                                  {p.name}{p.unit ? ` (${p.unit})` : ''}
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                        ) : (
-                          <p className="text-xs text-ink-muted">To urządzenie nie ma zdefiniowanych parametrów.</p>
-                        )
-                      })()}
-                      <button onClick={() => { setShowAddSeries(false); setPickDevice(null) }} className="text-xs text-ink-muted hover:text-ink">Anuluj</button>
-                    </div>
-                  )}
-                  {compSeries.length > 0 && (
-                    <div className="mb-2 flex flex-wrap gap-1.5 shrink-0">
-                      {compSeries.map((s, i) => (
-                        <span key={i} className="flex items-center gap-1.5 text-xs bg-surface-2 border border-border rounded-full px-2.5 py-0.5">
-                          <span className="text-ink-body">{s.deviceName} · {s.paramName}</span>
-                          <button onClick={() => removeSeries(i)} className="text-ink-muted hover:text-crit"><X size={10} /></button>
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                  <div className="flex-1 min-h-0">
-                    {mergedChart.length > 0 ? (
-                      <TimeSeriesChart data={mergedChart} height={220} />
-                    ) : (
-                      <div className="h-full flex items-center justify-center text-sm text-ink-muted text-center px-4">
-                        Kliknij "Dodaj" aby wybrać urządzenie i parametr do porównania
-                      </div>
-                    )}
-                  </div>
+                <div className="p-3 h-full">
+                  <ComparisonPicker
+                    devices={devices}
+                    series={comparison.series}
+                    range={comparison.range}
+                    ranges={RANGES}
+                    onRangeChange={comparison.changeRange}
+                    onAdd={comparison.addSeries}
+                    onRemove={comparison.removeSeries}
+                    height={200}
+                  />
                 </div>
               </WidgetCard>
             )}

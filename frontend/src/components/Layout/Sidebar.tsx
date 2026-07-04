@@ -1,6 +1,6 @@
 import { NavLink } from 'react-router-dom'
 import {
-  LayoutDashboard, Cpu, Thermometer, Bell, FileText, Users, ShieldCheck, Map, Settings, X, LogOut, Snowflake
+  LayoutDashboard, Cpu, Thermometer, Bell, TrendingUp, FileText, Users, ShieldCheck, Map, Settings, X, LogOut, Snowflake
 } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
 
@@ -26,6 +26,7 @@ const NAV_GROUPS: { label: string | null; items: NavItem[] }[] = [
       { to: '/devices', label: 'Sterowniki', icon: Cpu },
       { to: '/sensors', label: 'Czujniki', icon: Thermometer },
       { to: '/alerts', label: 'Alerty', icon: Bell },
+      { to: '/trendy', label: 'Trendy', icon: TrendingUp },
       { to: '/logs', label: 'Logi', icon: FileText },
     ],
   },
