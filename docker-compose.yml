@@ -1,0 +1,57 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: jawcold
+      POSTGRES_USER: jawcold
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-jawcold_dev_pass}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U jawcold"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+asyncpg://jawcold:${DB_PASSWORD:-jawcold_dev_pass}@postgres/jawcold
+      REDIS_URL: redis://redis:6379
+      SECRET_KEY: ${SECRET_KEY:-dev-secret-key-change-in-production-32chars}
+      PREVIEW_MODE: ${PREVIEW_MODE:-false}
+      RS485_PORTS: ${RS485_PORTS:-/dev/ttyUSB0}
+      RS485_BAUDRATE: ${RS485_BAUDRATE:-9600}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:823}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  frontend:
+    build: ./frontend
+    restart: unless-stopped
+    ports:
+      - "823:80"
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:
+  redis_data:

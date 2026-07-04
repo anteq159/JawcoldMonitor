@@ -1,0 +1,76 @@
+from datetime import datetime
+from typing import Optional, List
+from pydantic import BaseModel
+
+
+class ParameterOut(BaseModel):
+    id: int
+    name: str
+    unit: Optional[str] = None
+    description: Optional[str] = None
+    register_address: int
+    register_type: str
+    data_type: str
+    scale_factor: float
+    offset: float
+    threshold_min: Optional[float] = None
+    threshold_max: Optional[float] = None
+    enabled: bool
+
+    model_config = {"from_attributes": True}
+
+
+class ProfileOut(BaseModel):
+    id: int
+    name: str
+    manufacturer: Optional[str] = None
+    model: Optional[str] = None
+
+    model_config = {"from_attributes": True}
+
+
+class DeviceOut(BaseModel):
+    id: int
+    name: str
+    modbus_address: int
+    port: str
+    baudrate: int
+    parity: str
+    stopbits: int
+    timeout: float
+    profile_id: Optional[int] = None
+    status: str
+    location: Optional[str] = None
+    group_name: Optional[str] = None
+    description: Optional[str] = None
+    first_seen: Optional[datetime] = None
+    last_seen: Optional[datetime] = None
+    created_at: datetime
+    profile: Optional[ProfileOut] = None
+    parameters: List[ParameterOut] = []
+
+    model_config = {"from_attributes": True}
+
+
+class DeviceCreate(BaseModel):
+    name: str
+    modbus_address: int
+    port: str = "/dev/ttyUSB0"
+    baudrate: int = 9600
+    parity: str = "N"
+    stopbits: int = 1
+    timeout: float = 0.15
+    profile_id: Optional[int] = None
+    location: Optional[str] = None
+    group_name: Optional[str] = None
+    description: Optional[str] = None
+
+
+class DeviceUpdate(BaseModel):
+    name: Optional[str] = None
+    location: Optional[str] = None
+    group_name: Optional[str] = None
+    description: Optional[str] = None
+    profile_id: Optional[int] = None
+    baudrate: Optional[int] = None
+    timeout: Optional[float] = None

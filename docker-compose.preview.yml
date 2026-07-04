@@ -1,0 +1,5 @@
+services:
+  backend:
+    environment:
+      PREVIEW_MODE: "true"
+      RS485_PORTS: ""
