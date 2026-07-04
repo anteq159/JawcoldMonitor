@@ -5,16 +5,16 @@ interface Props {
 }
 
 const variants = {
-  green: 'bg-green-500/20 text-green-400 border border-green-500/30',
-  red: 'bg-red-500/20 text-red-400 border border-red-500/30',
-  yellow: 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30',
-  gray: 'bg-gray-500/20 text-gray-400 border border-gray-500/30',
-  blue: 'bg-blue-500/20 text-blue-400 border border-blue-500/30',
+  green: 'bg-good-bg text-good border border-good/20',
+  red: 'bg-crit-bg text-crit border border-crit/20',
+  yellow: 'bg-warn-bg text-warn border border-warn/20',
+  gray: 'bg-surface-2 text-ink-muted border border-border-strong',
+  blue: 'bg-info-bg text-info border border-info/20',
 }
 
 export function Badge({ children, variant = 'gray', className = '' }: Props) {
   return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${variants[variant]} ${className}`}>
+    <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium ${variants[variant]} ${className}`}>
       {children}
     </span>
   )

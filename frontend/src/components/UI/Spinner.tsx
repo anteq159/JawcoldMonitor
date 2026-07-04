@@ -7,7 +7,7 @@ export function Spinner({ className = '' }: { className?: string }) {
 export function PageSpinner() {
   return (
     <div className="flex items-center justify-center h-64">
-      <Spinner className="text-blue-400 w-8 h-8" />
+      <Spinner className="text-accent w-8 h-8" />
     </div>
   )
 }

@@ -14,11 +14,13 @@ export function useWebSocket() {
   const connect = useCallback(() => {
     if (wsRef.current?.readyState === WebSocket.OPEN) return
 
+    store.setWsStatus('connecting')
     const ws = new WebSocket(WS_URL)
     wsRef.current = ws
 
     ws.onopen = () => {
       retriesRef.current = 0
+      store.setWsStatus('connected')
     }
 
     ws.onmessage = (e) => {
@@ -31,6 +33,7 @@ export function useWebSocket() {
     }
 
     ws.onclose = () => {
+      store.setWsStatus('disconnected')
       const delay = Math.min(1000 * 2 ** retriesRef.current, 30000)
       retriesRef.current++
       reconnectTimer.current = setTimeout(connect, delay)

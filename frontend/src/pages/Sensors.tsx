@@ -5,6 +5,7 @@ import { getSensorReadings } from '../api/readings'
 import { useDeviceStore } from '../store/devices'
 import { DeviceStatusBadge } from '../components/Devices/DeviceStatusBadge'
 import { TimeSeriesChart } from '../components/Charts/TimeSeriesChart'
+import { EmptyState } from '../components/UI/EmptyState'
 import { PageSpinner } from '../components/UI/Spinner'
 import { format } from 'date-fns'
 import toast from 'react-hot-toast'
@@ -37,7 +38,7 @@ export default function Sensors() {
 
   return (
     <div className="space-y-4">
-      <p className="text-sm text-gray-400">{sensors.length} czujników Dallas DS18B20</p>
+      <p className="text-sm text-ink-muted">{sensors.length} czujników Dallas DS18B20</p>
 
       <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {sensors.map((s) => {
@@ -54,16 +55,16 @@ export default function Sensors() {
           )
         })}
         {!sensors.length && (
-          <div className="col-span-full bg-gray-900 border border-gray-800 rounded-xl p-8 text-center">
-            <p className="text-gray-400 text-sm">Brak czujników Dallas. Skan co 30 s...</p>
+          <div className="col-span-full bg-surface border border-border rounded-xl shadow-panel">
+            <EmptyState message="Brak czujników Dallas. Skan co 30 s..." />
           </div>
         )}
       </div>
 
       {selected && (
-        <div className="bg-gray-900 border border-gray-800 rounded-xl">
-          <div className="px-5 py-4 border-b border-gray-800">
-            <h3 className="font-semibold text-white text-sm">{selected.name} — ostatnie 24h</h3>
+        <div className="bg-surface border border-border rounded-xl shadow-panel">
+          <div className="px-5 py-4 border-b border-border">
+            <h3 className="font-semibold text-ink text-sm">{selected.name} — ostatnie 24h</h3>
           </div>
           <div className="p-4">
             <TimeSeriesChart data={chart} height={280} />
@@ -108,11 +109,11 @@ function SensorCard({ sensor, live, selected, onSelect, onRename }: {
   return (
     <button
       onClick={onSelect}
-      className={`bg-gray-900 border rounded-xl p-5 text-left transition-colors w-full ${selected ? 'border-blue-500' : 'border-gray-800 hover:border-gray-700'}`}
+      className={`bg-surface border rounded-xl shadow-panel p-5 text-left transition-colors w-full ${selected ? 'border-accent' : 'border-border hover:border-border-strong'}`}
     >
       <div className="flex items-start justify-between mb-3">
         <div className="flex items-center gap-2 min-w-0 flex-1">
-          <Thermometer size={16} className="text-blue-400 shrink-0" />
+          <Thermometer size={16} className="text-accent shrink-0" />
           <div className="min-w-0 flex-1">
             {editing ? (
               <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
@@ -121,32 +122,32 @@ function SensorCard({ sensor, live, selected, onSelect, onRename }: {
                   value={nameInput}
                   onChange={e => setNameInput(e.target.value)}
                   onKeyDown={e => { if (e.key === 'Enter') confirmEdit(e as any); if (e.key === 'Escape') cancelEdit(e as any) }}
-                  className="bg-gray-800 border border-gray-600 rounded px-2 py-0.5 text-sm text-white w-full focus:outline-none focus:border-blue-500"
+                  className="bg-surface-2 border border-border-strong rounded px-2 py-0.5 text-sm text-ink w-full focus:outline-none focus:border-accent"
                 />
-                <button onClick={confirmEdit} className="text-green-400 hover:text-green-300 p-0.5 shrink-0"><Check size={14} /></button>
-                <button onClick={cancelEdit} className="text-gray-400 hover:text-white p-0.5 shrink-0"><X size={14} /></button>
+                <button onClick={confirmEdit} className="text-good hover:text-good/80 p-0.5 shrink-0"><Check size={14} /></button>
+                <button onClick={cancelEdit} className="text-ink-muted hover:text-ink p-0.5 shrink-0"><X size={14} /></button>
               </div>
             ) : (
               <div className="flex items-center gap-1.5 group/name">
-                <p className="text-sm font-medium text-white truncate">{sensor.name}</p>
-                <button onClick={startEdit} className="opacity-0 group-hover/name:opacity-100 text-gray-500 hover:text-gray-300 transition-opacity shrink-0">
+                <p className="text-sm font-medium text-ink truncate">{sensor.name}</p>
+                <button onClick={startEdit} className="opacity-0 group-hover/name:opacity-100 text-ink-muted hover:text-ink-body transition-opacity shrink-0">
                   <Pencil size={12} />
                 </button>
               </div>
             )}
-            <p className="text-xs text-gray-500">{sensor.rom_id}</p>
+            <p className="text-xs text-ink-muted font-mono">{sensor.rom_id}</p>
           </div>
         </div>
         <DeviceStatusBadge status={sensor.status} />
       </div>
       <div>
-        <span className="text-2xl font-bold text-blue-400">
+        <span className="text-2xl font-bold text-accent">
           {live ? live.temp.toFixed(1) : '—'}
         </span>
-        <span className="text-gray-400 ml-1 text-sm">°C</span>
-        {live && <p className="text-xs text-gray-600 mt-1">{format(live.ts, 'HH:mm:ss')}</p>}
+        <span className="text-ink-muted ml-1 text-sm">°C</span>
+        {live && <p className="text-xs text-ink-muted mt-1">{format(live.ts, 'HH:mm:ss')}</p>}
       </div>
-      {sensor.location && <p className="text-xs text-gray-500 mt-2">{sensor.location}</p>}
+      {sensor.location && <p className="text-xs text-ink-muted mt-2">{sensor.location}</p>}
     </button>
   )
 }

@@ -58,12 +58,12 @@ export default function DeviceDetail() {
   }
 
   if (loading) return <PageSpinner />
-  if (!device) return <p className="text-gray-400">Urządzenie nie znalezione</p>
+  if (!device) return <p className="text-ink-muted">Urządzenie nie znalezione</p>
 
   return (
     <div className="space-y-5">
       <div className="flex items-center gap-3">
-        <Link to="/devices" className="text-gray-400 hover:text-white shrink-0">
+        <Link to="/devices" className="text-ink-muted hover:text-ink shrink-0">
           <ChevronLeft size={20} />
         </Link>
         <div className="flex-1 min-w-0">
@@ -74,24 +74,24 @@ export default function DeviceDetail() {
                 onChange={e => setNameInput(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter') saveName(); if (e.key === 'Escape') cancelEdit() }}
                 autoFocus
-                className="bg-gray-800 border border-blue-500 rounded-lg px-3 py-1.5 text-white text-lg font-bold focus:outline-none w-64"
+                className="bg-surface-2 border border-accent rounded-lg px-3 py-1.5 text-ink text-lg font-bold focus:outline-none w-64"
               />
-              <button onClick={saveName} disabled={savingName} className="text-green-400 hover:text-green-300 transition-colors" title="Zapisz">
+              <button onClick={saveName} disabled={savingName} className="text-good hover:text-good/80 transition-colors" title="Zapisz">
                 <Check size={18} />
               </button>
-              <button onClick={cancelEdit} className="text-gray-400 hover:text-white transition-colors" title="Anuluj">
+              <button onClick={cancelEdit} className="text-ink-muted hover:text-ink transition-colors" title="Anuluj">
                 <X size={18} />
               </button>
             </div>
           ) : (
             <div className="flex items-center gap-2">
-              <h2 className="text-xl font-bold text-white truncate">{device.name}</h2>
-              <button onClick={startEdit} className="text-gray-500 hover:text-blue-400 transition-colors shrink-0" title="Zmień nazwę">
+              <h2 className="text-xl font-bold text-ink truncate">{device.name}</h2>
+              <button onClick={startEdit} className="text-ink-muted hover:text-accent transition-colors shrink-0" title="Zmień nazwę">
                 <Pencil size={14} />
               </button>
             </div>
           )}
-          <p className="text-xs text-gray-500">Adres {device.modbus_address} · {device.port} · {device.baudrate} baud</p>
+          <p className="text-xs text-ink-muted">Adres {device.modbus_address} · {device.port} · {device.baudrate} baud</p>
         </div>
         <DeviceStatusBadge status={device.status} />
       </div>
@@ -106,7 +106,7 @@ export default function DeviceDetail() {
         <div className="px-5 pt-3 pb-1 flex gap-2">
           {RANGES.map((r) => (
             <button key={r} onClick={() => setRange(r)}
-              className={`px-3 py-1 text-xs rounded-lg transition-colors ${range === r ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-800'}`}>
+              className={`px-3 py-1 text-xs rounded-lg transition-colors ${range === r ? 'bg-accent text-white' : 'text-ink-muted hover:text-ink hover:bg-surface-2'}`}>
               {r}
             </button>
           ))}
@@ -118,17 +118,17 @@ export default function DeviceDetail() {
 
       {device.parameters.length > 0 && (
         <Card title="Parametry urządzenia">
-          <div className="divide-y divide-gray-800">
+          <div className="divide-y divide-border">
             {device.parameters.map((p) => (
               <div key={p.id} className="flex items-center justify-between px-5 py-3">
                 <div>
-                  <p className="text-sm text-white">{p.name}</p>
-                  <p className="text-xs text-gray-500">Rejestr {p.register_address} · {p.data_type}</p>
+                  <p className="text-sm text-ink">{p.name}</p>
+                  <p className="text-xs text-ink-muted font-mono">Rejestr {p.register_address} · {p.data_type}</p>
                 </div>
                 <div className="text-right">
-                  {p.unit && <span className="text-xs text-gray-400">{p.unit}</span>}
+                  {p.unit && <span className="text-xs text-ink-muted">{p.unit}</span>}
                   {p.threshold_min != null && (
-                    <p className="text-xs text-gray-500">min {p.threshold_min} / max {p.threshold_max}</p>
+                    <p className="text-xs text-ink-muted">min {p.threshold_min} / max {p.threshold_max}</p>
                   )}
                 </div>
               </div>

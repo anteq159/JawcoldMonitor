@@ -3,6 +3,8 @@ import type { Device } from '../types/device'
 import type { Sensor } from '../types/sensor'
 import type { SystemStats } from '../types/websocket'
 
+export type WsStatus = 'connecting' | 'connected' | 'disconnected'
+
 interface DeviceState {
   devices: Device[]
   sensors: Sensor[]
@@ -10,6 +12,7 @@ interface DeviceState {
   liveSensorTemps: Record<number, { temp: number; ts: number }>
   systemStats: SystemStats | null
   newDeviceCandidate: Device | null
+  wsStatus: WsStatus
   setDevices: (devices: Device[]) => void
   setSensors: (sensors: Sensor[]) => void
   updateDeviceStatus: (deviceId: number, status: Device['status']) => void
@@ -18,6 +21,7 @@ interface DeviceState {
   updateSensorTemp: (sensorId: number, temp: number) => void
   setSystemStats: (stats: SystemStats) => void
   setNewDeviceCandidate: (device: Device | null) => void
+  setWsStatus: (status: WsStatus) => void
 }
 
 export const useDeviceStore = create<DeviceState>()((set) => ({
@@ -27,6 +31,7 @@ export const useDeviceStore = create<DeviceState>()((set) => ({
   liveSensorTemps: {},
   systemStats: null,
   newDeviceCandidate: null,
+  wsStatus: 'connecting',
   setDevices: (devices) => set({ devices }),
   setSensors: (sensors) => set({ sensors }),
   updateDeviceStatus: (deviceId, status) =>
@@ -52,4 +57,5 @@ export const useDeviceStore = create<DeviceState>()((set) => ({
     })),
   setSystemStats: (stats) => set({ systemStats: stats }),
   setNewDeviceCandidate: (device) => set({ newDeviceCandidate: device }),
+  setWsStatus: (status) => set({ wsStatus: status }),
 }))

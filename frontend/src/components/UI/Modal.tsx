@@ -11,11 +11,16 @@ interface Props {
 export function Modal({ open, onClose, title, children, className = '' }: Props) {
   if (!open) return null
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-      <div className={`bg-gray-900 border border-gray-700 rounded-xl shadow-2xl w-full max-w-lg ${className}`}>
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-800">
-          <h3 className="font-semibold text-white">{title}</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-white">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        className={`bg-surface border border-border rounded-xl shadow-xl w-full max-w-lg ${className}`}
+      >
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+          <h3 className="font-semibold text-ink">{title}</h3>
+          <button onClick={onClose} className="text-ink-muted hover:text-ink transition-colors" aria-label="Zamknij">
             <X size={18} />
           </button>
         </div>

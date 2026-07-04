@@ -5,6 +5,7 @@ import { getRoles } from '../api/roles'
 import { getDevices } from '../api/devices'
 import { getUserVisibility, setUserVisibility, type VisibilityEntry } from '../api/visibility'
 import { Modal } from '../components/UI/Modal'
+import { ConfirmDialog } from '../components/UI/ConfirmDialog'
 import { Badge } from '../components/UI/Badge'
 import { PageSpinner } from '../components/UI/Spinner'
 import { format } from 'date-fns'
@@ -19,6 +20,7 @@ export default function Users() {
   const [loading, setLoading] = useState(true)
   const [showAdd, setShowAdd] = useState(false)
   const [visibilityUser, setVisibilityUser] = useState<User | null>(null)
+  const [confirmDeleteUser, setConfirmDeleteUser] = useState<User | null>(null)
 
   const load = async () => {
     const [u, d, r] = await Promise.all([getUsers(), getDevices(), getRoles()])
@@ -35,7 +37,6 @@ export default function Users() {
   }
 
   const del = async (id: number) => {
-    if (!confirm('Usunąć użytkownika?')) return
     await deleteUser(id)
     setUsers(us => us.filter(u => u.id !== id))
   }
@@ -45,37 +46,37 @@ export default function Users() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <p className="text-sm text-gray-400">{users.length} użytkowników</p>
-        <button onClick={() => setShowAdd(true)} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm px-4 py-2 rounded-lg">
+        <p className="text-sm text-ink-muted">{users.length} użytkowników</p>
+        <button onClick={() => setShowAdd(true)} className="flex items-center gap-2 bg-accent hover:bg-accent-strong text-white text-sm px-4 py-2 rounded-lg">
           <Plus size={14} /> Dodaj użytkownika
         </button>
       </div>
 
-      <div className="bg-gray-900 border border-gray-800 rounded-xl divide-y divide-gray-800">
+      <div className="bg-surface border border-border rounded-xl shadow-panel divide-y divide-border">
         {users.map(u => (
           <div key={u.id} className="flex items-center justify-between px-5 py-4">
             <div>
               <div className="flex items-center gap-2">
-                <p className="text-sm font-medium text-white">{u.username}</p>
+                <p className="text-sm font-medium text-ink">{u.username}</p>
                 {!u.is_active && <Badge variant="red">nieaktywny</Badge>}
                 {u.must_change_password && <Badge variant="yellow">zmiana hasła</Badge>}
               </div>
-              <p className="text-xs text-gray-500 mt-0.5">
+              <p className="text-xs text-ink-muted mt-0.5">
                 {u.email && `${u.email} · `}
                 role: {u.roles.map(r => r.name).join(', ') || '—'}
               </p>
-              {u.last_login && <p className="text-xs text-gray-600">Ostatnie logowanie: {format(new Date(u.last_login), 'dd.MM.yyyy HH:mm')}</p>}
+              {u.last_login && <p className="text-xs text-ink-muted">Ostatnie logowanie: {format(new Date(u.last_login), 'dd.MM.yyyy HH:mm')}</p>}
             </div>
             <div className="flex gap-2">
               {u.roles.some(r => r.name === 'Viewer') && (
-                <button onClick={() => setVisibilityUser(u)} className="text-gray-400 hover:text-blue-400 transition-colors" title="Widoczność parametrów">
+                <button onClick={() => setVisibilityUser(u)} className="text-ink-muted hover:text-accent transition-colors" title="Widoczność parametrów">
                   <Eye size={16} />
                 </button>
               )}
-              <button onClick={() => toggleActive(u)} className="text-gray-400 hover:text-white transition-colors" title={u.is_active ? 'Dezaktywuj' : 'Aktywuj'}>
+              <button onClick={() => toggleActive(u)} className="text-ink-muted hover:text-ink transition-colors" title={u.is_active ? 'Dezaktywuj' : 'Aktywuj'}>
                 {u.is_active ? <UserX size={16} /> : <UserCheck size={16} />}
               </button>
-              <button onClick={() => del(u.id)} className="text-gray-400 hover:text-red-400 transition-colors">
+              <button onClick={() => setConfirmDeleteUser(u)} className="text-ink-muted hover:text-crit transition-colors">
                 <Trash2 size={16} />
               </button>
             </div>
@@ -92,6 +93,15 @@ export default function Users() {
           onClose={() => setVisibilityUser(null)}
         />
       )}
+
+      <ConfirmDialog
+        open={!!confirmDeleteUser}
+        title="Usuń użytkownika"
+        message={`Czy na pewno chcesz usunąć użytkownika „${confirmDeleteUser?.username}”? Tej operacji nie można cofnąć.`}
+        confirmLabel="Usuń użytkownika"
+        onConfirm={() => confirmDeleteUser && del(confirmDeleteUser.id)}
+        onClose={() => setConfirmDeleteUser(null)}
+      />
     </div>
   )
 }
@@ -115,27 +125,27 @@ function AddUserModal({ open, onClose, roles, onAdded }: {
     <Modal open={open} onClose={onClose} title="Dodaj użytkownika">
       <form onSubmit={submit} className="space-y-3">
         <div>
-          <label className="block text-xs text-gray-400 mb-1">Nazwa użytkownika</label>
+          <label className="block text-xs text-ink-muted mb-1">Nazwa użytkownika</label>
           <input value={username} onChange={e => setUsername(e.target.value)} required className="input" />
         </div>
         <div>
-          <label className="block text-xs text-gray-400 mb-1">Hasło</label>
+          <label className="block text-xs text-ink-muted mb-1">Hasło</label>
           <input type="password" value={password} onChange={e => setPassword(e.target.value)} required className="input" />
         </div>
         <div>
-          <label className="block text-xs text-gray-400 mb-1">Email (opcjonalnie)</label>
+          <label className="block text-xs text-ink-muted mb-1">Email (opcjonalnie)</label>
           <input type="email" value={email} onChange={e => setEmail(e.target.value)} className="input" />
         </div>
         <div>
-          <label className="block text-xs text-gray-400 mb-1">Rola</label>
+          <label className="block text-xs text-ink-muted mb-1">Rola</label>
           <select value={roleId} onChange={e => setRoleId(e.target.value)} className="input">
             <option value="">Bez roli</option>
             {roles.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
           </select>
         </div>
         <div className="flex gap-3 pt-2">
-          <button type="submit" className="flex-1 bg-blue-600 hover:bg-blue-700 text-white text-sm py-2 rounded-lg">Dodaj</button>
-          <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-gray-400 border border-gray-700 rounded-lg">Anuluj</button>
+          <button type="submit" className="flex-1 bg-accent hover:bg-accent-strong text-white text-sm py-2 rounded-lg">Dodaj</button>
+          <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-ink-muted border border-border rounded-lg">Anuluj</button>
         </div>
       </form>
     </Modal>
@@ -194,23 +204,23 @@ function VisibilityModal({ user, devices, onClose }: {
   return (
     <Modal open onClose={onClose} title={`Widoczność parametrów — ${user.username}`}>
       {loading ? (
-        <div className="py-8 text-center text-gray-500 text-sm">Ładowanie…</div>
+        <div className="py-8 text-center text-ink-muted text-sm">Ładowanie…</div>
       ) : (
         <div className="space-y-4">
           <label className="flex items-center gap-2 cursor-pointer">
             <input type="checkbox" checked={allAllowed} onChange={e => setAllAllowed(e.target.checked)}
-              className="rounded border-gray-600 bg-gray-800 text-blue-500 focus:ring-0" />
-            <span className="text-sm text-white">Widoczne wszystkie parametry (brak ograniczeń)</span>
+              className="rounded border-border-strong bg-surface-2 text-accent focus:ring-0" />
+            <span className="text-sm text-ink">Widoczne wszystkie parametry (brak ograniczeń)</span>
           </label>
 
           {!allAllowed && (
             <div className="space-y-3 max-h-80 overflow-y-auto pr-1">
-              {devices.length === 0 && <p className="text-gray-500 text-sm">Brak urządzeń.</p>}
+              {devices.length === 0 && <p className="text-ink-muted text-sm">Brak urządzeń.</p>}
               {devices.map(d => (
                 <div key={d.id}>
-                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1.5">{d.name}</p>
+                  <p className="text-xs font-semibold text-ink-muted uppercase tracking-wide mb-1.5">{d.name}</p>
                   {d.parameters.length === 0 ? (
-                    <p className="text-xs text-gray-600 ml-2">Brak parametrów</p>
+                    <p className="text-xs text-ink-muted ml-2">Brak parametrów</p>
                   ) : (
                     <div className="space-y-1">
                       {d.parameters.map(p => {
@@ -219,8 +229,8 @@ function VisibilityModal({ user, devices, onClose }: {
                         return (
                           <label key={p.id} className="flex items-center gap-2 ml-2 cursor-pointer">
                             <input type="checkbox" checked={checked} onChange={() => toggle(d.id, p.name)}
-                              className="rounded border-gray-600 bg-gray-800 text-blue-500 focus:ring-0" />
-                            <span className="text-sm text-gray-300">{p.name}{p.unit ? ` (${p.unit})` : ''}</span>
+                              className="rounded border-border-strong bg-surface-2 text-accent focus:ring-0" />
+                            <span className="text-sm text-ink-body">{p.name}{p.unit ? ` (${p.unit})` : ''}</span>
                           </label>
                         )
                       })}
@@ -231,12 +241,12 @@ function VisibilityModal({ user, devices, onClose }: {
             </div>
           )}
 
-          <div className="flex gap-3 pt-2 border-t border-gray-800">
+          <div className="flex gap-3 pt-2 border-t border-border">
             <button onClick={save} disabled={saving}
-              className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm py-2 rounded-lg transition-colors">
+              className="flex-1 bg-accent hover:bg-accent-strong disabled:opacity-50 text-white text-sm py-2 rounded-lg transition-colors">
               {saving ? 'Zapisywanie…' : 'Zapisz'}
             </button>
-            <button onClick={onClose} className="px-4 py-2 text-sm text-gray-400 border border-gray-700 rounded-lg">
+            <button onClick={onClose} className="px-4 py-2 text-sm text-ink-muted border border-border rounded-lg">
               Anuluj
             </button>
           </div>

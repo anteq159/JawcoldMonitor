@@ -8,6 +8,7 @@ import { NewDeviceModal } from '../Alerts/NewDeviceModal'
 
 const TITLES: Record<string, string> = {
   '/': 'Dashboard',
+  '/map': 'Mapa',
   '/devices': 'Urządzenia RS485',
   '/sensors': 'Czujniki Dallas',
   '/alerts': 'Alerty',
@@ -27,7 +28,7 @@ export function AppLayout() {
   )?.[1] ?? 'JawcoldMonitor'
 
   return (
-    <div className="flex h-screen overflow-hidden bg-gray-950 text-gray-100">
+    <div className="flex h-screen overflow-hidden bg-bg text-ink-body">
       {/* Desktop sidebar */}
       <div className="hidden lg:flex">
         <Sidebar />
@@ -36,7 +37,7 @@ export function AppLayout() {
       {/* Mobile sidebar overlay */}
       {sidebarOpen && (
         <div className="fixed inset-0 z-40 lg:hidden">
-          <div className="absolute inset-0 bg-black/50" onClick={() => setSidebarOpen(false)} />
+          <div className="absolute inset-0 bg-ink/30" onClick={() => setSidebarOpen(false)} />
           <div className="absolute left-0 top-0 h-full z-50">
             <Sidebar onClose={() => setSidebarOpen(false)} />
           </div>
@@ -50,7 +51,17 @@ export function AppLayout() {
         </main>
       </div>
 
-      <Toaster position="top-right" toastOptions={{ style: { background: '#1f2937', color: '#f9fafb', border: '1px solid #374151' } }} />
+      <Toaster
+        position="top-right"
+        toastOptions={{
+          style: {
+            background: '#FFFFFF',
+            color: '#1B2624',
+            border: '1px solid #DCE6E4',
+            boxShadow: '0 4px 12px rgba(27,38,36,0.08)',
+          },
+        }}
+      />
       <NewDeviceModal />
     </div>
   )
