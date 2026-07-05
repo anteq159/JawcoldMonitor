@@ -1,47 +1,30 @@
-import { useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { Star, X } from 'lucide-react'
 import { useDeviceStore } from '../../../store/devices'
 import { useFavoriteParameters, MAX_FAVORITE_PARAMETERS } from '../../../hooks/useFavoriteParameters'
 import { EmptyState } from '../../UI/EmptyState'
-import { WidgetCard } from '../WidgetCard'
+import { Card } from '../../UI/Card'
 
-const MIN_H = 4
-const MAX_H = 20
-const ROW_PX = 60 // rowHeight(44) + vertical margin(16), matching WidgetGrid's grid config
-
-function heightForCount(count: number): number {
-  const contentPx = 40 /* header */ + 16 /* padding */ + Math.max(count, 1) * 34
-  return Math.min(MAX_H, Math.max(MIN_H, Math.ceil(contentPx / ROW_PX)))
-}
-
-interface Props {
-  onHeightChange: (h: number) => void
-}
-
-// Restored favorites tile, but parameter-level (not whole-device) and sized
-// to its content: more favorited variables makes the tile taller, up to a
-// cap where it scrolls internally instead of dominating the dashboard.
-export function FavoriteParametersWidget({ onHeightChange }: Props) {
+// Favorites at the parameter level (not whole-device) - a device/sensor
+// variable is starred from "Zmienne sterownika" or the sensor list. The
+// list itself grows naturally with the card; only caps out with an
+// internal scroll once it's already at the 32-item limit.
+export function FavoriteParametersWidget() {
   const devices = useDeviceStore((s) => s.devices)
   const sensors = useDeviceStore((s) => s.sensors)
   const liveReadings = useDeviceStore((s) => s.liveReadings)
   const liveSensorTemps = useDeviceStore((s) => s.liveSensorTemps)
   const { favorites, toggleFavorite } = useFavoriteParameters()
 
-  useEffect(() => {
-    onHeightChange(heightForCount(favorites.length))
-  }, [favorites.length])
-
   return (
-    <WidgetCard title={`Ulubione parametry (${favorites.length}/${MAX_FAVORITE_PARAMETERS})`}>
+    <Card title={`Ulubione parametry (${favorites.length}/${MAX_FAVORITE_PARAMETERS})`}>
       {favorites.length === 0 ? (
         <EmptyState
           icon={<Star size={28} />}
           message='Brak ulubionych parametrów. Oznacz zmienną gwiazdką w "Zmiennych sterownika" lub na liście czujników.'
         />
       ) : (
-        <div className="divide-y divide-border">
+        <div className="divide-y divide-border max-h-96 overflow-y-auto">
           {favorites.map((f) => {
             const device = f.type === 'device' ? devices.find((d) => d.id === f.sourceId) : undefined
             const sensor = f.type === 'sensor' ? sensors.find((s) => s.id === f.sourceId) : undefined
@@ -74,6 +57,6 @@ export function FavoriteParametersWidget({ onHeightChange }: Props) {
           })}
         </div>
       )}
-    </WidgetCard>
+    </Card>
   )
 }

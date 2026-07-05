@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { Plus, Upload, Download, CheckCheck } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { getAlertEvents, acknowledgeEvent } from '../../../api/alerts'
-import { WidgetCard } from '../WidgetCard'
+import { Card } from '../../UI/Card'
 
 const LINK_ACTIONS = [
   { label: 'Dodaj urządzenie', icon: Plus, to: '/devices?tab=add' },
@@ -32,8 +32,8 @@ export function QuickActionsWidget() {
   }
 
   return (
-    <WidgetCard title="Szybkie akcje">
-      <div className="p-3 grid grid-cols-2 gap-2 h-full content-start">
+    <Card title="Szybkie akcje">
+      <div className="p-3 grid grid-cols-2 gap-2">
         {LINK_ACTIONS.map((a) => (
           <Link
             key={a.to}
@@ -53,6 +53,6 @@ export function QuickActionsWidget() {
           <span className="text-xs text-ink-body">{acking ? 'Potwierdzanie…' : 'Potwierdź alarmy'}</span>
         </button>
       </div>
-    </WidgetCard>
+    </Card>
   )
 }

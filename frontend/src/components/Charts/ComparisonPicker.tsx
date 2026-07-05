@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Plus, X } from 'lucide-react'
 import { TimeSeriesChart } from './TimeSeriesChart'
+import { useDeviceStore } from '../../store/devices'
 import type { Device } from '../../types/device'
 import type { CompSeries } from '../../hooks/useComparisonSeries'
 import type { TimeRange } from '../../api/readings'
@@ -20,6 +21,7 @@ interface Props {
 export function ComparisonPicker({ devices, series, range, ranges, onRangeChange, onAdd, onRemove, height = 220 }: Props) {
   const [showAdd, setShowAdd] = useState(false)
   const [pickDevice, setPickDevice] = useState<number | null>(null)
+  const liveReadings = useDeviceStore((s) => s.liveReadings)
   const merged = series.flatMap((s) => s.data)
 
   const handleAdd = (device: Device, paramName: string) => {
@@ -70,23 +72,29 @@ export function ComparisonPicker({ devices, series, range, ranges, onRangeChange
           </div>
           {pickDevice !== null && (() => {
             const dev = devices.find((d) => d.id === pickDevice)
-            return dev && dev.parameters.length > 0 ? (
+            if (!dev) return null
+            // Available parameters come from live readings (whatever the
+            // manufacturer driver actually reports), not device.parameters -
+            // that curated list is a separate, usually-empty concept and
+            // checking it here meant no parameters ever showed up to pick.
+            const paramNames = Object.keys(liveReadings[dev.id] ?? {})
+            return paramNames.length > 0 ? (
               <div>
                 <p className="text-xs text-ink-muted mb-1.5">2. Wybierz parametr:</p>
                 <div className="flex flex-wrap gap-1.5">
-                  {dev.parameters.map((p) => (
+                  {paramNames.map((name) => (
                     <button
-                      key={p.id}
-                      onClick={() => handleAdd(dev, p.name)}
+                      key={name}
+                      onClick={() => handleAdd(dev, name)}
                       className="text-xs px-2.5 py-1 rounded-lg border border-border text-ink-body hover:text-ink hover:border-border-strong transition-colors"
                     >
-                      {p.name}{p.unit ? ` (${p.unit})` : ''}
+                      {name}{liveReadings[dev.id]?.[name]?.unit ? ` (${liveReadings[dev.id][name].unit})` : ''}
                     </button>
                   ))}
                 </div>
               </div>
             ) : (
-              <p className="text-xs text-ink-muted">To urządzenie nie ma zdefiniowanych parametrów.</p>
+              <p className="text-xs text-ink-muted">Oczekiwanie na pierwsze odczyty tego urządzenia...</p>
             )
           })()}
           <button onClick={() => { setShowAdd(false); setPickDevice(null) }} className="text-xs text-ink-muted hover:text-ink">Anuluj</button>

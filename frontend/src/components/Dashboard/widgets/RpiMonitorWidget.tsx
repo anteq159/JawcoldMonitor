@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Cpu, MemoryStick, HardDrive, Thermometer, Radio, Network } from 'lucide-react'
 import { useDeviceStore } from '../../../store/devices'
 import { getServicesStatus, getRS485Status } from '../../../api/system'
-import { WidgetCard } from '../WidgetCard'
+import { Card } from '../../UI/Card'
 import type { ServiceStatus } from '../../../types/websocket'
 
 function formatRate(bytesPerSec: number): string {
@@ -27,7 +27,7 @@ export function RpiMonitorWidget() {
   }, [])
 
   return (
-    <WidgetCard title="Raspberry Pi i komunikacja">
+    <Card title="Raspberry Pi i komunikacja">
       <div className="p-4 space-y-4 text-sm">
         {stats ? (
           <div className="grid grid-cols-2 gap-3">
@@ -69,7 +69,7 @@ export function RpiMonitorWidget() {
           </div>
         </div>
       </div>
-    </WidgetCard>
+    </Card>
   )
 }
 
