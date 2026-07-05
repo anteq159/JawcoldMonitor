@@ -102,7 +102,11 @@ async def _init_defaults():
 async def _init_manufacturer_profiles():
     """Seed one built-in DeviceProfile per registered manufacturer driver, so
     the demo has real, browsable register maps for Danfoss/Carel/Eliwell
-    without requiring anyone to hand-enter them via the API first."""
+    without requiring anyone to hand-enter them via the API first. Builtin
+    profiles are re-synced to the driver's current register map on every
+    startup (source == "builtin" guards user-customized profiles from ever
+    being touched), so adding a register or flipping a writable flag in a
+    driver module doesn't require manual DB surgery to take effect."""
     import app.drivers.manufacturers  # noqa: F401 - triggers registration
     from app.drivers.registry import all_drivers
     from app.models.device_profile import DeviceProfile, RegisterDefinition
@@ -110,27 +114,34 @@ async def _init_manufacturer_profiles():
     async with AsyncSessionLocal() as db:
         for manufacturer, driver_cls in all_drivers().items():
             result = await db.execute(select(DeviceProfile).where(DeviceProfile.manufacturer == manufacturer))
-            if result.scalar_one_or_none():
-                continue
+            profile = result.scalar_one_or_none()
             driver = driver_cls()
             model = driver.identify()
+            registers = [
+                RegisterDefinition(
+                    address=r.address,
+                    name=r.name,
+                    unit=r.unit,
+                    description=r.description,
+                    data_type=r.data_type,
+                    scale_factor=r.scale_factor,
+                    writable=r.writable,
+                )
+                for r in driver.default_register_map()
+            ]
+            if profile:
+                if profile.source == "builtin":
+                    profile.model = model.model
+                    profile.description = model.description
+                    profile.registers = registers
+                continue
             profile = DeviceProfile(
                 name=f"{manufacturer} {model.model}",
                 manufacturer=manufacturer,
                 model=model.model,
                 description=model.description,
                 source="builtin",
-                registers=[
-                    RegisterDefinition(
-                        address=r.address,
-                        name=r.name,
-                        unit=r.unit,
-                        description=r.description,
-                        data_type=r.data_type,
-                        scale_factor=r.scale_factor,
-                    )
-                    for r in driver.default_register_map()
-                ],
+                registers=registers,
             )
             db.add(profile)
             logger.info("Seeded built-in device profile for %s", manufacturer)

@@ -34,6 +34,13 @@ def get_last_tick() -> Optional[datetime]:
     return _last_tick
 
 
+def get_rs485_driver():
+    """Current RS485 driver instance (mock or real ModbusRTUDriver),
+    whichever mode is active - used by the register-write endpoint so it
+    doesn't need to know which mode is running."""
+    return _rs485_driver
+
+
 def init_drivers():
     global _rs485_driver, _dallas_driver
     if settings.PREVIEW_MODE:
@@ -145,29 +152,42 @@ async def _maybe_discovery():
 
             profile_id = None
             manufacturer = mock_info.get("manufacturer")
+            recognition_status = "recognized"
             if manufacturer:
                 profile_result = await db.execute(
                     select(DeviceProfile.id).where(DeviceProfile.manufacturer == manufacturer)
                 )
                 profile_id = profile_result.scalar_one_or_none()
+                if profile_id is None:
+                    # A manufacturer was reported but jawcold has no driver/
+                    # profile for it - flag for the "unrecognized controller"
+                    # UI flow instead of silently treating it as generic.
+                    recognition_status = "unrecognized"
 
             device = Device(
                 name=mock_info.get("name", f"Urządzenie #{addr}"),
                 modbus_address=addr,
                 profile_id=profile_id,
                 status="online",
+                recognition_status=recognition_status,
+                detected_manufacturer=manufacturer if recognition_status == "unrecognized" else None,
                 first_seen=datetime.now(timezone.utc),
                 last_seen=datetime.now(timezone.utc),
             )
             db.add(device)
             await db.flush()
-            log = EventLog(event_type="device_discovered", device_id=device.id, message=f"Odkryto nowe urządzenie na adresie {addr}")
+            log_message = (
+                f"Wykryto nierozpoznany sterownik na adresie {addr} (zgłoszony producent: {manufacturer})"
+                if recognition_status == "unrecognized"
+                else f"Odkryto nowe urządzenie na adresie {addr}"
+            )
+            log = EventLog(event_type="device_discovered", device_id=device.id, message=log_message)
             db.add(log)
             await db.commit()
             await ws_manager.broadcast(ws_events.new_device_found(
                 {"id": device.id, "name": device.name, "modbus_address": addr, "status": "online"}
             ))
-            logger.info("New device discovered at address %d", addr)
+            logger.info("New device discovered at address %d (recognition=%s)", addr, recognition_status)
 
 
 async def _scan_dallas():

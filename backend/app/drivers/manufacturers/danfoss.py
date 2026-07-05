@@ -19,8 +19,8 @@ class DanfossDriver(AbstractControllerDriver):
         return [
             RegisterMapEntry(address=0, name="Temperatura komory", unit="°C", data_type="int16", scale_factor=0.1),
             RegisterMapEntry(address=1, name="Temperatura parownika", unit="°C", data_type="int16", scale_factor=0.1),
-            RegisterMapEntry(address=2, name="Nastawa", unit="°C", data_type="int16", scale_factor=0.1),
-            RegisterMapEntry(address=3, name="Różnica załączania", unit="°C", data_type="int16", scale_factor=0.1),
+            RegisterMapEntry(address=2, name="Nastawa", unit="°C", data_type="int16", scale_factor=0.1, writable=True),
+            RegisterMapEntry(address=3, name="Różnica załączania", unit="°C", data_type="int16", scale_factor=0.1, writable=True),
             RegisterMapEntry(address=10, name="Sprężarka", data_type="uint16"),
             RegisterMapEntry(address=11, name="Odszranianie", data_type="uint16"),
             RegisterMapEntry(address=12, name="Wentylator parownika", data_type="uint16"),

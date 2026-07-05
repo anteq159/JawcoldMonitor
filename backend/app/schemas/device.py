@@ -40,6 +40,8 @@ class DeviceOut(BaseModel):
     timeout: float
     profile_id: Optional[int] = None
     status: str
+    recognition_status: str = "recognized"
+    detected_manufacturer: Optional[str] = None
     location: Optional[str] = None
     group_name: Optional[str] = None
     description: Optional[str] = None
@@ -74,3 +76,21 @@ class DeviceUpdate(BaseModel):
     profile_id: Optional[int] = None
     baudrate: Optional[int] = None
     timeout: Optional[float] = None
+
+
+class RegisterWriteRequest(BaseModel):
+    name: str
+    value: float
+
+
+class RegisterWriteResult(BaseModel):
+    name: str
+    value: float
+    unit: Optional[str] = None
+
+
+class ManufacturerLookupResult(BaseModel):
+    simulated: bool
+    detected_manufacturer: Optional[str] = None
+    message: str
+    suggested_next_step: str

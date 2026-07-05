@@ -1,3 +1,3 @@
-from app.drivers.manufacturers import danfoss, carel, eliwell  # noqa: F401,E402
+from app.drivers.manufacturers import danfoss, carel, carel_mpx, eliwell  # noqa: F401,E402
 
-__all__ = ["danfoss", "carel", "eliwell"]
+__all__ = ["danfoss", "carel", "carel_mpx", "eliwell"]

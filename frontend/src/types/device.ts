@@ -31,6 +31,8 @@ export interface Device {
   timeout: number
   profile_id: number | null
   status: 'online' | 'offline' | 'unknown'
+  recognition_status: 'recognized' | 'unrecognized'
+  detected_manufacturer: string | null
   location: string | null
   group_name: string | null
   description: string | null

@@ -11,6 +11,7 @@ import Trends from './pages/Trends'
 import Logs from './pages/Logs'
 import Users from './pages/Users'
 import Roles from './pages/Roles'
+import Configuration from './pages/Configuration'
 import Diagnostics from './pages/Diagnostics'
 import Map from './pages/Map'
 import Settings from './pages/Settings'
@@ -38,6 +39,7 @@ export const router = createBrowserRouter([
       { path: 'logs', element: <Logs /> },
       { path: 'users', element: <Users /> },
       { path: 'roles', element: <Roles /> },
+      { path: 'configuration', element: <Configuration /> },
       { path: 'diagnostics', element: <Diagnostics /> },
       { path: 'settings', element: <Settings /> },
     ],

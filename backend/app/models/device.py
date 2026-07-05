@@ -18,6 +18,8 @@ class Device(Base, TimestampMixin):
     timeout: Mapped[float] = mapped_column(Float, default=0.15)
     profile_id: Mapped[Optional[int]] = mapped_column(ForeignKey("device_profiles.id"))
     status: Mapped[str] = mapped_column(String(16), default="unknown")
+    recognition_status: Mapped[str] = mapped_column(String(16), default="recognized")
+    detected_manufacturer: Mapped[Optional[str]] = mapped_column(String(128))
     location: Mapped[Optional[str]] = mapped_column(String(128))
     group_name: Mapped[Optional[str]] = mapped_column(String(64))
     description: Mapped[Optional[str]] = mapped_column(String(256))

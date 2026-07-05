@@ -8,6 +8,17 @@ export interface RegisterDefinition {
   description: string | null
   data_type: string
   scale_factor: number
+  writable: boolean
+}
+
+export interface RegisterDefinitionInput {
+  address: number
+  name: string
+  unit?: string | null
+  description?: string | null
+  data_type: string
+  scale_factor: number
+  writable: boolean
 }
 
 export interface DeviceProfileDetail {
@@ -20,5 +31,18 @@ export interface DeviceProfileDetail {
   registers: RegisterDefinition[]
 }
 
+export interface DeviceProfileInput {
+  name: string
+  manufacturer?: string | null
+  model?: string | null
+  description?: string | null
+  registers: RegisterDefinitionInput[]
+}
+
 export const getDeviceProfiles = (): Promise<DeviceProfileDetail[]> => api.get('/device-profiles/').then((r) => r.data)
 export const getDeviceProfile = (id: number): Promise<DeviceProfileDetail> => api.get(`/device-profiles/${id}`).then((r) => r.data)
+export const createDeviceProfile = (data: DeviceProfileInput): Promise<DeviceProfileDetail> =>
+  api.post('/device-profiles/', data).then((r) => r.data)
+export const updateDeviceProfile = (id: number, data: Partial<DeviceProfileInput>): Promise<DeviceProfileDetail> =>
+  api.put(`/device-profiles/${id}`, data).then((r) => r.data)
+export const deleteDeviceProfile = (id: number): Promise<void> => api.delete(`/device-profiles/${id}`)

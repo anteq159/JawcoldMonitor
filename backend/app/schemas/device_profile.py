@@ -10,6 +10,7 @@ class RegisterDefinitionOut(BaseModel):
     description: Optional[str] = None
     data_type: str
     scale_factor: float
+    writable: bool = False
 
     model_config = {"from_attributes": True}
 
@@ -21,6 +22,7 @@ class RegisterDefinitionIn(BaseModel):
     description: Optional[str] = None
     data_type: str = "uint16"
     scale_factor: float = 1.0
+    writable: bool = False
 
 
 class DeviceProfileOut(BaseModel):

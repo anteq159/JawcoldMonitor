@@ -1,12 +1,13 @@
 import { useRef, useState } from 'react'
 import toast from 'react-hot-toast'
-import { Download, Upload, RefreshCw, Wand2 } from 'lucide-react'
+import { Download, Upload, RefreshCw, Wand2, Bell } from 'lucide-react'
 import { Card } from '../components/UI/Card'
 import { ConfirmDialog } from '../components/UI/ConfirmDialog'
 import { downloadReadings, downloadAlerts } from '../api/export'
 import { downloadBackup, restoreBackup } from '../api/backup'
 import { getUpdateCheck, type UpdateCheck } from '../api/system'
 import { useDeviceStore } from '../store/devices'
+import { isNotificationSupported, getNotificationPermission, requestNotificationPermission } from '../utils/notifications'
 
 const FORMATS = [
   { value: 'csv', label: 'CSV' },
@@ -21,6 +22,7 @@ export default function Settings() {
 
   return (
     <div className="space-y-6 max-w-2xl">
+      <NotificationsSection />
       <ExportCard title="Eksport odczytów" download={downloadReadings} />
       <ExportCard title="Eksport alarmów" download={downloadAlerts} />
       <BackupSection />
@@ -40,6 +42,52 @@ export default function Settings() {
         </div>
       </Card>
     </div>
+  )
+}
+
+function NotificationsSection() {
+  const supported = isNotificationSupported()
+  const [permission, setPermission] = useState(getNotificationPermission())
+
+  const enable = async () => {
+    const result = await requestNotificationPermission()
+    setPermission(result)
+    if (result === 'granted') {
+      toast.success('Powiadomienia przeglądarkowe włączone')
+      new Notification('JawcoldMonitor', { body: 'Powiadomienia są teraz włączone.' })
+    } else if (result === 'denied') {
+      toast.error('Powiadomienia zablokowane w ustawieniach przeglądarki')
+    }
+  }
+
+  return (
+    <Card title="Powiadomienia przeglądarkowe">
+      <div className="p-5 space-y-3">
+        {!supported ? (
+          <p className="text-sm text-ink-muted">Ta przeglądarka nie obsługuje powiadomień systemowych.</p>
+        ) : permission === 'granted' ? (
+          <p className="text-sm text-good">
+            Powiadomienia są włączone — gdy karta nie jest aktywna, nowy alarm wyśle powiadomienie systemowe.
+          </p>
+        ) : permission === 'denied' ? (
+          <p className="text-sm text-crit">
+            Powiadomienia są zablokowane dla tej strony. Odblokuj je w ustawieniach przeglądarki, aby je włączyć.
+          </p>
+        ) : (
+          <>
+            <p className="text-sm text-ink-muted">
+              Otrzymuj powiadomienie systemowe, gdy w aplikacji wyzwoli się nowy alarm, nawet gdy ta karta nie jest aktywna.
+            </p>
+            <button
+              onClick={enable}
+              className="flex items-center gap-2 bg-accent hover:bg-accent-strong text-white text-sm px-4 py-2 rounded-lg transition-colors"
+            >
+              <Bell size={14} /> Włącz powiadomienia
+            </button>
+          </>
+        )}
+      </div>
+    </Card>
   )
 }
 

@@ -14,6 +14,7 @@ class RegisterMapEntry:
     description: Optional[str] = None
     data_type: str = "uint16"
     scale_factor: float = 1.0
+    writable: bool = False
 
 
 @dataclass
@@ -80,6 +81,12 @@ class AbstractRS485Driver(ABC):
 
     @abstractmethod
     async def scan_range(self, start: int, end: int, known_addresses: set) -> List[int]: ...
+
+    @abstractmethod
+    async def write_register(self, address: int, register_name: str, value: float) -> None:
+        """Write a new value to a writable register (e.g. a setpoint). Raise
+        on failure - callers treat a normal return as success."""
+        ...
 
     async def close(self) -> None:
         pass

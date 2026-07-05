@@ -11,6 +11,8 @@ import { TimeSeriesChart } from '../components/Charts/TimeSeriesChart'
 import { DeviceStatusBadge } from '../components/Devices/DeviceStatusBadge'
 import { FavoriteToggle } from '../components/Devices/FavoriteToggle'
 import { ManufacturerBadge } from '../components/Devices/ManufacturerBadge'
+import { RegisterControlPanel } from '../components/Devices/RegisterControlPanel'
+import { UnrecognizedDeviceBanner } from '../components/Devices/UnrecognizedDeviceBanner'
 import { Card } from '../components/UI/Card'
 import { PageSpinner } from '../components/UI/Spinner'
 import { useDeviceStore } from '../store/devices'
@@ -34,12 +36,17 @@ export default function DeviceDetail() {
 
   const updateDeviceInStore = useDeviceStore(s => s.updateDeviceStatus)
 
-  useEffect(() => {
-    getDevice(deviceId).then(d => {
+  const loadDevice = () => {
+    return getDevice(deviceId).then(d => {
       setDevice(d)
       setNameInput(d.name)
       if (d.profile) getDeviceProfile(d.profile.id).then(setProfile).catch(() => {})
-    }).finally(() => setLoading(false))
+      else setProfile(null)
+    })
+  }
+
+  useEffect(() => {
+    loadDevice().finally(() => setLoading(false))
   }, [deviceId])
 
   useEffect(() => {
@@ -108,6 +115,8 @@ export default function DeviceDetail() {
         <DeviceStatusBadge status={device.status} />
       </div>
 
+      {device.recognition_status === 'unrecognized' && <UnrecognizedDeviceBanner device={device} onResolved={loadDevice} />}
+
       <Card title="Bieżące wartości parametrów">
         <div className="p-5">
           <ParameterGrid deviceId={device.id} />
@@ -150,34 +159,8 @@ export default function DeviceDetail() {
       )}
 
       {profile && profile.registers.length > 0 && (
-        <Card title={`Mapa rejestrów — profil ${profile.name}`}>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border text-left">
-                  <th className="px-5 py-2 text-xs font-semibold text-ink-muted uppercase tracking-wide">Adres</th>
-                  <th className="px-3 py-2 text-xs font-semibold text-ink-muted uppercase tracking-wide">Nazwa</th>
-                  <th className="px-3 py-2 text-xs font-semibold text-ink-muted uppercase tracking-wide">Jednostka</th>
-                  <th className="px-3 py-2 text-xs font-semibold text-ink-muted uppercase tracking-wide">Typ danych</th>
-                  <th className="px-5 py-2 text-xs font-semibold text-ink-muted uppercase tracking-wide">Skala</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {profile.registers.map((r) => (
-                  <tr key={r.id}>
-                    <td className="px-5 py-2 font-mono text-ink-muted">{r.address}</td>
-                    <td className="px-3 py-2 text-ink">{r.name}</td>
-                    <td className="px-3 py-2 text-ink-muted">{r.unit || '—'}</td>
-                    <td className="px-3 py-2 font-mono text-ink-muted">{r.data_type}</td>
-                    <td className="px-5 py-2 font-mono text-ink-muted">{r.scale_factor}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <p className="px-5 py-3 text-xs text-ink-muted border-t border-border">
-            Reprezentatywna mapa rejestrów producenta — zweryfikuj z oficjalną dokumentacją modelu przed użyciem z rzeczywistym urządzeniem.
-          </p>
+        <Card title="Zmienne sterownika">
+          <RegisterControlPanel deviceId={device.id} registers={profile.registers} profileName={profile.name} />
         </Card>
       )}
     </div>

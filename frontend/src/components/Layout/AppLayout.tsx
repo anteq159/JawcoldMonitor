@@ -13,6 +13,7 @@ const TITLES: Record<string, string> = {
   '/': 'Dashboard',
   '/map': 'Mapa',
   '/devices': 'Sterowniki',
+  '/configuration': 'Konfiguracja',
   '/sensors': 'Czujniki',
   '/alerts': 'Alerty',
   '/trendy': 'Trendy',

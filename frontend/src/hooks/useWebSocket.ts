@@ -1,7 +1,8 @@
-import { useEffect, useRef, useCallback } from 'react'
+import { useEffect, useRef } from 'react'
 import { useDeviceStore } from '../store/devices'
 import type { WSMessage } from '../types/websocket'
 import toast from 'react-hot-toast'
+import { notifyIfHidden } from '../utils/notifications'
 
 const WS_URL = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`
 
@@ -9,48 +10,56 @@ export function useWebSocket() {
   const wsRef = useRef<WebSocket | null>(null)
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const retriesRef = useRef(0)
-  const store = useDeviceStore()
 
-  const connect = useCallback(() => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) return
+  // Reads store actions via getState() rather than the useDeviceStore()
+  // hook - action references are stable for the store's lifetime, but
+  // subscribing here would re-render on every unrelated state change
+  // (readings, stats ticks...) and tear down/reopen the socket each time.
+  useEffect(() => {
+    let stopped = false
 
-    store.setWsStatus('connecting')
-    const ws = new WebSocket(WS_URL)
-    wsRef.current = ws
+    const connect = () => {
+      if (stopped || wsRef.current?.readyState === WebSocket.OPEN) return
 
-    ws.onopen = () => {
-      retriesRef.current = 0
-      store.setWsStatus('connected')
-    }
+      useDeviceStore.getState().setWsStatus('connecting')
+      const ws = new WebSocket(WS_URL)
+      wsRef.current = ws
 
-    ws.onmessage = (e) => {
-      try {
-        const msg: WSMessage = JSON.parse(e.data)
-        handleMessage(msg, store)
-      } catch {
-        // ignore invalid JSON
+      ws.onopen = () => {
+        retriesRef.current = 0
+        useDeviceStore.getState().setWsStatus('connected')
+      }
+
+      ws.onmessage = (e) => {
+        try {
+          const msg: WSMessage = JSON.parse(e.data)
+          handleMessage(msg, useDeviceStore.getState())
+        } catch {
+          // ignore invalid JSON
+        }
+      }
+
+      ws.onclose = () => {
+        if (stopped) return
+        useDeviceStore.getState().setWsStatus('disconnected')
+        const delay = Math.min(1000 * 2 ** retriesRef.current, 30000)
+        retriesRef.current++
+        reconnectTimer.current = setTimeout(connect, delay)
+      }
+
+      ws.onerror = () => {
+        ws.close()
       }
     }
 
-    ws.onclose = () => {
-      store.setWsStatus('disconnected')
-      const delay = Math.min(1000 * 2 ** retriesRef.current, 30000)
-      retriesRef.current++
-      reconnectTimer.current = setTimeout(connect, delay)
-    }
-
-    ws.onerror = () => {
-      ws.close()
-    }
-  }, [store])
-
-  useEffect(() => {
     connect()
+
     return () => {
+      stopped = true
       if (reconnectTimer.current) clearTimeout(reconnectTimer.current)
       wsRef.current?.close()
     }
-  }, [connect])
+  }, [])
 }
 
 function handleMessage(msg: WSMessage, store: ReturnType<typeof useDeviceStore.getState>) {
@@ -76,6 +85,10 @@ function handleMessage(msg: WSMessage, store: ReturnType<typeof useDeviceStore.g
       const ev = msg.data
       const label = ev.severity === 'critical' ? 'Krytyczny' : ev.severity === 'warning' ? 'Ostrzeżenie' : 'Informacja'
       toast.error(`${label}: ${ev.rule_name} — ${ev.value}`, { duration: 8000 })
+      notifyIfHidden(`Alarm: ${ev.rule_name}`, {
+        body: `${label} — wartość ${ev.value}`,
+        tag: `jawcold-alert-${ev.id}`,
+      })
       break
     }
     case 'alert_resolved': {

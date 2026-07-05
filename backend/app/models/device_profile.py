@@ -1,5 +1,5 @@
 from typing import Optional, List
-from sqlalchemy import String, Integer, Float, ForeignKey
+from sqlalchemy import String, Integer, Float, Boolean, ForeignKey
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.base import Base, TimestampMixin
@@ -32,5 +32,6 @@ class RegisterDefinition(Base):
     description: Mapped[Optional[str]] = mapped_column(String(256))
     data_type: Mapped[str] = mapped_column(String(16), default="uint16")
     scale_factor: Mapped[float] = mapped_column(Float, default=1.0)
+    writable: Mapped[bool] = mapped_column(Boolean, default=False)
 
     profile: Mapped[DeviceProfile] = relationship("DeviceProfile", back_populates="registers")

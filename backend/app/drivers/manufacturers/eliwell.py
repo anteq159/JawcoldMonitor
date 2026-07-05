@@ -19,8 +19,8 @@ class EliwellDriver(AbstractControllerDriver):
         return [
             RegisterMapEntry(address=0, name="Temperatura kabiny", unit="°C", data_type="int16", scale_factor=0.1),
             RegisterMapEntry(address=1, name="Temperatura parownika", unit="°C", data_type="int16", scale_factor=0.1),
-            RegisterMapEntry(address=2, name="Nastawa", unit="°C", data_type="int16", scale_factor=0.1),
-            RegisterMapEntry(address=3, name="Histereza", unit="°C", data_type="int16", scale_factor=0.1),
+            RegisterMapEntry(address=2, name="Nastawa", unit="°C", data_type="int16", scale_factor=0.1, writable=True),
+            RegisterMapEntry(address=3, name="Histereza", unit="°C", data_type="int16", scale_factor=0.1, writable=True),
             RegisterMapEntry(address=30, name="Sprężarka", data_type="uint16"),
             RegisterMapEntry(address=31, name="Odszranianie", data_type="uint16"),
             RegisterMapEntry(address=32, name="Wentylator", data_type="uint16"),

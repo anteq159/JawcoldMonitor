@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
-import { Thermometer, Pencil, Check, X, SlidersHorizontal } from 'lucide-react'
+import { Thermometer, Pencil, Check, X, SlidersHorizontal, Star } from 'lucide-react'
 import { getSensors, updateSensor } from '../api/sensors'
 import { getSensorReadings } from '../api/readings'
 import { useDeviceStore } from '../store/devices'
+import { useFavoriteParameters } from '../hooks/useFavoriteParameters'
 import { DeviceStatusBadge } from '../components/Devices/DeviceStatusBadge'
 import { TimeSeriesChart } from '../components/Charts/TimeSeriesChart'
 import { CalibrationModal } from '../components/Devices/CalibrationModal'
@@ -19,6 +20,7 @@ export default function Sensors() {
   const [selected, setSelected] = useState<Sensor | null>(null)
   const [chart, setChart] = useState<ParameterReadings[]>([])
   const [calibrating, setCalibrating] = useState<Sensor | null>(null)
+  const { isFavorite, toggleFavorite } = useFavoriteParameters()
 
   useEffect(() => {
     getSensors().then((s) => { setSensors(s); if (!selected && s.length) setSelected(s[0]) }).finally(() => setLoading(false))
@@ -57,9 +59,11 @@ export default function Sensors() {
               sensor={s}
               live={live}
               selected={selected?.id === s.id}
+              favorite={isFavorite('sensor', s.id)}
               onSelect={() => setSelected(s)}
               onRename={(name) => handleRename(s, name)}
               onCalibrate={() => setCalibrating(s)}
+              onToggleFavorite={() => toggleFavorite('sensor', s.id)}
             />
           )
         })}
@@ -93,13 +97,15 @@ export default function Sensors() {
   )
 }
 
-function SensorCard({ sensor, live, selected, onSelect, onRename, onCalibrate }: {
+function SensorCard({ sensor, live, selected, favorite, onSelect, onRename, onCalibrate, onToggleFavorite }: {
   sensor: Sensor
   live: { temp: number; ts: number } | undefined
   selected: boolean
+  favorite: boolean
   onSelect: () => void
   onRename: (name: string) => void
   onCalibrate: () => void
+  onToggleFavorite: () => void
 }) {
   const [editing, setEditing] = useState(false)
   const [nameInput, setNameInput] = useState(sensor.name)
@@ -158,6 +164,13 @@ function SensorCard({ sensor, live, selected, onSelect, onRename, onCalibrate }:
           </div>
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
+          <button
+            onClick={(e) => { e.stopPropagation(); onToggleFavorite() }}
+            className={`transition-colors p-0.5 ${favorite ? 'text-warn hover:text-warn/80' : 'text-ink-muted hover:text-ink'}`}
+            title={favorite ? 'Usuń z ulubionych' : 'Dodaj do ulubionych'}
+          >
+            <Star size={14} fill={favorite ? 'currentColor' : 'none'} />
+          </button>
           <button
             onClick={(e) => { e.stopPropagation(); onCalibrate() }}
             className="text-ink-muted hover:text-accent transition-colors p-0.5"

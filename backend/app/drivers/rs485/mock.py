@@ -38,9 +38,34 @@ MOCK_DEVICES = {
             {"name": "Temperatura medium", "unit": "°C", "base": 45.0, "noise": 1.0},
         ],
     },
+    6: {
+        "name": "Regał chłodniczy EEV #1",
+        "manufacturer": "Carel MPX",
+    },
+    7: {
+        "name": "Sterownik nieznany #1",
+        # Deliberately not a registered manufacturer - simulates a controller
+        # answering on the bus whose brand/register map jawcold doesn't
+        # recognize yet, so the discovery/recognition-status flow has a
+        # real case to demonstrate.
+        "manufacturer": "Unknown-XR2000",
+        "parameters": [
+            {"name": "Rejestr 0", "unit": "", "base": 512.0, "noise": 3.0},
+            {"name": "Rejestr 1", "unit": "", "base": 88.0, "noise": 1.0},
+        ],
+    },
 }
 
 _counters: Dict[int, float] = {addr: 0.0 for addr in MOCK_DEVICES}
+_overrides: Dict[int, Dict[str, float]] = {}
+
+
+def set_override(address: int, register_name: str, value: float) -> None:
+    """Simulated register write - subsequent reads for this device/register
+    return `value` instead of whatever simulate_reading() would compute,
+    until overridden again. Mirrors what a real Modbus write would do to a
+    holding register (it sticks until someone changes it again)."""
+    _overrides.setdefault(address, {})[register_name] = value
 
 
 class MockRS485Driver(AbstractRS485Driver):
@@ -64,7 +89,11 @@ class MockRS485Driver(AbstractRS485Driver):
         if manufacturer:
             driver_cls = get_driver(manufacturer)
             if driver_cls:
-                return driver_cls().simulate_reading(t)
+                result = driver_cls().simulate_reading(t)
+                for name, value in _overrides.get(addr, {}).items():
+                    if name in result:
+                        result[name] = {"value": value, "unit": result[name].get("unit", "")}
+                return result
 
         result = {}
         for param in info.get("parameters", []):
@@ -72,6 +101,9 @@ class MockRS485Driver(AbstractRS485Driver):
             noise = random.gauss(0, param["noise"] * 0.3)
             value = round(param["base"] + drift + noise, 2)
             result[param["name"]] = {"value": value, "unit": param["unit"]}
+        for name, value in _overrides.get(addr, {}).items():
+            if name in result:
+                result[name] = {"value": value, "unit": result[name].get("unit", "")}
         return result
 
     async def scan_range(self, start: int, end: int, known_addresses: set) -> List[int]:
@@ -81,6 +113,9 @@ class MockRS485Driver(AbstractRS485Driver):
             if addr in self._online and addr not in known_addresses:
                 found.append(addr)
         return found
+
+    async def write_register(self, address: int, register_name: str, value: float) -> None:
+        set_override(address, register_name, value)
 
     def get_mock_device_info(self, address: int) -> dict:
         return MOCK_DEVICES.get(address, {})

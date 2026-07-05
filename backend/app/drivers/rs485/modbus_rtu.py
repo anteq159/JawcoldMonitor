@@ -71,6 +71,15 @@ class ModbusRTUDriver(AbstractRS485Driver):
                 found.append(addr)
         return found
 
+    async def write_register(self, address: int, register_name: str, value: float) -> None:
+        # Etap 1 is simulation-only per the project brief - writing a real
+        # holding register needs the register's address/scale/data_type
+        # (not just its name) plus real validation against hardware, which
+        # is Etap 3 scope. Fail loudly rather than silently no-op.
+        raise NotImplementedError(
+            "Zapis rejestrów na rzeczywistym sprzęcie zostanie zaimplementowany w Etapie 3"
+        )
+
     async def close(self):
         if self._client and self._client.connected:
             self._client.close()
