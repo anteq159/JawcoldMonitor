@@ -11,47 +11,59 @@ class DanfossFc102Driver(AbstractControllerDriver):
     """Danfoss VLT FC 102 - a variable frequency drive for compressor/fan
     motor speed control, not a refrigeration case controller like every
     other profile in this app. Included because the user provided real
-    Danfoss documentation for it (DanfossFC102.xls, "FC102 Modbus Holding
-    Registers" sheet) - a genuinely different device category worth
-    representing accurately rather than skipping.
+    Danfoss documentation for it - a genuinely different device category
+    worth representing accurately rather than skipping.
 
-    Register addresses are real, taken directly from that sheet's "Modbus
-    4x Holding Register (decimal)" column (all Holding Registers - FC102
-    doesn't need the multi-object-type handling MPXone does). Scale
-    factors are NOT from that sheet - its own scaling reference tab
-    ("FC102 Parameter Details") was empty in the file provided. The
-    0.1/0.01 factors used here follow Danfoss's well-documented FC-series
-    process-data convention (reference/frequency values as raw x10,
-    current as raw x100) but should be confirmed against the full FC-series
-    Programming Guide's parameter list before real hardware use - same as
-    every profile here, this is a best-effort starting point, not verified
-    against the authoritative source. Alarm/Warning Word are real hex
-    bitmask registers (several bits can be set at once) but the exact
-    bit-to-fault-name mapping requires that same Programming Guide's fault
-    table, which isn't in the provided files - decode_alarm() below is
-    deliberately generic rather than guessing specific fault names."""
+    Rebuilt from a second, more authoritative source (gwtdanfossfc102.pdf,
+    a dedicated "Danfoss FC-102 Modbus" register table published by Xylem/
+    Goulds for their OEM'd drives) after it turned up two real problems
+    with the first version, which had been built from a spreadsheet
+    export (DanfossFC102.xls) with no scaling reference:
+    1. Every address here was off by exactly one from the earlier source
+       (e.g. Alarm Word at 16899, not 16900) - the two documents evidently
+       express the same registers in different conventions (1-based
+       parameter-derived numbering vs. the 0-based wire address pymodbus
+       actually needs). This PDF's "ModBus Address" column is used
+       directly as the wire address.
+    2. This PDF has a "Conversion Index" column the old source lacked.
+       Danfoss's convention maps small negative indices to simple decimal
+       scaling (-1=x0.1, -2=x0.01, -3=x0.001), which is well documented
+       and used below - but it also uses special non-decimal indices
+       (67, 74, 75, 100...) for things like RPM/hour/temperature
+       registers, which need the FC-series Programming Guide's full
+       conversion-index table to interpret correctly. That table isn't
+       in what was provided, so registers using those special indices
+       (motor power, heatsink temp, speed in RPM...) are deliberately
+       left out rather than guessed. What's kept below only uses the
+       indices confirmed by the well-known simple convention.
+
+    Nothing here is writable. Real speed/start-stop control over Modbus
+    requires sending a correctly sequenced Control Word (specific bit
+    combinations, not just "write a number") per the FC-series fieldbus
+    profile - not something this app's simple single-register write
+    matches safely, so this driver is monitoring-only."""
 
     manufacturer = "Danfoss FC102"
 
     def default_register_map(self) -> List[RegisterMapEntry]:
         return [
-            RegisterMapEntry(address=16000, name="Słowo sterujące (Control Word)", data_type="uint16", writable=True),
-            RegisterMapEntry(address=16010, name="Zadana częstotliwość (Reference)", unit="Hz", data_type="uint16", scale_factor=0.1, writable=True),
-            RegisterMapEntry(address=16030, name="Słowo statusu (Status Word)", data_type="uint16"),
-            RegisterMapEntry(address=16140, name="Prąd silnika", unit="A", data_type="uint16", scale_factor=0.01),
-            RegisterMapEntry(address=1200, name="Moc silnika (znamionowa)", unit="kW", data_type="uint16", scale_factor=0.1),
-            RegisterMapEntry(address=16920, name="Słowo ostrzeżeń (Warning Word)", data_type="uint16"),
-            RegisterMapEntry(address=16900, name="Słowo alarmów (Alarm Word)", data_type="uint16", is_alarm_register=True),
+            RegisterMapEntry(address=16029, name="Słowo statusu (16-03 Status Word)", data_type="uint16"),
+            RegisterMapEntry(address=16009, name="Wartość zadana (16-01 Reference)", data_type="int32", scale_factor=0.001),
+            RegisterMapEntry(address=16019, name="Wartość zadana % (16-02 Reference %)", unit="%", data_type="int16", scale_factor=0.1),
+            RegisterMapEntry(address=16139, name="Prąd silnika (16-14 Motor Current)", unit="A", data_type="int32", scale_factor=0.01),
+            RegisterMapEntry(address=16299, name="Napięcie obwodu DC (16-30 DC Link Voltage)", unit="V", data_type="uint16"),
+            RegisterMapEntry(address=16919, name="Słowo ostrzeżeń (16-92 Warning Word)", data_type="uint32"),
+            RegisterMapEntry(address=16899, name="Słowo alarmów (16-90 Alarm Word)", data_type="uint32", is_alarm_register=True),
         ]
 
     def identify(self, model_hint: Optional[str] = None) -> ControllerModel:
-        return ControllerModel(model=model_hint or "VLT FC 102", description="Falownik Danfoss VLT FC 102 do sterowania silnikiem sprężarki/wentylatora")
+        return ControllerModel(model=model_hint or "VLT FC 102", description="Falownik Danfoss VLT FC 102 do sterowania silnikiem sprężarki/wentylatora (tylko odczyt)")
 
     def known_alarm_codes(self) -> List[AlarmDescription]:
-        # Alarm Word is a real hex bitmask register (several bits can be
-        # active at once), but the bit-to-fault-name table isn't in the
-        # documentation provided - see module docstring. One generic code
-        # rather than guessing specific fault names.
+        # Alarm Word is a real 32-bit bitmask register (several bits can
+        # be active at once), but the bit-to-fault-name table requires the
+        # Programming Guide's fault list, not in what was provided - one
+        # generic code rather than guessing specific fault names.
         return [
             AlarmDescription(code=1, name="ALM", description="Aktywny alarm falownika (szczegóły w Alarm Word / panelu LCP)", severity="critical"),
         ]
@@ -63,14 +75,14 @@ class DanfossFc102Driver(AbstractControllerDriver):
         return AlarmDescription(code=code, name=f"ALM{code}", description="Nieznany kod alarmu", severity="info")
 
     def simulate_reading(self, tick: float) -> Dict[str, dict]:
-        freq = round(max(0, 35 + 8 * math.sin(tick * 0.05) + random.uniform(-1, 1)), 1)
-        current = round(3.5 + (freq / 50) * 4 + random.uniform(-0.2, 0.2), 2)
+        ref_pct = round(max(0, 70 + 15 * math.sin(tick * 0.05) + random.uniform(-2, 2)), 1)
+        current = round(3.5 + (ref_pct / 100) * 4 + random.uniform(-0.2, 0.2), 2)
         return {
-            "Słowo sterujące (Control Word)": {"value": 1, "unit": ""},
-            "Zadana częstotliwość (Reference)": {"value": freq, "unit": "Hz"},
-            "Słowo statusu (Status Word)": {"value": 0x0F, "unit": ""},
-            "Prąd silnika": {"value": current, "unit": "A"},
-            "Moc silnika (znamionowa)": {"value": 22.0, "unit": "kW"},
-            "Słowo ostrzeżeń (Warning Word)": {"value": 0, "unit": ""},
-            "Słowo alarmów (Alarm Word)": {"value": 0, "unit": ""},
+            "Słowo statusu (16-03 Status Word)": {"value": 0x0F, "unit": ""},
+            "Wartość zadana (16-01 Reference)": {"value": ref_pct, "unit": ""},
+            "Wartość zadana % (16-02 Reference %)": {"value": ref_pct, "unit": "%"},
+            "Prąd silnika (16-14 Motor Current)": {"value": current, "unit": "A"},
+            "Napięcie obwodu DC (16-30 DC Link Voltage)": {"value": 565, "unit": "V"},
+            "Słowo ostrzeżeń (16-92 Warning Word)": {"value": 0, "unit": ""},
+            "Słowo alarmów (16-90 Alarm Word)": {"value": 0, "unit": ""},
         }
