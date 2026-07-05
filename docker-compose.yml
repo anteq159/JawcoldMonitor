@@ -43,9 +43,15 @@ services:
     # uploaded through Settings extracts into this same host path, so it
     # survives the container restart that applies it. Also means local
     # code edits show up without a rebuild - a real side benefit, not a
-    # workaround.
+    # workaround. alembic/versions is mounted too, not just app/ - a
+    # migration script has to actually be on disk for `alembic upgrade
+    # head` (run at every startup, see init_db()) to find and apply it;
+    # an update that ships new tables/columns but not the migration that
+    # creates them would leave the new code pointed at a schema that was
+    # never updated.
     volumes:
       - ./backend/app:/app/app
+      - ./backend/alembic/versions:/app/alembic/versions
     depends_on:
       postgres:
         condition: service_healthy

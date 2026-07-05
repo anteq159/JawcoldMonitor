@@ -10,12 +10,20 @@ from tempfile import TemporaryDirectory
 from typing import Optional
 
 # APP_DIR is the live, bind-mounted app/ package (see docker-compose.yml -
-# ./backend/app:/app/app). BACKUP_DIR and META_FILE deliberately live one
-# level up, outside that mount: they're only meant to survive a simple
-# container restart (the kind an update itself triggers), not a full
-# `docker compose up --build`, so they don't need their own volume.
+# ./backend/app:/app/app). ALEMBIC_VERSIONS_DIR is the other bind-mounted
+# path (./backend/alembic/versions:/app/alembic/versions) - a migration
+# script has to actually be on disk for `alembic upgrade head` (run at
+# every startup, see database.init_db()) to find and apply it, so an
+# update that ships new tables/columns but not the migration that creates
+# them would leave the new code pointed at a schema that was never
+# updated. BACKUP_DIR deliberately lives outside those mounts: it's only
+# meant to survive a simple container restart (the kind an update itself
+# triggers), not a full `docker compose up --build`, so it doesn't need
+# its own volume. There's no equivalent backup for alembic/versions -
+# see the note in apply_update().
 APP_DIR = Path(__file__).resolve().parent.parent
 ROOT_DIR = APP_DIR.parent
+ALEMBIC_VERSIONS_DIR = ROOT_DIR / "alembic" / "versions"
 BACKUP_DIR = ROOT_DIR / "app_backup"
 META_FILE = ROOT_DIR / "update_meta.json"
 
@@ -56,7 +64,11 @@ def _safe_extract_path(member_name: str, target_dir: Path) -> Path:
     return dest
 
 
-def _validate_and_stage(zip_bytes: bytes, staging_dir: Path) -> Path:
+def _validate_and_stage(zip_bytes: bytes, staging_dir: Path) -> tuple[Path, Optional[Path]]:
+    """Returns (new_app_dir, new_alembic_versions_dir_or_None). The
+    alembic/versions folder is optional in the package - not every
+    update includes a schema change - but app/ and app/VERSION are
+    always required."""
     try:
         zf = zipfile.ZipFile(io.BytesIO(zip_bytes))
     except zipfile.BadZipFile:
@@ -82,7 +94,12 @@ def _validate_and_stage(zip_bytes: bytes, staging_dir: Path) -> Path:
     new_app_dir = extract_root / "app"
     if not new_app_dir.is_dir():
         raise UpdateError("Nie znaleziono folderu 'app/' po rozpakowaniu archiwum")
-    return new_app_dir
+
+    new_alembic_dir = extract_root / "alembic" / "versions"
+    if not new_alembic_dir.is_dir():
+        new_alembic_dir = None
+
+    return new_app_dir, new_alembic_dir
 
 
 def _replace_dir_contents(source_dir: Path, target_dir: Path):
@@ -100,15 +117,28 @@ def _replace_dir_contents(source_dir: Path, target_dir: Path):
 
 
 def apply_update(zip_bytes: bytes) -> dict:
-    """Validates the upload, backs up the current app/ tree, then swaps in
-    the new one. Raises UpdateError for anything wrong with the file
-    itself (nothing on disk touched yet at that point). If the swap fails
-    partway through, restores from the backup rather than leaving a
-    half-old-half-new app/ directory for the next restart to load."""
+    """Validates the upload, backs up the current app/, then swaps in the
+    new app/ (and alembic/versions, if the package includes migrations).
+    Raises UpdateError for anything wrong with the file itself (nothing
+    on disk touched yet at that point). If the swap fails partway
+    through, restores app/ from backup rather than leaving a
+    half-old-half-new tree for the next restart to load.
+
+    alembic/versions is deliberately NOT backed up/rolled back the same
+    way: init_db() runs `alembic upgrade head` on every startup,
+    including the one this same update triggers, so by the time anyone
+    could decide to roll back, any new migrations almost certainly
+    already ran against the real database. Alembic tracks "current
+    revision" as a row in the database itself, not by checking which
+    files exist on disk - removing a migration file after its revision
+    is already recorded would desync the two and break every future
+    `alembic upgrade head` call. A schema change is a one-way door once
+    applied; only the application code is meant to be quickly reversible
+    here."""
     old_version = get_current_version()
 
     with TemporaryDirectory(prefix="jawcold_update_") as tmp:
-        new_app_dir = _validate_and_stage(zip_bytes, Path(tmp))
+        new_app_dir, new_alembic_dir = _validate_and_stage(zip_bytes, Path(tmp))
         new_version = (new_app_dir / "VERSION").read_text().strip()
 
         if BACKUP_DIR.exists():
@@ -117,6 +147,9 @@ def apply_update(zip_bytes: bytes) -> dict:
 
         try:
             _replace_dir_contents(new_app_dir, APP_DIR)
+            if new_alembic_dir is not None:
+                ALEMBIC_VERSIONS_DIR.mkdir(parents=True, exist_ok=True)
+                _replace_dir_contents(new_alembic_dir, ALEMBIC_VERSIONS_DIR)
         except Exception:
             _replace_dir_contents(BACKUP_DIR, APP_DIR)
             raise UpdateError("Nie udało się zainstalować aktualizacji, przywrócono poprzednią wersję")
@@ -126,12 +159,18 @@ def apply_update(zip_bytes: bytes) -> dict:
         "to_version": new_version,
         "applied_at": datetime.now(timezone.utc).isoformat(),
         "action": "update",
+        "included_migrations": new_alembic_dir is not None,
     }
     META_FILE.write_text(json.dumps(meta))
     return meta
 
 
 def rollback_update() -> dict:
+    """Restores app/ only - see the note in apply_update() about why
+    alembic/versions is never part of a rollback. If the update being
+    rolled back included a migration, the database keeps whatever schema
+    change it made; the restored (older) code simply doesn't reference
+    the new tables/columns, which is harmless."""
     if not BACKUP_DIR.exists():
         raise UpdateError("Brak zapisanej kopii do przywrócenia")
 
