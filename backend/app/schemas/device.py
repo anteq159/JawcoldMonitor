@@ -38,6 +38,7 @@ class DeviceOut(BaseModel):
     parity: str
     stopbits: int
     timeout: float
+    poll_interval_seconds: Optional[int] = None
     profile_id: Optional[int] = None
     status: str
     recognition_status: str = "recognized"
@@ -76,6 +77,7 @@ class DeviceUpdate(BaseModel):
     profile_id: Optional[int] = None
     baudrate: Optional[int] = None
     timeout: Optional[float] = None
+    poll_interval_seconds: Optional[int] = None
 
 
 class RegisterWriteRequest(BaseModel):

@@ -96,6 +96,17 @@ function handleMessage(msg: WSMessage, store: ReturnType<typeof useDeviceStore.g
       // resolved state on their next fetch.
       break
     }
+    case 'hardware_alarm': {
+      // Distinct from alert_triggered/resolved: this is the controller's
+      // own reported alarm code (Etap 3.3), not a threshold rule the user
+      // configured. Also appears in Logi regardless of this toast.
+      const a = msg.data
+      if (a.status === 'active') {
+        toast.error(`${a.device_name}: ${a.name} — ${a.description}`, { duration: 8000 })
+        notifyIfHidden(`Alarm sterownika: ${a.device_name}`, { body: `${a.name} — ${a.description}`, tag: `jawcold-hwalarm-${a.device_id}-${a.code}` })
+      }
+      break
+    }
     case 'new_device_found': {
       store.addDevice(msg.data)
       store.setNewDeviceCandidate(msg.data)

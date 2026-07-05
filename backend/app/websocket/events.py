@@ -41,3 +41,14 @@ def new_device_found(device_data: dict) -> dict:
 
 def system_stats(stats: dict) -> dict:
     return {"type": "system_stats", "data": stats}
+
+
+def hardware_alarm(device_id: int, device_name: str, code: int, name: str, description: str, severity: str, status: str) -> dict:
+    """A controller's own reported alarm/status code, decoded via
+    decode_active_alarms() - distinct from alert_triggered/alert_resolved,
+    which are threshold rules the user configured against parameter
+    values. status is 'active' or 'resolved'."""
+    return {"type": "hardware_alarm", "data": {
+        "device_id": device_id, "device_name": device_name, "code": code,
+        "name": name, "description": description, "severity": severity, "status": status,
+    }}

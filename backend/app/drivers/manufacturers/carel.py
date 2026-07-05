@@ -24,7 +24,7 @@ class CarelDriver(AbstractControllerDriver):
             RegisterMapEntry(address=150, name="Wyjście sprężarki", data_type="uint16"),
             RegisterMapEntry(address=151, name="Wyjście odszraniania", data_type="uint16"),
             RegisterMapEntry(address=152, name="Wyjście wentylatora", data_type="uint16"),
-            RegisterMapEntry(address=200, name="Rejestr alarmów", data_type="uint16"),
+            RegisterMapEntry(address=200, name="Rejestr alarmów", data_type="uint16", is_alarm_register=True),
         ]
 
     def identify(self, model_hint: Optional[str] = None) -> ControllerModel:
@@ -56,4 +56,7 @@ class CarelDriver(AbstractControllerDriver):
             "Wyjście sprężarki": {"value": 1 if room > 4 else 0, "unit": ""},
             "Wyjście odszraniania": {"value": 0, "unit": ""},
             "Wyjście wentylatora": {"value": 1, "unit": ""},
+            # Bitmask register (codes are powers of two) - 0 = no active
+            # alarm. Was never simulated before; see decode_active_alarms().
+            "Rejestr alarmów": {"value": 0, "unit": ""},
         }

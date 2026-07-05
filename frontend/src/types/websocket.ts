@@ -8,6 +8,7 @@ export type WSEventType =
   | 'alert_resolved'
   | 'new_device_found'
   | 'system_stats'
+  | 'hardware_alarm'
 
 export interface WSMessage {
   type: WSEventType

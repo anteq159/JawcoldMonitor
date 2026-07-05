@@ -11,9 +11,11 @@ export default function Logs() {
   useEffect(() => { getEventLogs({ limit: 200 }).then(setLogs).finally(() => setLoading(false)) }, [])
 
   const typeColor = (t: string) => {
+    if (t.includes('resolved')) return 'text-good'
     if (t.includes('connected') || t.includes('discovered')) return 'text-good'
     if (t.includes('disconnected')) return 'text-crit'
-    if (t.includes('alert')) return 'text-warn'
+    if (t.includes('hardware_alarm_triggered')) return 'text-crit'
+    if (t.includes('alert') || t.includes('alarm')) return 'text-warn'
     return 'text-ink-muted'
   }
 

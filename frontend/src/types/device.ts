@@ -29,6 +29,7 @@ export interface Device {
   parity: string
   stopbits: number
   timeout: number
+  poll_interval_seconds: number | null
   profile_id: number | null
   status: 'online' | 'offline' | 'unknown'
   recognition_status: 'recognized' | 'unrecognized'

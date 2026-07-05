@@ -29,7 +29,7 @@ class CarelMPXDriver(AbstractControllerDriver):
             RegisterMapEntry(address=151, name="Wyjście odszraniania", data_type="uint16"),
             RegisterMapEntry(address=152, name="Wyjście wentylatora", data_type="uint16"),
             RegisterMapEntry(address=180, name="Licznik alarmów HACCP", data_type="uint16"),
-            RegisterMapEntry(address=200, name="Rejestr alarmów", data_type="uint16"),
+            RegisterMapEntry(address=200, name="Rejestr alarmów", data_type="uint16", is_alarm_register=True),
         ]
 
     def identify(self, model_hint: Optional[str] = None) -> ControllerModel:
@@ -68,4 +68,7 @@ class CarelMPXDriver(AbstractControllerDriver):
             "Wyjście odszraniania": {"value": 0, "unit": ""},
             "Wyjście wentylatora": {"value": 1, "unit": ""},
             "Licznik alarmów HACCP": {"value": 0, "unit": ""},
+            # Bitmask register (codes are powers of two) - 0 = no active
+            # alarm. Was never simulated before; see decode_active_alarms().
+            "Rejestr alarmów": {"value": 0, "unit": ""},
         }

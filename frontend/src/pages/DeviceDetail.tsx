@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { ChevronLeft, Pencil, Check, X } from 'lucide-react'
+import { ChevronLeft, Pencil, Check, X, Timer } from 'lucide-react'
 import { getDevice, updateDevice } from '../api/devices'
 import { getDeviceReadings } from '../api/readings'
 import { getDeviceProfile, type DeviceProfileDetail } from '../api/deviceProfiles'
@@ -33,6 +33,9 @@ export default function DeviceDetail() {
   const [editingName, setEditingName] = useState(false)
   const [nameInput, setNameInput] = useState('')
   const [savingName, setSavingName] = useState(false)
+  const [editingInterval, setEditingInterval] = useState(false)
+  const [intervalInput, setIntervalInput] = useState('')
+  const [savingInterval, setSavingInterval] = useState(false)
 
   const updateDeviceInStore = useDeviceStore(s => s.updateDeviceStatus)
 
@@ -56,6 +59,32 @@ export default function DeviceDetail() {
 
   const startEdit = () => { setNameInput(device?.name ?? ''); setEditingName(true) }
   const cancelEdit = () => setEditingName(false)
+
+  const startEditInterval = () => {
+    setIntervalInput(device?.poll_interval_seconds != null ? String(device.poll_interval_seconds) : '')
+    setEditingInterval(true)
+  }
+  const cancelEditInterval = () => setEditingInterval(false)
+
+  const saveInterval = async () => {
+    if (!device) return
+    const parsed = intervalInput.trim() === '' ? null : Number(intervalInput)
+    if (parsed !== null && (!Number.isFinite(parsed) || parsed < 1)) {
+      toast.error('Nieprawidłowy interwał')
+      return
+    }
+    setSavingInterval(true)
+    try {
+      const updated = await updateDevice(device.id, { poll_interval_seconds: parsed })
+      setDevice(updated)
+      setEditingInterval(false)
+      toast.success('Interwał odpytywania zaktualizowany')
+    } catch {
+      toast.error('Błąd zapisu interwału')
+    } finally {
+      setSavingInterval(false)
+    }
+  }
 
   const saveName = async () => {
     if (!device || !nameInput.trim()) return
@@ -106,9 +135,35 @@ export default function DeviceDetail() {
               </button>
             </div>
           )}
-          <div className="flex items-center gap-2 mt-1">
+          <div className="flex items-center gap-2 mt-1 flex-wrap">
             <p className="text-xs text-ink-muted">Adres {device.modbus_address} · {device.port} · {device.baudrate} baud</p>
             <ManufacturerBadge profile={device.profile} />
+            {editingInterval ? (
+              <div className="flex items-center gap-1">
+                <input
+                  type="number"
+                  min={1}
+                  value={intervalInput}
+                  onChange={(e) => setIntervalInput(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') saveInterval(); if (e.key === 'Escape') cancelEditInterval() }}
+                  placeholder="domyślny"
+                  autoFocus
+                  className="w-20 bg-surface-2 border border-accent rounded px-1.5 py-0.5 text-xs text-ink focus:outline-none"
+                />
+                <span className="text-xs text-ink-muted">s</span>
+                <button onClick={saveInterval} disabled={savingInterval} className="text-good hover:text-good/80"><Check size={13} /></button>
+                <button onClick={cancelEditInterval} className="text-ink-muted hover:text-ink"><X size={13} /></button>
+              </div>
+            ) : (
+              <button
+                onClick={startEditInterval}
+                className="flex items-center gap-1 text-xs text-ink-muted hover:text-accent transition-colors"
+                title="Zmień interwał odpytywania tego urządzenia"
+              >
+                <Timer size={11} />
+                {device.poll_interval_seconds != null ? `co ${device.poll_interval_seconds}s` : 'domyślny interwał'}
+              </button>
+            )}
           </div>
         </div>
         <FavoriteToggle deviceId={device.id} />

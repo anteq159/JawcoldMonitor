@@ -24,7 +24,7 @@ class DanfossDriver(AbstractControllerDriver):
             RegisterMapEntry(address=10, name="Sprężarka", data_type="uint16"),
             RegisterMapEntry(address=11, name="Odszranianie", data_type="uint16"),
             RegisterMapEntry(address=12, name="Wentylator parownika", data_type="uint16"),
-            RegisterMapEntry(address=20, name="Kod alarmu", data_type="uint16"),
+            RegisterMapEntry(address=20, name="Kod alarmu", data_type="uint16", is_alarm_register=True),
         ]
 
     def identify(self, model_hint: Optional[str] = None) -> ControllerModel:
@@ -56,4 +56,9 @@ class DanfossDriver(AbstractControllerDriver):
             "Sprężarka": {"value": 1 if room > -18 else 0, "unit": ""},
             "Odszranianie": {"value": 0, "unit": ""},
             "Wentylator parownika": {"value": 1, "unit": ""},
+            # 0 = no active alarm. Was never simulated before, so the
+            # register control panel always showed this as a dead "-" and
+            # nothing existed to decode - real hardware alarm reading
+            # (Etap 3.3) has this to actually exercise now.
+            "Kod alarmu": {"value": 0, "unit": ""},
         }

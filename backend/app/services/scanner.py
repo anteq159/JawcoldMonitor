@@ -1,9 +1,9 @@
 import asyncio
 import logging
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import datetime, timedelta, timezone
+from typing import Dict, Optional, Set
 
-from sqlalchemy import select
+from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -17,15 +17,23 @@ from app.models.log import EventLog
 from app.websocket.manager import ws_manager
 from app.websocket import events as ws_events
 from app.services.system_stats import get_system_stats
+from app.drivers.registry import get_driver
+from app.drivers.base import decode_active_alarms
 
 logger = logging.getLogger(__name__)
 
 _rs485_driver = None
 _dallas_driver = None
+_last_known_scan: Dict[int, datetime] = {}  # per-device, not global (Etap 3.4)
 _last_discovery: Optional[datetime] = None
 _last_dallas_scan: Optional[datetime] = None
 _last_stats_broadcast: Optional[datetime] = None
+_last_prune: Optional[datetime] = None
 _last_tick: Optional[datetime] = None
+# Edge-triggered like _check_alerts() - which native alarm codes are
+# currently active per device, so a steady alarm logs once, not every
+# scan cycle, and a WS event fires when it actually clears.
+_active_hw_alarms: Dict[int, Set[int]] = {}
 
 
 def get_last_tick() -> Optional[datetime]:
@@ -66,6 +74,7 @@ async def scanner_loop():
             await _maybe_discovery()
             await _scan_dallas()
             await _maybe_broadcast_stats()
+            await _maybe_prune_readings()
         except asyncio.CancelledError:
             raise
         except Exception as e:
@@ -82,12 +91,22 @@ def _due(last: Optional[datetime], interval: int) -> bool:
 
 
 async def _scan_known_devices():
+    # Per-device gating (Etap 3.4) rather than one global interval for
+    # every device: a device can set its own poll_interval_seconds (e.g. a
+    # critical freezer polled every 10s, a less critical store room every
+    # 60s to save bus time), falling back to KNOWN_SCAN_INTERVAL when unset.
+    # Checking each device's due-ness is a cheap in-memory comparison; the
+    # actual Modbus round trip only happens for devices that are due.
     if not _rs485_driver:
         return
     async with AsyncSessionLocal() as db:
         result = await db.execute(select(Device))
         devices = result.scalars().all()
         for device in devices:
+            interval = device.poll_interval_seconds or settings.KNOWN_SCAN_INTERVAL
+            if not _due(_last_known_scan.get(device.id), interval):
+                continue
+            _last_known_scan[device.id] = datetime.now(timezone.utc)
             try:
                 is_online = await _rs485_driver.ping(device.modbus_address)
                 old_status = device.status
@@ -126,6 +145,7 @@ async def _scan_known_devices():
                     if readings_out:
                         await ws_manager.broadcast(ws_events.new_reading(device.id, readings_out))
                     await _check_alerts(db, device.id, None, readings_data)
+                    await _check_hardware_alarms(db, device, readings_data)
             except Exception as e:
                 logger.warning("Device %d scan error: %s", device.modbus_address, e)
 
@@ -319,6 +339,62 @@ async def _check_alerts(db: AsyncSession, device_id, sensor_id, readings: dict):
         logger.warning("Alert check error: %s", e)
 
 
+async def _check_hardware_alarms(db: AsyncSession, device: Device, readings: dict):
+    """Distinct from _check_alerts(): that's threshold rules the user
+    configured against parameter values. This reads the controller's own
+    reported alarm/status register - Etap 3.3 - and surfaces what the
+    device itself says is wrong (e.g. "E1: Awaria sondy B1"), alongside
+    the threshold alarms, not instead of them. Edge-triggered the same way:
+    logs once per code becoming active, once per code clearing, not every
+    scan cycle a steady alarm stays up."""
+    try:
+        profile = getattr(device, "profile", None)
+        if not profile or not profile.manufacturer:
+            return
+        alarm_register = next((r for r in profile.registers if r.is_alarm_register), None)
+        if not alarm_register or alarm_register.name not in readings:
+            return
+        driver_cls = get_driver(profile.manufacturer)
+        if not driver_cls:
+            return
+
+        raw_value = int(readings[alarm_register.name]["value"])
+        active_alarms = decode_active_alarms(driver_cls(), raw_value)
+        active_codes = {a.code for a in active_alarms}
+        previously_active = _active_hw_alarms.get(device.id, set())
+
+        newly_active = [a for a in active_alarms if a.code not in previously_active]
+        newly_resolved = previously_active - active_codes
+
+        for alarm in newly_active:
+            db.add(EventLog(
+                event_type="hardware_alarm_triggered",
+                device_id=device.id,
+                message=f"{device.name}: alarm sterownika {alarm.name} — {alarm.description}",
+            ))
+            await ws_manager.broadcast(ws_events.hardware_alarm(
+                device.id, device.name, alarm.code, alarm.name, alarm.description, alarm.severity, "active",
+            ))
+        if newly_resolved:
+            # Codes alone are enough to log/broadcast a clear message even
+            # though known_alarm_codes() would need a second lookup for
+            # the human-readable name - keep this path cheap.
+            db.add(EventLog(
+                event_type="hardware_alarm_resolved",
+                device_id=device.id,
+                message=f"{device.name}: alarm sterownika ustąpił (kod {sorted(newly_resolved)})",
+            ))
+            await ws_manager.broadcast(ws_events.hardware_alarm(
+                device.id, device.name, min(newly_resolved), "", "", "info", "resolved",
+            ))
+
+        if newly_active or newly_resolved:
+            await db.commit()
+        _active_hw_alarms[device.id] = active_codes
+    except Exception as e:
+        logger.warning("Hardware alarm check error device=%d: %s", device.id, e)
+
+
 async def _maybe_broadcast_stats():
     global _last_stats_broadcast
     if not _due(_last_stats_broadcast, 5):
@@ -329,3 +405,25 @@ async def _maybe_broadcast_stats():
         await ws_manager.broadcast(ws_events.system_stats(stats))
     except Exception as e:
         logger.warning("Stats broadcast error: %s", e)
+
+
+async def _maybe_prune_readings():
+    """Etap 3.4 (Raspberry Pi performance): readings accumulated to
+    hundreds of thousands of rows within hours of testing in this session.
+    Unbounded on a real deployment's SD card that fills the disk, not a
+    hypothetical concern. READINGS_RETENTION_DAYS=0 disables this."""
+    global _last_prune
+    if settings.READINGS_RETENTION_DAYS <= 0:
+        return
+    if not _due(_last_prune, settings.READINGS_PRUNE_INTERVAL_SECONDS):
+        return
+    _last_prune = datetime.now(timezone.utc)
+    cutoff = datetime.now(timezone.utc) - timedelta(days=settings.READINGS_RETENTION_DAYS)
+    async with AsyncSessionLocal() as db:
+        try:
+            result = await db.execute(delete(Reading).where(Reading.timestamp < cutoff))
+            await db.commit()
+            if result.rowcount:
+                logger.info("Usunięto %d starych odczytów (starszych niż %d dni)", result.rowcount, settings.READINGS_RETENTION_DAYS)
+        except Exception as e:
+            logger.warning("Readings prune error: %s", e)

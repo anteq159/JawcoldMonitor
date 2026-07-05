@@ -16,6 +16,7 @@ class Device(Base, TimestampMixin):
     parity: Mapped[str] = mapped_column(String(4), default="N")
     stopbits: Mapped[int] = mapped_column(Integer, default=1)
     timeout: Mapped[float] = mapped_column(Float, default=0.15)
+    poll_interval_seconds: Mapped[Optional[int]] = mapped_column(Integer)
     profile_id: Mapped[Optional[int]] = mapped_column(ForeignKey("device_profiles.id"))
     status: Mapped[str] = mapped_column(String(16), default="unknown")
     recognition_status: Mapped[str] = mapped_column(String(16), default="recognized")

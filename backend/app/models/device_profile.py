@@ -33,5 +33,6 @@ class RegisterDefinition(Base):
     data_type: Mapped[str] = mapped_column(String(16), default="uint16")
     scale_factor: Mapped[float] = mapped_column(Float, default=1.0)
     writable: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_alarm_register: Mapped[bool] = mapped_column(Boolean, default=False)
 
     profile: Mapped[DeviceProfile] = relationship("DeviceProfile", back_populates="registers")

@@ -117,7 +117,10 @@ async def write_register(
         raise HTTPException(status_code=503, detail="Sterownik komunikacji RS485 nie jest zainicjalizowany")
 
     try:
-        await driver.write_register(device.modbus_address, body.name, body.value)
+        await driver.write_register(
+            device.modbus_address, register.address, body.name, body.value,
+            data_type=register.data_type, scale_factor=register.scale_factor,
+        )
     except NotImplementedError as e:
         raise HTTPException(status_code=501, detail=str(e))
     except Exception as e:

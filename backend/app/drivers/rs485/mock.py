@@ -114,8 +114,16 @@ class MockRS485Driver(AbstractRS485Driver):
                 found.append(addr)
         return found
 
-    async def write_register(self, address: int, register_name: str, value: float) -> None:
-        set_override(address, register_name, value)
+    async def write_register(
+        self,
+        modbus_address: int,
+        register_address: int,
+        register_name: str,
+        value: float,
+        data_type: str = "uint16",
+        scale_factor: float = 1.0,
+    ) -> None:
+        set_override(modbus_address, register_name, value)
 
     def get_mock_device_info(self, address: int) -> dict:
         return MOCK_DEVICES.get(address, {})

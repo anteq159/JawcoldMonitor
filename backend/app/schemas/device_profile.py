@@ -23,6 +23,7 @@ class RegisterDefinitionIn(BaseModel):
     data_type: str = "uint16"
     scale_factor: float = 1.0
     writable: bool = False
+    is_alarm_register: bool = False
 
 
 class DeviceProfileOut(BaseModel):

@@ -18,6 +18,12 @@ class Settings(BaseSettings):
     DALLAS_SCAN_INTERVAL: int = 30
     PROFILE_REMOTE_URL: str = ""
     ALLOWED_ORIGINS: str = "http://localhost:823"
+    # Etap 3.4 (Raspberry Pi performance): readings accumulated to millions
+    # of rows within hours of testing in this session - unbounded on a
+    # real deployment's SD card that's a real problem, not a hypothetical
+    # one. 0 disables pruning entirely.
+    READINGS_RETENTION_DAYS: int = 90
+    READINGS_PRUNE_INTERVAL_SECONDS: int = 3600
 
     @property
     def rs485_port_list(self) -> List[str]:

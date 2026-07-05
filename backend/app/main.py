@@ -126,6 +126,7 @@ async def _init_manufacturer_profiles():
                     data_type=r.data_type,
                     scale_factor=r.scale_factor,
                     writable=r.writable,
+                    is_alarm_register=r.is_alarm_register,
                 )
                 for r in driver.default_register_map()
             ]

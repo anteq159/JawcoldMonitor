@@ -25,7 +25,7 @@ class EliwellDriver(AbstractControllerDriver):
             RegisterMapEntry(address=31, name="Odszranianie", data_type="uint16"),
             RegisterMapEntry(address=32, name="Wentylator", data_type="uint16"),
             RegisterMapEntry(address=33, name="Alarm drzwi", data_type="uint16"),
-            RegisterMapEntry(address=40, name="Kod alarmu", data_type="uint16"),
+            RegisterMapEntry(address=40, name="Kod alarmu", data_type="uint16", is_alarm_register=True),
         ]
 
     def identify(self, model_hint: Optional[str] = None) -> ControllerModel:
@@ -58,4 +58,7 @@ class EliwellDriver(AbstractControllerDriver):
             "Odszranianie": {"value": 0, "unit": ""},
             "Wentylator": {"value": 1, "unit": ""},
             "Alarm drzwi": {"value": 0, "unit": ""},
+            # 0 = no active alarm. Was never simulated before; see
+            # decode_active_alarms().
+            "Kod alarmu": {"value": 0, "unit": ""},
         }

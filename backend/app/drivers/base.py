@@ -15,6 +15,7 @@ class RegisterMapEntry:
     data_type: str = "uint16"
     scale_factor: float = 1.0
     writable: bool = False
+    is_alarm_register: bool = False
 
 
 @dataclass
@@ -72,6 +73,32 @@ class AbstractControllerDriver(ABC):
         ...
 
 
+def _is_bitmask_style(codes: List[AlarmDescription]) -> bool:
+    """True if every declared code is a power of two - i.e. the register is
+    a bitmask where several alarms can be active at once (Carel/Carel MPX:
+    1, 2, 4, 8, 16...), as opposed to a single small integer status code
+    (Danfoss/Eliwell: 1, 2, 3, 4, 5...) where only one applies at a time."""
+    return all(c.code > 0 and (c.code & (c.code - 1)) == 0 for c in codes)
+
+
+def decode_active_alarms(driver: "AbstractControllerDriver", raw_value: int) -> List[AlarmDescription]:
+    """Decode a controller's raw alarm/status register into whichever
+    known alarms are actually active. Handles both conventions used across
+    the four manufacturer drivers rather than assuming one: a bitmask
+    register can have several simultaneous alarms (a plain equality check
+    against known_alarm_codes() would report an unknown code the moment
+    two bits are set together), a sequential-code register has at most
+    one. Zero always means no active alarm."""
+    if raw_value == 0:
+        return []
+    codes = driver.known_alarm_codes()
+    if _is_bitmask_style(codes):
+        matches = [c for c in codes if (c.code & raw_value) == c.code]
+        if matches:
+            return matches
+    return [driver.decode_alarm(raw_value)]
+
+
 class AbstractRS485Driver(ABC):
     @abstractmethod
     async def ping(self, address: int) -> bool: ...
@@ -83,9 +110,21 @@ class AbstractRS485Driver(ABC):
     async def scan_range(self, start: int, end: int, known_addresses: set) -> List[int]: ...
 
     @abstractmethod
-    async def write_register(self, address: int, register_name: str, value: float) -> None:
-        """Write a new value to a writable register (e.g. a setpoint). Raise
-        on failure - callers treat a normal return as success."""
+    async def write_register(
+        self,
+        modbus_address: int,
+        register_address: int,
+        register_name: str,
+        value: float,
+        data_type: str = "uint16",
+        scale_factor: float = 1.0,
+    ) -> None:
+        """Write a new value to a writable register (e.g. a setpoint).
+        register_address/data_type/scale_factor are the register's own
+        metadata (from its DeviceProfile entry) - a real driver needs them
+        to encode the value correctly; the mock driver ignores them and
+        keys purely off register_name. Raise on failure - callers treat a
+        normal return as success."""
         ...
 
     async def close(self) -> None:
