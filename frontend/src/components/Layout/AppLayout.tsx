@@ -69,7 +69,12 @@ export function AppLayout() {
       <div className="flex flex-col flex-1 min-w-0">
         <Header onMenuClick={() => setSidebarOpen(true)} title={title} />
         <main className="flex-1 overflow-y-auto p-4 md:p-6">
-          <Outlet />
+          {/* key on pathname re-mounts the wrapper per navigation so the
+              entrance animation plays on every page change, not only the
+              first layout mount */}
+          <div key={location.pathname} className="animate-page-in">
+            <Outlet />
+          </div>
         </main>
       </div>
 

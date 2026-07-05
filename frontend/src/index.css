@@ -60,3 +60,14 @@
     @apply w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-ink placeholder-ink-muted/70 focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/15 transition-colors;
   }
 }
+
+/* Entrance animations (animate-page-in / animate-modal-in / animate-overlay-in)
+   are decorative - for users who ask the OS to minimize motion, skip them
+   entirely rather than shortening them. */
+@media (prefers-reduced-motion: reduce) {
+  .animate-page-in,
+  .animate-modal-in,
+  .animate-overlay-in {
+    animation: none;
+  }
+}

@@ -47,6 +47,25 @@ export default {
       boxShadow: {
         panel: '0 1px 2px rgba(27,38,36,0.04), 0 1px 1px rgba(27,38,36,0.03)',
       },
+      keyframes: {
+        'page-in': {
+          from: { opacity: '0', transform: 'translateY(6px)' },
+          to: { opacity: '1', transform: 'translateY(0)' },
+        },
+        'modal-in': {
+          from: { opacity: '0', transform: 'scale(0.96)' },
+          to: { opacity: '1', transform: 'scale(1)' },
+        },
+        'overlay-in': {
+          from: { opacity: '0' },
+          to: { opacity: '1' },
+        },
+      },
+      animation: {
+        'page-in': 'page-in 0.25s ease-out',
+        'modal-in': 'modal-in 0.18s ease-out',
+        'overlay-in': 'overlay-in 0.15s ease-out',
+      },
     },
   },
   plugins: [],

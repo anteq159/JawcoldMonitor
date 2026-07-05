@@ -37,8 +37,8 @@ export function SetupWizard() {
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-ink/50 p-4">
-      <div className="bg-surface border border-border rounded-xl shadow-xl w-full max-w-lg overflow-hidden">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-ink/50 p-4 animate-overlay-in">
+      <div className="bg-surface border border-border rounded-xl shadow-xl w-full max-w-lg overflow-hidden animate-modal-in">
         <div className="flex items-center gap-2 px-6 py-4 border-b border-border">
           <Snowflake size={18} className="text-accent" strokeWidth={2.25} />
           <span className="font-semibold text-ink text-sm">Kreator pierwszej konfiguracji</span>

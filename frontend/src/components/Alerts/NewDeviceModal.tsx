@@ -11,8 +11,8 @@ export function NewDeviceModal() {
   const device = newDeviceCandidate
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4">
-      <div role="dialog" aria-modal="true" className="bg-surface border border-border rounded-xl p-6 w-full max-w-md shadow-xl">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4 animate-overlay-in">
+      <div role="dialog" aria-modal="true" className="bg-surface border border-border rounded-xl p-6 w-full max-w-md shadow-xl animate-modal-in">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-accent-soft rounded-lg">
