@@ -4,6 +4,7 @@ import { Upload, Trash2, MapPin, X, Save, Plus } from 'lucide-react'
 import { getMaps, uploadMap, savePositions, deleteMap, getMapFileBlobUrl, MAX_MAP_PIN_PARAMS, type FloorMap, type MapPosition } from '../api/maps'
 import { getDevices } from '../api/devices'
 import { useDeviceStore } from '../store/devices'
+import { useAuthStore } from '../store/auth'
 import { DeviceStatusBadge } from '../components/Devices/DeviceStatusBadge'
 import { Modal } from '../components/UI/Modal'
 import { ConfirmDialog } from '../components/UI/ConfirmDialog'
@@ -14,11 +15,12 @@ import type { Device } from '../types/device'
 
 export default function Map() {
   const [searchParams] = useSearchParams()
+  const canConfigure = useAuthStore((s) => s.can('config:write'))
   const [maps, setMaps] = useState<FloorMap[]>([])
   const [devices, setDevices] = useState<Device[]>([])
   const [activeMap, setActiveMap] = useState<FloorMap | null>(null)
   const [loading, setLoading] = useState(true)
-  const [showUpload, setShowUpload] = useState(searchParams.get('upload') === '1')
+  const [showUpload, setShowUpload] = useState(searchParams.get('upload') === '1' && useAuthStore.getState().can('config:write'))
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
 
   const load = async () => {
@@ -51,10 +53,12 @@ export default function Map() {
             </button>
           ))}
         </div>
-        <button onClick={() => setShowUpload(true)}
-          className="flex items-center gap-2 bg-accent hover:bg-accent-strong text-white text-sm px-4 py-2 rounded-lg shrink-0">
-          <Plus size={14} /> Wgraj mapę
-        </button>
+        {canConfigure && (
+          <button onClick={() => setShowUpload(true)}
+            className="flex items-center gap-2 bg-accent hover:bg-accent-strong text-white text-sm px-4 py-2 rounded-lg shrink-0">
+            <Plus size={14} /> Wgraj mapę
+          </button>
+        )}
       </div>
 
       {!activeMap ? (
@@ -62,11 +66,11 @@ export default function Map() {
           <EmptyState
             icon={<Upload size={40} />}
             message="Brak map. Wgraj rzut kondygnacji lub schemat instalacji."
-            action={
+            action={canConfigure ? (
               <button onClick={() => setShowUpload(true)} className="bg-accent hover:bg-accent-strong text-white text-sm px-6 py-2 rounded-lg transition-colors">
                 Wgraj pierwszą mapę
               </button>
-            }
+            ) : undefined}
           />
         </div>
       ) : (
@@ -103,6 +107,7 @@ function MapEditor({ floorMap, devices, onDelete, onSaved }: {
   const imgRef = useRef<HTMLImageElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const liveReadings = useDeviceStore(s => s.liveReadings)
+  const canEdit = useAuthStore((s) => s.can('config:write'))
 
   const [imgSrc, setImgSrc] = useState<string | null>(null)
   const [imgError, setImgError] = useState(false)
@@ -204,7 +209,7 @@ function MapEditor({ floorMap, devices, onDelete, onSaved }: {
                 Anuluj
               </button>
             </>
-          ) : (
+          ) : canEdit ? (
             <>
               <button onClick={() => setEditMode(true)}
                 className="flex items-center gap-1.5 text-xs text-ink-muted hover:text-ink border border-border px-3 py-1.5 rounded-lg transition-colors">
@@ -214,7 +219,7 @@ function MapEditor({ floorMap, devices, onDelete, onSaved }: {
                 <Trash2 size={14} />
               </button>
             </>
-          )}
+          ) : null}
         </div>
       </div>
 

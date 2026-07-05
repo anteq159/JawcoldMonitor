@@ -1,10 +1,11 @@
 import { useEffect, useRef } from 'react'
 import { useDeviceStore } from '../store/devices'
+import { useAuthStore } from '../store/auth'
 import type { WSMessage } from '../types/websocket'
 import toast from 'react-hot-toast'
 import { notifyIfHidden } from '../utils/notifications'
 
-const WS_URL = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`
+const WS_BASE = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`
 
 export function useWebSocket() {
   const wsRef = useRef<WebSocket | null>(null)
@@ -22,7 +23,12 @@ export function useWebSocket() {
       if (stopped || wsRef.current?.readyState === WebSocket.OPEN) return
 
       useDeviceStore.getState().setWsStatus('connecting')
-      const ws = new WebSocket(WS_URL)
+      // Token read at connect time (not module load) so each reconnect
+      // carries the current access token - the backend validates it on
+      // the handshake since the stream carries the same data the REST
+      // API guards behind a login.
+      const token = useAuthStore.getState().accessToken ?? ''
+      const ws = new WebSocket(`${WS_BASE}?token=${encodeURIComponent(token)}`)
       wsRef.current = ws
 
       ws.onopen = () => {

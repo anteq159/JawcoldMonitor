@@ -8,6 +8,7 @@ import { downloadReadings, downloadAlerts } from '../api/export'
 import { downloadBackup, restoreBackup } from '../api/backup'
 import { getUpdateInfo, uploadUpdate, rollbackUpdate, getServicesStatus, type UpdateInfo } from '../api/system'
 import { useDeviceStore } from '../store/devices'
+import { useAuthStore } from '../store/auth'
 import { isNotificationSupported, getNotificationPermission, requestNotificationPermission } from '../utils/notifications'
 
 const FORMATS = [
@@ -20,14 +21,16 @@ const RANGES = ['1h', '6h', '24h', '7d', '30d']
 
 export default function Settings() {
   const setWizardOpen = useDeviceStore((s) => s.setWizardOpen)
+  const canExport = useAuthStore((s) => s.can('export:any'))
+  const isAdmin = useAuthStore((s) => s.isAdmin())
 
   return (
     <div className="space-y-6 max-w-2xl">
       <NotificationsSection />
-      <ExportCard title="Eksport odczytów" download={downloadReadings} />
-      <ExportCard title="Eksport alarmów" download={downloadAlerts} />
-      <BackupSection />
-      <UpdatesSection />
+      {canExport && <ExportCard title="Eksport odczytów" download={downloadReadings} />}
+      {canExport && <ExportCard title="Eksport alarmów" download={downloadAlerts} />}
+      {isAdmin && <BackupSection />}
+      {isAdmin && <UpdatesSection />}
 
       <Card title="Informacje o systemie">
         <div className="p-5 space-y-3 text-sm text-ink-muted">

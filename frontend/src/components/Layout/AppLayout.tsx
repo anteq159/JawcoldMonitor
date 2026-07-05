@@ -7,7 +7,9 @@ import { useWebSocket } from '../../hooks/useWebSocket'
 import { NewDeviceModal } from '../Alerts/NewDeviceModal'
 import { SetupWizard, isWizardCompleted } from '../Wizard/SetupWizard'
 import { getFavorites, getFavoriteParameters } from '../../api/favorites'
+import { getMe } from '../../api/auth'
 import { useDeviceStore } from '../../store/devices'
+import { useAuthStore } from '../../store/auth'
 
 const TITLES: Record<string, string> = {
   '/': 'Dashboard',
@@ -33,6 +35,12 @@ export function AppLayout() {
   useWebSocket()
 
   useEffect(() => {
+    // Refresh the stored user on every app load: the persisted copy in
+    // localStorage predates permission changes an admin may have made
+    // (or the permissions field itself, for sessions from before it was
+    // exposed) - without this, permission-gated UI would stay wrong
+    // until the next manual re-login.
+    getMe().then((u) => useAuthStore.getState().setUser(u)).catch(() => {})
     getFavorites().then((favs) => setFavoriteIds(new Set(favs.map((f) => f.device_id)))).catch(() => {})
     getFavoriteParameters().then((favs) => setFavoriteParameters(
       favs.map((f) => ({

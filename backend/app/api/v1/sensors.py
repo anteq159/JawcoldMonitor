@@ -7,7 +7,7 @@ from app.core.database import get_db
 from app.models.sensor import Sensor
 from app.models.user import User
 from app.schemas.sensor import SensorOut, SensorUpdate
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, require_permission
 
 router = APIRouter(prefix="/sensors", tags=["sensors"])
 
@@ -39,7 +39,10 @@ async def update_sensor(
     sensor_id: int,
     body: SensorUpdate,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    # device:write, not just login: calibration_offset shifts every
+    # recorded temperature from this sensor - a read-only Viewer must not
+    # be able to alter measurement data.
+    _: User = Depends(require_permission("device:write")),
 ):
     result = await db.execute(select(Sensor).where(Sensor.id == sensor_id))
     sensor = result.scalar_one_or_none()

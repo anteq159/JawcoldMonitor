@@ -20,7 +20,7 @@ async def list_users(
     _: User = Depends(require_role("Admin")),
 ):
     result = await db.execute(
-        select(User).options(selectinload(User.roles)).order_by(User.username)
+        select(User).options(selectinload(User.roles).selectinload(Role.permissions)).order_by(User.username)
     )
     return result.scalars().all()
 
@@ -57,7 +57,7 @@ async def create_user(
     )
     await db.commit()
     result = await db.execute(
-        select(User).options(selectinload(User.roles)).where(User.id == user.id)
+        select(User).options(selectinload(User.roles).selectinload(Role.permissions)).where(User.id == user.id)
     )
     return result.scalar_one()
 
@@ -71,7 +71,7 @@ async def update_user(
     current_user: User = Depends(require_role("Admin")),
 ):
     result = await db.execute(
-        select(User).options(selectinload(User.roles)).where(User.id == user_id)
+        select(User).options(selectinload(User.roles).selectinload(Role.permissions)).where(User.id == user_id)
     )
     user = result.scalar_one_or_none()
     if not user:
@@ -96,7 +96,7 @@ async def update_user(
     )
     await db.commit()
     result = await db.execute(
-        select(User).options(selectinload(User.roles)).where(User.id == user_id)
+        select(User).options(selectinload(User.roles).selectinload(Role.permissions)).where(User.id == user_id)
     )
     return result.scalar_one()
 

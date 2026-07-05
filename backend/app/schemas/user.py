@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Optional, List
 from pydantic import BaseModel
 
-from app.schemas.role import RoleOut
+from app.schemas.role import RoleWithPermissionsOut
 
 
 class UserOut(BaseModel):
@@ -13,7 +13,10 @@ class UserOut(BaseModel):
     must_change_password: bool
     created_at: datetime
     last_login: Optional[datetime] = None
-    roles: List[RoleOut] = []
+    # Roles WITH their permissions so the frontend can hide actions the
+    # user can't perform (the backend still enforces everything; this is
+    # UX, not the security boundary).
+    roles: List[RoleWithPermissionsOut] = []
 
     model_config = {"from_attributes": True}
 

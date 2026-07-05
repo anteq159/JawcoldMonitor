@@ -13,7 +13,7 @@ from app.core.database import get_db
 from app.models.reading import Reading
 from app.models.alert import AlertEvent
 from app.models.user import User
-from app.api.deps import get_current_user
+from app.api.deps import require_permission
 from app.services.report_export import build_xlsx, build_pdf
 
 router = APIRouter(prefix="/export", tags=["export"])
@@ -44,7 +44,7 @@ async def export_readings(
     sensor_id: Optional[int] = None,
     range: str = Query("24h", pattern="^(1h|6h|24h|7d|30d)$"),
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_permission("export:any")),
 ):
     since = datetime.now(timezone.utc) - RANGE_MAP[range]
     q = select(Reading).where(Reading.timestamp >= since).order_by(Reading.timestamp)
@@ -111,7 +111,7 @@ async def export_alerts(
     unacknowledged_only: bool = Query(False),
     range: str = Query("24h", pattern="^(1h|6h|24h|7d|30d)$"),
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_permission("export:any")),
 ):
     since = datetime.now(timezone.utc) - RANGE_MAP[range]
     q = select(AlertEvent).where(AlertEvent.timestamp >= since).order_by(AlertEvent.timestamp.desc())

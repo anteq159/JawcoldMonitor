@@ -99,7 +99,10 @@ async def list_events(
 @router.post("/events/{event_id}/acknowledge")
 async def acknowledge_event(
     event_id: int,
-    current_user: User = Depends(get_current_user),
+    # Acknowledging silences an active alarm for everyone - an operator
+    # action (alert:acknowledge), lighter than rule management but not
+    # something a read-only Viewer should be able to do.
+    current_user: User = Depends(require_permission("alert:acknowledge")),
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(select(AlertEvent).where(AlertEvent.id == event_id))

@@ -8,7 +8,7 @@ from app.models.log import EventLog
 from app.models.audit import AuditLog
 from app.models.user import User
 from app.schemas.log import EventLogOut, AuditLogOut
-from app.api.deps import get_current_user
+from app.api.deps import require_permission
 
 router = APIRouter(prefix="/logs", tags=["logs"])
 
@@ -19,7 +19,7 @@ async def list_event_logs(
     device_id: Optional[int] = None,
     limit: int = Query(100, le=1000),
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_permission("log:read")),
 ):
     q = select(EventLog).order_by(EventLog.timestamp.desc()).limit(limit)
     if event_type:
@@ -34,7 +34,10 @@ async def list_event_logs(
 async def list_audit_logs(
     limit: int = Query(100, le=1000),
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    # The audit trail records who did what (logins, account changes) -
+    # user-administration territory, not operational logs, hence
+    # user:manage rather than log:read.
+    _: User = Depends(require_permission("user:manage")),
 ):
     result = await db.execute(
         select(AuditLog).order_by(AuditLog.timestamp.desc()).limit(limit)

@@ -13,7 +13,7 @@ from slowapi.errors import RateLimitExceeded
 from app.core.config import settings
 from app.core.database import init_db, AsyncSessionLocal
 from app.core.redis import init_redis, close_redis, get_redis
-from app.core.security import hash_password
+from app.core.security import hash_password, decode_token
 from app.core.limiter import limiter
 from app.core.diagnostics import install_handler as install_diagnostics_handler
 from app.models.user import User, Role, Permission, role_permissions, user_roles
@@ -30,13 +30,21 @@ DEFAULT_PERMISSIONS = [
     ("device:write", "Zapis urządzeń"),
     ("user:manage", "Zarządzanie użytkownikami"),
     ("alert:manage", "Zarządzanie alertami"),
+    ("alert:acknowledge", "Potwierdzanie alarmów"),
     ("log:read", "Odczyt logów"),
     ("config:write", "Zapis konfiguracji"),
     ("export:any", "Eksport danych"),
 ]
 
+# Seeded on every boot; the permission sets of the roles listed here are
+# RESET to these values at startup (custom roles created in the Roles page
+# are untouched). Serwisant is the middle tier a real deployment needs:
+# day-to-day operations (device management, register writes, alarm
+# handling, exports) without administration (users, backup/restore,
+# updates, profile/map configuration).
 DEFAULT_ROLES = {
     "Admin": [p[0] for p in DEFAULT_PERMISSIONS],
+    "Serwisant": ["device:read", "device:write", "alert:manage", "alert:acknowledge", "log:read", "export:any"],
     "Viewer": ["device:read", "log:read"],
 }
 
@@ -261,7 +269,25 @@ app.include_router(api_router)
 
 
 @app.websocket("/ws")
-async def websocket_endpoint(ws: WebSocket):
+async def websocket_endpoint(ws: WebSocket, token: str = Query(None)):
+    # The WS stream carries everything the REST API guards behind a login
+    # (live readings, device names, alarm broadcasts, system stats), so it
+    # requires the same JWT. Query param instead of a header because the
+    # browser WebSocket API cannot set custom headers. Validated once at
+    # connect; a token expiring mid-connection keeps the stream (same as a
+    # long-lived HTTP response), and the client re-authenticates on its
+    # next reconnect.
+    payload = decode_token(token) if token else None
+    if not payload or payload.get("type") != "access":
+        await ws.close(code=4401)
+        return
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(select(User).where(User.id == int(payload.get("sub", 0))))
+        user = result.scalar_one_or_none()
+        if not user or not user.is_active:
+            await ws.close(code=4401)
+            return
+
     client_id = str(uuid.uuid4())
     await ws_manager.connect(client_id, ws)
     try:

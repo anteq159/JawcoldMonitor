@@ -3,6 +3,7 @@ import { Thermometer, Pencil, Check, X, SlidersHorizontal, Star } from 'lucide-r
 import { getSensors, updateSensor } from '../api/sensors'
 import { getSensorReadings } from '../api/readings'
 import { useDeviceStore } from '../store/devices'
+import { useAuthStore } from '../store/auth'
 import { useFavoriteParameters } from '../hooks/useFavoriteParameters'
 import { DeviceStatusBadge } from '../components/Devices/DeviceStatusBadge'
 import { TimeSeriesChart } from '../components/Charts/TimeSeriesChart'
@@ -107,6 +108,7 @@ function SensorCard({ sensor, live, selected, favorite, onSelect, onRename, onCa
   onCalibrate: () => void
   onToggleFavorite: () => void
 }) {
+  const canWrite = useAuthStore((s) => s.can('device:write'))
   const [editing, setEditing] = useState(false)
   const [nameInput, setNameInput] = useState(sensor.name)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -155,9 +157,11 @@ function SensorCard({ sensor, live, selected, favorite, onSelect, onRename, onCa
             ) : (
               <div className="flex items-center gap-1.5 group/name">
                 <p className="text-sm font-medium text-ink truncate">{sensor.name}</p>
-                <button onClick={startEdit} className="opacity-0 group-hover/name:opacity-100 text-ink-muted hover:text-ink-body transition-opacity shrink-0">
-                  <Pencil size={12} />
-                </button>
+                {canWrite && (
+                  <button onClick={startEdit} className="opacity-0 group-hover/name:opacity-100 text-ink-muted hover:text-ink-body transition-opacity shrink-0">
+                    <Pencil size={12} />
+                  </button>
+                )}
               </div>
             )}
             <p className="text-xs text-ink-muted font-mono">{sensor.rom_id}</p>
@@ -171,13 +175,15 @@ function SensorCard({ sensor, live, selected, favorite, onSelect, onRename, onCa
           >
             <Star size={14} fill={favorite ? 'currentColor' : 'none'} />
           </button>
-          <button
-            onClick={(e) => { e.stopPropagation(); onCalibrate() }}
-            className="text-ink-muted hover:text-accent transition-colors p-0.5"
-            title="Kalibracja"
-          >
-            <SlidersHorizontal size={14} />
-          </button>
+          {canWrite && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onCalibrate() }}
+              className="text-ink-muted hover:text-accent transition-colors p-0.5"
+              title="Kalibracja"
+            >
+              <SlidersHorizontal size={14} />
+            </button>
+          )}
           <DeviceStatusBadge status={sensor.status} />
         </div>
       </div>

@@ -11,6 +11,7 @@ interface AuthState {
   setUser: (user: User) => void
   logout: () => void
   isAdmin: () => boolean
+  can: (permission: string) => boolean
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -24,6 +25,16 @@ export const useAuthStore = create<AuthState>()(
       setUser: (user) => set({ user }),
       logout: () => set({ user: null, accessToken: null, refreshToken: null }),
       isAdmin: () => get().user?.roles.some((r) => r.name === 'Admin') ?? false,
+      // UI-side mirror of the backend's require_permission: hides actions
+      // the API would reject anyway. Admin passes everything, same as the
+      // backend's has_role("Admin") shortcut. The backend remains the
+      // security boundary - this is UX.
+      can: (permission) => {
+        const user = get().user
+        if (!user) return false
+        if (user.roles.some((r) => r.name === 'Admin')) return true
+        return user.roles.some((r) => r.permissions?.some((p) => p.name === permission) ?? false)
+      },
     }),
     { name: 'jawcold-auth' }
   )

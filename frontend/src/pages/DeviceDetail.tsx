@@ -16,6 +16,7 @@ import { UnrecognizedDeviceBanner } from '../components/Devices/UnrecognizedDevi
 import { Card } from '../components/UI/Card'
 import { PageSpinner } from '../components/UI/Spinner'
 import { useDeviceStore } from '../store/devices'
+import { useAuthStore } from '../store/auth'
 import toast from 'react-hot-toast'
 
 type Range = '1h' | '6h' | '24h' | '7d' | '30d'
@@ -38,6 +39,7 @@ export default function DeviceDetail() {
   const [savingInterval, setSavingInterval] = useState(false)
 
   const updateDeviceInStore = useDeviceStore(s => s.updateDeviceStatus)
+  const canWrite = useAuthStore((s) => s.can('device:write'))
 
   const loadDevice = () => {
     return getDevice(deviceId).then(d => {
@@ -130,9 +132,11 @@ export default function DeviceDetail() {
           ) : (
             <div className="flex items-center gap-2">
               <h2 className="text-xl font-bold text-ink truncate">{device.name}</h2>
-              <button onClick={startEdit} className="text-ink-muted hover:text-accent transition-colors shrink-0" title="Zmień nazwę">
-                <Pencil size={14} />
-              </button>
+              {canWrite && (
+                <button onClick={startEdit} className="text-ink-muted hover:text-accent transition-colors shrink-0" title="Zmień nazwę">
+                  <Pencil size={14} />
+                </button>
+              )}
             </div>
           )}
           <div className="flex items-center gap-2 mt-1 flex-wrap">
@@ -156,9 +160,9 @@ export default function DeviceDetail() {
               </div>
             ) : (
               <button
-                onClick={startEditInterval}
-                className="flex items-center gap-1 text-xs text-ink-muted hover:text-accent transition-colors"
-                title="Zmień interwał odpytywania tego urządzenia"
+                onClick={canWrite ? startEditInterval : undefined}
+                className={`flex items-center gap-1 text-xs text-ink-muted transition-colors ${canWrite ? 'hover:text-accent' : 'cursor-default'}`}
+                title={canWrite ? 'Zmień interwał odpytywania tego urządzenia' : undefined}
               >
                 <Timer size={11} />
                 {device.poll_interval_seconds != null ? `co ${device.poll_interval_seconds}s` : 'domyślny interwał'}

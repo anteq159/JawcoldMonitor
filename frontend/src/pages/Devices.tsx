@@ -6,6 +6,7 @@ import { getDevices, createDevice, deleteDevice, discoverDevices, type Discovere
 import { getSerialPorts } from '../api/system'
 import { getDeviceProfiles, type DeviceProfileDetail } from '../api/deviceProfiles'
 import { useDeviceStore } from '../store/devices'
+import { useAuthStore } from '../store/auth'
 import { DeviceStatusBadge } from '../components/Devices/DeviceStatusBadge'
 import { FavoriteToggle } from '../components/Devices/FavoriteToggle'
 import { ManufacturerBadge } from '../components/Devices/ManufacturerBadge'
@@ -25,9 +26,10 @@ interface Prefill {
 
 export default function Devices() {
   const { devices, setDevices } = useDeviceStore()
+  const canWrite = useAuthStore((s) => s.can('device:write'))
   const [loading, setLoading] = useState(devices.length === 0)
   const [searchParams] = useSearchParams()
-  const [tab, setTab] = useState<Tab>(searchParams.get('tab') === 'add' ? 'add' : 'list')
+  const [tab, setTab] = useState<Tab>(searchParams.get('tab') === 'add' && canWrite ? 'add' : 'list')
   const [prefill, setPrefill] = useState<Prefill | null>(null)
 
   const refresh = async () => {
@@ -46,10 +48,12 @@ export default function Devices() {
           <TabBtn active={tab === 'list'} onClick={() => setTab('list')}>
             Lista urządzeń ({devices.length})
           </TabBtn>
-          <TabBtn active={tab === 'add'} onClick={() => setTab('add')}>
-            <Plus size={13} className="inline mr-1" />
-            Dodaj urządzenie
-          </TabBtn>
+          {canWrite && (
+            <TabBtn active={tab === 'add'} onClick={() => setTab('add')}>
+              <Plus size={13} className="inline mr-1" />
+              Dodaj urządzenie
+            </TabBtn>
+          )}
         </div>
         {tab === 'list' && (
           <button onClick={refresh} className="p-2 text-ink-muted hover:text-ink hover:bg-surface-2 rounded-lg transition-colors" title="Odśwież">
@@ -72,7 +76,7 @@ export default function Devices() {
         </div>
       )}
 
-      {tab === 'add' && (
+      {tab === 'add' && canWrite && (
         <div className="space-y-4">
           <DiscoveredDevicesSection
             knownAddresses={devices.map((d) => d.modbus_address)}
@@ -102,6 +106,7 @@ function TabBtn({ active, onClick, children }: { active: boolean; onClick: () =>
 
 function DeviceCard({ device, onDeleted }: { device: Device; onDeleted: () => void }) {
   const liveReadings = useDeviceStore((s) => s.liveReadings[device.id] || {})
+  const canWrite = useAuthStore((s) => s.can('device:write'))
   const firstReading = Object.entries(liveReadings)[0]
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -124,7 +129,7 @@ function DeviceCard({ device, onDeleted }: { device: Device; onDeleted: () => vo
       <Link to={`/devices/${device.id}`} className="bg-surface border border-border rounded-xl shadow-panel p-5 hover:border-border-strong transition-colors block">
         <div className="flex items-start justify-between mb-3">
           <div className="min-w-0">
-            <h3 className="font-medium text-ink truncate pr-5">{device.name}</h3>
+            <h3 className="font-medium text-ink truncate">{device.name}</h3>
             <p className="text-xs text-ink-muted mt-0.5">Adres {device.modbus_address} · {device.port}</p>
             <div className="mt-1.5 flex items-center gap-1.5">
               <ManufacturerBadge profile={device.profile} />
@@ -148,14 +153,16 @@ function DeviceCard({ device, onDeleted }: { device: Device; onDeleted: () => vo
           <p className="text-xs text-ink-muted mt-2">Brak odczytów</p>
         )}
       </Link>
-      <button
-        onClick={(e) => { e.preventDefault(); e.stopPropagation(); setConfirmOpen(true) }}
-        disabled={deleting}
-        title="Usuń urządzenie"
-        className="absolute top-4 right-4 p-1 text-ink-muted/0 group-hover:text-ink-muted hover:!text-crit transition-colors disabled:opacity-50"
-      >
-        <Trash2 size={15} />
-      </button>
+      {canWrite && (
+        <button
+          onClick={(e) => { e.preventDefault(); e.stopPropagation(); setConfirmOpen(true) }}
+          disabled={deleting}
+          title="Usuń urządzenie"
+          className="absolute bottom-4 right-4 p-1 text-ink-muted/0 group-hover:text-ink-muted hover:!text-crit transition-colors disabled:opacity-50"
+        >
+          <Trash2 size={15} />
+        </button>
+      )}
       <ConfirmDialog
         open={confirmOpen}
         title="Usuń urządzenie"

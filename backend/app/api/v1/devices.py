@@ -40,7 +40,9 @@ async def list_devices(
 @router.get("/discover", response_model=List[DiscoveredDeviceOut])
 async def discover_devices(
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    # device:write, not just login: this triggers active scan traffic on
+    # the RS485 bus and only exists as part of the add-device flow.
+    _: User = Depends(require_permission("device:write")),
 ):
     """On-demand bus scan for the "Dodaj urządzenie" tab - distinct from
     the background scanner's automatic discovery (services/scanner.py

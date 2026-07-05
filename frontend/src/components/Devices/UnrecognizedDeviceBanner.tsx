@@ -4,6 +4,7 @@ import { AlertTriangle, Search, Settings2, Link2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { lookupManufacturer, updateDevice } from '../../api/devices'
 import { getDeviceProfiles, type DeviceProfileDetail } from '../../api/deviceProfiles'
+import { useAuthStore } from '../../store/auth'
 import type { Device } from '../../types/device'
 
 interface Props {
@@ -12,6 +13,7 @@ interface Props {
 }
 
 export function UnrecognizedDeviceBanner({ device, onResolved }: Props) {
+  const canWrite = useAuthStore((s) => s.can('device:write'))
   const [looking, setLooking] = useState(false)
   const [result, setResult] = useState<string | null>(null)
   const [profiles, setProfiles] = useState<DeviceProfileDetail[]>([])
@@ -64,25 +66,27 @@ export function UnrecognizedDeviceBanner({ device, onResolved }: Props) {
             <p className="text-sm text-ink-body mt-3 bg-surface border border-border rounded-lg p-3">{result}</p>
           )}
 
-          <div className="flex flex-wrap items-center gap-2 mt-3">
-            {!result && (
-              <button
-                onClick={runLookup}
-                disabled={looking}
-                className="flex items-center gap-1.5 text-xs bg-accent hover:bg-accent-strong disabled:opacity-50 text-white px-3 py-1.5 rounded-lg transition-colors"
+          {canWrite && (
+            <div className="flex flex-wrap items-center gap-2 mt-3">
+              {!result && (
+                <button
+                  onClick={runLookup}
+                  disabled={looking}
+                  className="flex items-center gap-1.5 text-xs bg-accent hover:bg-accent-strong disabled:opacity-50 text-white px-3 py-1.5 rounded-lg transition-colors"
+                >
+                  <Search size={13} /> {looking ? 'Wyszukiwanie…' : 'Wyszukaj profil producenta'}
+                </button>
+              )}
+              <Link
+                to="/configuration"
+                className="flex items-center gap-1.5 text-xs border border-border text-ink-muted hover:text-ink px-3 py-1.5 rounded-lg transition-colors"
               >
-                <Search size={13} /> {looking ? 'Wyszukiwanie…' : 'Wyszukaj profil producenta'}
-              </button>
-            )}
-            <Link
-              to="/configuration"
-              className="flex items-center gap-1.5 text-xs border border-border text-ink-muted hover:text-ink px-3 py-1.5 rounded-lg transition-colors"
-            >
-              <Settings2 size={13} /> Dodaj profil ręcznie
-            </Link>
-          </div>
+                <Settings2 size={13} /> Dodaj profil ręcznie
+              </Link>
+            </div>
+          )}
 
-          {profiles.length > 0 && (
+          {canWrite && profiles.length > 0 && (
             <div className="flex items-center gap-2 mt-3 pt-3 border-t border-warn/20">
               <select
                 value={assignId}

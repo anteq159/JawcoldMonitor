@@ -5,6 +5,7 @@ import {
   getDeviceProfiles, createDeviceProfile, updateDeviceProfile, deleteDeviceProfile,
   type DeviceProfileDetail, type RegisterDefinitionInput,
 } from '../api/deviceProfiles'
+import { useAuthStore } from '../store/auth'
 import { Badge } from '../components/UI/Badge'
 import { Modal } from '../components/UI/Modal'
 import { ConfirmDialog } from '../components/UI/ConfirmDialog'
@@ -31,6 +32,7 @@ function tabFor(p: DeviceProfileDetail): Tab {
 }
 
 export default function Configuration() {
+  const canConfigure = useAuthStore((s) => s.can('config:write'))
   const [profiles, setProfiles] = useState<DeviceProfileDetail[]>([])
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState<Tab>('Carel')
@@ -74,12 +76,14 @@ export default function Configuration() {
             </button>
           ))}
         </div>
-        <button
-          onClick={() => setEditing('new')}
-          className="flex items-center gap-2 bg-accent hover:bg-accent-strong text-white text-sm px-4 py-2 rounded-lg transition-colors shrink-0"
-        >
-          <Plus size={14} /> Dodaj profil
-        </button>
+        {canConfigure && (
+          <button
+            onClick={() => setEditing('new')}
+            className="flex items-center gap-2 bg-accent hover:bg-accent-strong text-white text-sm px-4 py-2 rounded-lg transition-colors shrink-0"
+          >
+            <Plus size={14} /> Dodaj profil
+          </button>
+        )}
       </div>
 
       {tab === 'Inne' && <ManualCreationHelp />}
@@ -101,20 +105,22 @@ export default function Configuration() {
               </div>
               {p.description && <p className="text-xs text-ink-muted mb-3">{p.description}</p>}
               <p className="text-xs text-ink-muted mb-3">{p.registers.length} zmiennych · {p.registers.filter((r) => r.writable).length} edytowalnych</p>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setEditing(p)}
-                  className="flex items-center gap-1.5 text-xs border border-border text-ink-muted hover:text-ink px-3 py-1.5 rounded-lg transition-colors"
-                >
-                  <Pencil size={12} /> Edytuj
-                </button>
-                <button
-                  onClick={() => setConfirmDelete(p)}
-                  className="flex items-center gap-1.5 text-xs border border-border text-ink-muted hover:text-crit px-3 py-1.5 rounded-lg transition-colors"
-                >
-                  <Trash2 size={12} /> Usuń
-                </button>
-              </div>
+              {canConfigure && (
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setEditing(p)}
+                    className="flex items-center gap-1.5 text-xs border border-border text-ink-muted hover:text-ink px-3 py-1.5 rounded-lg transition-colors"
+                  >
+                    <Pencil size={12} /> Edytuj
+                  </button>
+                  <button
+                    onClick={() => setConfirmDelete(p)}
+                    className="flex items-center gap-1.5 text-xs border border-border text-ink-muted hover:text-crit px-3 py-1.5 rounded-lg transition-colors"
+                  >
+                    <Trash2 size={12} /> Usuń
+                  </button>
+                </div>
+              )}
             </div>
           ))}
         </div>

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Pencil, Check, X, Lock, Star } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useDeviceStore } from '../../store/devices'
+import { useAuthStore } from '../../store/auth'
 import { writeDeviceRegister } from '../../api/devices'
 import { useFavoriteParameters } from '../../hooks/useFavoriteParameters'
 import type { RegisterDefinition } from '../../api/deviceProfiles'
@@ -24,6 +25,7 @@ const REGISTER_TYPE_LABELS: Record<string, string> = {
 // read-only "Mapa rejestrow" reference table.
 export function RegisterControlPanel({ deviceId, registers, profileName }: Props) {
   const liveReadings = useDeviceStore((s) => s.liveReadings[deviceId] || {})
+  const canWrite = useAuthStore((s) => s.can('device:write'))
   const [editing, setEditing] = useState<string | null>(null)
   const [inputValue, setInputValue] = useState('')
   const [saving, setSaving] = useState(false)
@@ -121,14 +123,14 @@ export function RegisterControlPanel({ deviceId, registers, profileName }: Props
                   )}
                 </td>
                 <td className="px-5 py-2 text-right align-top">
-                  {r.writable ? (
+                  {r.writable && canWrite ? (
                     !isEditing && (
                       <button onClick={() => startEdit(r)} className="text-ink-muted hover:text-accent transition-colors" title="Zmień wartość">
                         <Pencil size={14} />
                       </button>
                     )
                   ) : (
-                    <span title="Tylko do odczytu" className="text-ink-muted/50 inline-flex">
+                    <span title={r.writable ? 'Brak uprawnienia do zapisu' : 'Tylko do odczytu'} className="text-ink-muted/50 inline-flex">
                       <Lock size={13} />
                     </span>
                   )}

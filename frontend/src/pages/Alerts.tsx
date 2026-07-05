@@ -5,6 +5,7 @@ import { getAlertRules, getAlertEvents, acknowledgeEvent, deleteAlertRule, creat
 import { downloadAlerts } from '../api/export'
 import { getDevices } from '../api/devices'
 import { useDeviceStore } from '../store/devices'
+import { useAuthStore } from '../store/auth'
 import { Badge } from '../components/UI/Badge'
 import { Modal } from '../components/UI/Modal'
 import { EmptyState } from '../components/UI/EmptyState'
@@ -39,6 +40,9 @@ function formatDuration(start: string, end: string | null): string {
 }
 
 export default function Alerts() {
+  const canManage = useAuthStore((s) => s.can('alert:manage'))
+  const canAcknowledge = useAuthStore((s) => s.can('alert:acknowledge'))
+  const canExport = useAuthStore((s) => s.can('export:any'))
   const [rules, setRules] = useState<AlertRule[]>([])
   const [events, setEvents] = useState<AlertEvent[]>([])
   const [devices, setDevices] = useState<Device[]>([])
@@ -91,12 +95,12 @@ export default function Alerts() {
           ))}
         </div>
         <div className="flex items-center gap-2">
-          {tab === 'events' && (
+          {tab === 'events' && canExport && (
             <button onClick={() => setShowExport(true)} className="flex items-center gap-2 text-ink-muted hover:text-ink border border-border text-sm px-3 py-2 rounded-lg transition-colors">
               <Download size={14} /> Eksportuj
             </button>
           )}
-          {tab === 'rules' && (
+          {tab === 'rules' && canManage && (
             <button onClick={() => setShowAdd(true)} className="flex items-center gap-2 bg-accent hover:bg-accent-strong text-white text-sm px-4 py-2 rounded-lg">
               <Plus size={14} /> Dodaj regułę
             </button>
@@ -146,7 +150,7 @@ export default function Alerts() {
               <div className="flex items-center gap-2 shrink-0">
                 <Badge variant="gray">{ev.category}</Badge>
                 <Badge variant={sevColor(ev.severity)}>{ev.severity}</Badge>
-                {!ev.acknowledged && (
+                {!ev.acknowledged && canAcknowledge && (
                   <button onClick={() => ack(ev.id)} className="text-ink-muted hover:text-good transition-colors" title="Potwierdź">
                     <CheckCircle size={16} />
                   </button>
@@ -173,9 +177,11 @@ export default function Alerts() {
               <div className="flex items-center gap-2">
                 <Badge variant="gray">{r.category}</Badge>
                 <Badge variant={sevColor(r.severity)}>{r.severity}</Badge>
-                <button onClick={() => delRule(r.id)} className="text-ink-muted hover:text-crit transition-colors">
-                  <Trash2 size={14} />
-                </button>
+                {canManage && (
+                  <button onClick={() => delRule(r.id)} className="text-ink-muted hover:text-crit transition-colors">
+                    <Trash2 size={14} />
+                  </button>
+                )}
               </div>
             </div>
           ))}
