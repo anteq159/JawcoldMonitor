@@ -96,3 +96,11 @@ class ManufacturerLookupResult(BaseModel):
     detected_manufacturer: Optional[str] = None
     message: str
     suggested_next_step: str
+
+
+class DiscoveredDeviceOut(BaseModel):
+    modbus_address: int
+    suggested_name: str
+    detected_manufacturer: Optional[str] = None
+    matched_profile_id: Optional[int] = None
+    matched_profile_name: Optional[str] = None

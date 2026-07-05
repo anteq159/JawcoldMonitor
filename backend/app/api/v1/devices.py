@@ -2,15 +2,23 @@ from datetime import datetime, timezone
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, delete
 
+from app.core.config import settings
 from app.core.database import get_db
 from app.models.device import Device
+from app.models.device_profile import DeviceProfile
 from app.models.log import EventLog
+from app.models.alert import AlertRule, AlertEvent
+from app.models.reading import Reading
+from app.models.favorite import Favorite, FavoriteParameter
+from app.models.visibility import UserDeviceVisibility
+from app.models.map import DevicePosition
 from app.models.user import User
 from app.schemas.device import (
     DeviceOut, DeviceCreate, DeviceUpdate,
     RegisterWriteRequest, RegisterWriteResult, ManufacturerLookupResult,
+    DiscoveredDeviceOut,
 )
 from app.api.deps import get_current_user, require_permission
 from app.services import scanner
@@ -27,6 +35,55 @@ async def list_devices(
 ):
     result = await db.execute(select(Device).order_by(Device.name))
     return result.scalars().all()
+
+
+@router.get("/discover", response_model=List[DiscoveredDeviceOut])
+async def discover_devices(
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    """On-demand bus scan for the "Dodaj urządzenie" tab - distinct from
+    the background scanner's automatic discovery (services/scanner.py
+    _maybe_discovery), which already creates a Device row the moment it
+    finds one. This is read-only: it reports what's on the bus but isn't
+    in the devices table yet, so the user can review/name/assign a
+    profile before anything is saved, rather than a row appearing with a
+    placeholder name and a silently-guessed profile."""
+    driver = scanner.get_rs485_driver()
+    if not driver:
+        return []
+    result = await db.execute(select(Device.modbus_address))
+    known = set(result.scalars().all())
+    try:
+        found_addresses = await driver.scan_range(1, settings.DISCOVERY_MAX_ADDRESS, known)
+    except Exception:
+        return []
+
+    out: List[DiscoveredDeviceOut] = []
+    for addr in found_addresses:
+        mock_info = {}
+        if hasattr(driver, "get_mock_device_info"):
+            mock_info = driver.get_mock_device_info(addr)
+        manufacturer = mock_info.get("manufacturer")
+
+        matched_profile_id = None
+        matched_profile_name = None
+        if manufacturer:
+            profile_result = await db.execute(
+                select(DeviceProfile.id, DeviceProfile.name).where(DeviceProfile.manufacturer == manufacturer)
+            )
+            row = profile_result.first()
+            if row:
+                matched_profile_id, matched_profile_name = row
+
+        out.append(DiscoveredDeviceOut(
+            modbus_address=addr,
+            suggested_name=mock_info.get("name", f"Urządzenie #{addr}"),
+            detected_manufacturer=manufacturer,
+            matched_profile_id=matched_profile_id,
+            matched_profile_name=matched_profile_name,
+        ))
+    return out
 
 
 @router.get("/{device_id}", response_model=DeviceOut)
@@ -88,6 +145,23 @@ async def delete_device(
     device = result.scalar_one_or_none()
     if not device:
         raise HTTPException(status_code=404, detail="Urządzenie nie znalezione")
+
+    # None of these FKs are ON DELETE CASCADE at the DB level, and only
+    # DeviceParameter has an ORM-side cascade (via Device.parameters) -
+    # deleting a device with any reading/alert/log history (i.e. almost
+    # any device that's been online for more than a moment) would
+    # otherwise fail with a foreign key violation. Explicit cleanup first.
+    await db.execute(delete(AlertEvent).where(AlertEvent.device_id == device_id))
+    await db.execute(delete(AlertRule).where(AlertRule.device_id == device_id))
+    await db.execute(delete(Reading).where(Reading.device_id == device_id))
+    await db.execute(delete(EventLog).where(EventLog.device_id == device_id))
+    await db.execute(delete(Favorite).where(Favorite.device_id == device_id))
+    await db.execute(delete(FavoriteParameter).where(
+        FavoriteParameter.source_type == "device", FavoriteParameter.source_id == device_id
+    ))
+    await db.execute(delete(UserDeviceVisibility).where(UserDeviceVisibility.device_id == device_id))
+    await db.execute(delete(DevicePosition).where(DevicePosition.device_id == device_id))
+
     await db.delete(device)
     await db.commit()
 

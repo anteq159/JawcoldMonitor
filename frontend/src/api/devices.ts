@@ -11,6 +11,16 @@ export const createDevice = (data: DeviceCreate): Promise<Device> => api.post('/
 export const updateDevice = (id: number, data: DeviceUpdate): Promise<Device> => api.put(`/devices/${id}`, data).then((r) => r.data)
 export const deleteDevice = (id: number) => api.delete(`/devices/${id}`)
 
+export interface DiscoveredDevice {
+  modbus_address: number
+  suggested_name: string
+  detected_manufacturer: string | null
+  matched_profile_id: number | null
+  matched_profile_name: string | null
+}
+
+export const discoverDevices = (): Promise<DiscoveredDevice[]> => api.get('/devices/discover').then((r) => r.data)
+
 export interface RegisterWriteResult {
   name: string
   value: number
