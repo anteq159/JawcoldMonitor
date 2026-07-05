@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { Plus, Pencil, Trash2, X, Settings2 } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { Plus, Pencil, Trash2, X, Settings2, BookOpen } from 'lucide-react'
 import toast from 'react-hot-toast'
 import {
   getDeviceProfiles, createDeviceProfile, updateDeviceProfile, deleteDeviceProfile,
@@ -13,15 +13,35 @@ import { PageSpinner } from '../components/UI/Spinner'
 
 const DATA_TYPES = ['uint16', 'int16', 'uint32', 'int32', 'float32']
 
+const TABS = ['Carel', 'Danfoss', 'Eliwell', 'Inne'] as const
+type Tab = typeof TABS[number]
+
+function tabFor(p: DeviceProfileDetail): Tab {
+  const m = p.manufacturer ?? ''
+  if (m.startsWith('Carel')) return 'Carel'
+  if (m.startsWith('Danfoss')) return 'Danfoss'
+  if (m.startsWith('Eliwell')) return 'Eliwell'
+  return 'Inne'
+}
+
 export default function Configuration() {
   const [profiles, setProfiles] = useState<DeviceProfileDetail[]>([])
   const [loading, setLoading] = useState(true)
+  const [tab, setTab] = useState<Tab>('Carel')
   const [editing, setEditing] = useState<DeviceProfileDetail | 'new' | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<DeviceProfileDetail | null>(null)
 
   const load = () => getDeviceProfiles().then(setProfiles)
 
   useEffect(() => { load().finally(() => setLoading(false)) }, [])
+
+  const counts = useMemo(() => {
+    const c: Record<Tab, number> = { Carel: 0, Danfoss: 0, Eliwell: 0, Inne: 0 }
+    profiles.forEach((p) => { c[tabFor(p)] += 1 })
+    return c
+  }, [profiles])
+
+  const visible = useMemo(() => profiles.filter((p) => tabFor(p) === tab), [profiles, tab])
 
   const del = async (profile: DeviceProfileDetail) => {
     try {
@@ -39,21 +59,30 @@ export default function Configuration() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-ink-muted">Profile producentów i mapy rejestrów ({profiles.length})</p>
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div className="flex gap-2 flex-wrap">
+          {TABS.map((t) => (
+            <button key={t} onClick={() => setTab(t)}
+              className={`px-4 py-1.5 text-sm rounded-lg border transition-colors ${tab === t ? 'bg-accent border-accent text-white' : 'border-border text-ink-muted hover:text-ink'}`}>
+              {t} <span className="text-xs opacity-70">({counts[t]})</span>
+            </button>
+          ))}
+        </div>
         <button
           onClick={() => setEditing('new')}
-          className="flex items-center gap-2 bg-accent hover:bg-accent-strong text-white text-sm px-4 py-2 rounded-lg transition-colors"
+          className="flex items-center gap-2 bg-accent hover:bg-accent-strong text-white text-sm px-4 py-2 rounded-lg transition-colors shrink-0"
         >
           <Plus size={14} /> Dodaj profil
         </button>
       </div>
 
-      {profiles.length === 0 ? (
-        <EmptyState icon={<Settings2 size={28} />} message="Brak profili. Dodaj pierwszy profil producenta powyżej." />
+      {tab === 'Inne' && <ManualCreationHelp />}
+
+      {visible.length === 0 ? (
+        <EmptyState icon={<Settings2 size={28} />} message={`Brak profili w zakładce „${tab}”. Dodaj profil powyżej.`} />
       ) : (
         <div className="grid sm:grid-cols-2 gap-4">
-          {profiles.map((p) => (
+          {visible.map((p) => (
             <div key={p.id} className="bg-surface border border-border rounded-xl shadow-panel p-5">
               <div className="flex items-start justify-between gap-2 mb-2">
                 <div className="min-w-0">
@@ -101,6 +130,31 @@ export default function Configuration() {
         onConfirm={() => confirmDelete && del(confirmDelete)}
         onClose={() => setConfirmDelete(null)}
       />
+    </div>
+  )
+}
+
+function ManualCreationHelp() {
+  return (
+    <div className="bg-surface border border-border rounded-xl shadow-panel p-5">
+      <div className="flex items-center gap-2 mb-2">
+        <BookOpen size={16} className="text-accent" />
+        <h3 className="font-semibold text-ink">Tworzenie własnej konfiguracji</h3>
+      </div>
+      <p className="text-sm text-ink-body mb-3">
+        Jeśli Twój sterownik nie pasuje do żadnego gotowego profilu, kliknij „Dodaj profil” i zbuduj mapę rejestrów ręcznie
+        na podstawie dokumentacji Modbus producenta. Dla każdej zmiennej podaj:
+      </p>
+      <ul className="text-sm text-ink-body space-y-1.5 mb-3 list-disc list-inside">
+        <li><b>Adres</b> — numer rejestru Modbus (z dokumentacji sterownika, zwykle „adres rejestru” lub „register address”).</li>
+        <li><b>Typ danych</b> — <code>uint16</code>/<code>int16</code> dla większości wartości, <code>uint32</code>/<code>int32</code>/<code>float32</code> gdy dokumentacja mówi o wartości zajmującej dwa rejestry.</li>
+        <li><b>Skala</b> — mnożnik odczytanej wartości surowej, np. <code>0.1</code> jeśli sterownik zwraca temperaturę jako liczbę całkowitą razy 10 (typowe dla wielu sterowników chłodniczych).</li>
+        <li><b>R/W</b> — zaznacz, jeśli zmienna ma być zapisywalna (np. nastawa temperatury), zostaw odznaczone dla odczytów (temperatury, stany wyjść).</li>
+      </ul>
+      <p className="text-sm text-ink-muted">
+        Utworzony profil pojawi się w zakładce „Inne”, dopóki nazwa producenta nie zacznie się od Carel/Danfoss/Eliwell —
+        wtedy trafi do właściwej zakładki automatycznie.
+      </p>
     </div>
   )
 }

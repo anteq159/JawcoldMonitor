@@ -136,8 +136,12 @@ async def _init_manufacturer_profiles():
                     profile.description = model.description
                     profile.registers = registers
                 continue
+            # Some drivers key their registry entry on the full model
+            # designation already (e.g. manufacturer="Danfoss EKC 202"),
+            # not just the brand - avoid "Danfoss EKC 202 EKC 202".
+            display_name = manufacturer if model.model in manufacturer else f"{manufacturer} {model.model}"
             profile = DeviceProfile(
-                name=f"{manufacturer} {model.model}",
+                name=display_name,
                 manufacturer=manufacturer,
                 model=model.model,
                 description=model.description,
@@ -146,6 +150,66 @@ async def _init_manufacturer_profiles():
             )
             db.add(profile)
             logger.info("Seeded built-in device profile for %s", manufacturer)
+        await db.commit()
+
+
+# Generic, vendor-agnostic starting templates for the Konfiguracja page's
+# "Inne" tab - other common Modbus devices someone might monitor alongside
+# refrigeration controllers (a site's energy meter, a pressure transducer
+# on a compressor line). Not manufacturer/driver-backed like the profiles
+# above: no real-world brand identity, no alarm register, so there's
+# nothing for decode_active_alarms() to do with them and no mock
+# simulation - a device assigned one of these needs its own real
+# register values, this is a starting point to edit, not a demo device.
+_GENERIC_PROFILES = [
+    {
+        "name": "Licznik energii (ogólny)",
+        "description": "Uniwersalny szablon licznika energii 3-fazowego - adresy przykładowe, dostosuj do konkretnego licznika.",
+        "registers": [
+            {"address": 0, "name": "Napięcie L1", "unit": "V", "data_type": "float32", "scale_factor": 1.0},
+            {"address": 2, "name": "Napięcie L2", "unit": "V", "data_type": "float32", "scale_factor": 1.0},
+            {"address": 4, "name": "Napięcie L3", "unit": "V", "data_type": "float32", "scale_factor": 1.0},
+            {"address": 6, "name": "Prąd L1", "unit": "A", "data_type": "float32", "scale_factor": 1.0},
+            {"address": 20, "name": "Moc czynna", "unit": "kW", "data_type": "float32", "scale_factor": 1.0},
+            {"address": 40, "name": "Energia", "unit": "kWh", "data_type": "float32", "scale_factor": 1.0},
+        ],
+    },
+    {
+        "name": "Przetwornik ciśnienia (ogólny)",
+        "description": "Uniwersalny szablon przetwornika ciśnienia (np. na linii ssawnej/tłocznej sprężarki) - adresy przykładowe.",
+        "registers": [
+            {"address": 0, "name": "Ciśnienie", "unit": "bar", "data_type": "int16", "scale_factor": 0.01},
+            {"address": 1, "name": "Temperatura medium", "unit": "°C", "data_type": "int16", "scale_factor": 0.1},
+        ],
+    },
+]
+
+
+async def _init_generic_profiles():
+    """Seed the fixed generic (non-manufacturer) profile templates above.
+    Keyed by name (not manufacturer, which is null for these) for the same
+    idempotent re-sync as _init_manufacturer_profiles()."""
+    from app.models.device_profile import DeviceProfile, RegisterDefinition
+
+    async with AsyncSessionLocal() as db:
+        for spec in _GENERIC_PROFILES:
+            result = await db.execute(select(DeviceProfile).where(DeviceProfile.name == spec["name"]))
+            profile = result.scalar_one_or_none()
+            registers = [RegisterDefinition(**r) for r in spec["registers"]]
+            if profile:
+                if profile.source == "builtin":
+                    profile.description = spec["description"]
+                    profile.registers = registers
+                continue
+            db.add(DeviceProfile(
+                name=spec["name"],
+                manufacturer=None,
+                model=None,
+                description=spec["description"],
+                source="builtin",
+                registers=registers,
+            ))
+            logger.info("Seeded generic device profile: %s", spec["name"])
         await db.commit()
 
 
@@ -159,6 +223,7 @@ async def lifespan(app: FastAPI):
     await ws_manager.start_listener()
     await _init_defaults()
     await _init_manufacturer_profiles()
+    await _init_generic_profiles()
     scanner_task = asyncio.create_task(scanner_loop())
     yield
     scanner_task.cancel()
