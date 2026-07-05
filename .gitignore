@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+backend/venv/
+backend/.venv/
+
+# Node / frontend build
+node_modules/
+frontend/dist/
+frontend/.vite/
+
+# Secrets / local runtime config — .env.example and .env.preview are
+# committed templates, the real .env is per-machine and never tracked.
+.env
+*/.env
+!.env.example
+!.env.preview
+
+# User-uploaded content (floor maps etc.)
+backend/uploads/*
+!backend/uploads/.gitkeep
+
+# OS / editor noise
+.DS_Store
+.vscode/
+.idea/
+
+# Claude Code local session state (per-machine, not shared config)
+.claude/settings.local.json
+
+# Logs
+*.log

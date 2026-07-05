@@ -1,0 +1,32 @@
+from datetime import datetime
+from typing import Optional, List
+from pydantic import BaseModel
+
+from app.schemas.role import RoleOut
+
+
+class UserOut(BaseModel):
+    id: int
+    username: str
+    email: Optional[str] = None
+    is_active: bool
+    must_change_password: bool
+    created_at: datetime
+    last_login: Optional[datetime] = None
+    roles: List[RoleOut] = []
+
+    model_config = {"from_attributes": True}
+
+
+class UserCreate(BaseModel):
+    username: str
+    email: Optional[str] = None
+    password: str
+    role_ids: List[int] = []
+
+
+class UserUpdate(BaseModel):
+    email: Optional[str] = None
+    is_active: Optional[bool] = None
+    role_ids: Optional[List[int]] = None
+    must_change_password: Optional[bool] = None

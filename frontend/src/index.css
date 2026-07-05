@@ -1,0 +1,62 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Ground */
+  --bg: 243 246 246;
+  --surface: 255 255 255;
+  --surface-2: 238 243 242;
+  --border: 220 230 228;
+  --border-strong: 195 210 207;
+
+  /* Ink */
+  --ink: 27 38 36;
+  --ink-body: 62 75 72;
+  --ink-muted: 125 142 138;
+
+  /* Brand accent — steel blue (primary), teal (secondary) */
+  --accent: 43 108 176;
+  --accent-strong: 31 85 144;
+  --accent-soft: 231 240 249;
+  --teal: 14 138 125;
+
+  /* Semantic status — separate from brand accent */
+  --good: 28 154 91;
+  --good-bg: 231 245 236;
+  --warn: 201 124 27;
+  --warn-bg: 251 240 222;
+  --crit: 194 59 59;
+  --crit-bg: 251 232 232;
+  --info: 91 122 153;
+  --info-bg: 234 240 245;
+}
+
+@layer base {
+  html {
+    font-variant-numeric: tabular-nums;
+  }
+  body {
+    @apply bg-bg text-ink-body;
+  }
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgb(var(--border-strong));
+    border-radius: 3px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgb(var(--ink-muted));
+  }
+}
+
+@layer components {
+  .input {
+    @apply w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-ink placeholder-ink-muted/70 focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/15 transition-colors;
+  }
+}
