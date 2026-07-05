@@ -12,6 +12,12 @@ interface Props {
   profileName: string
 }
 
+const REGISTER_TYPE_LABELS: Record<string, string> = {
+  input: 'Input Register',
+  coil: 'Coil',
+  discrete_input: 'Discrete Input',
+}
+
 // Every register from the device's profile, live - not just the curated
 // device.parameters subset - with inline editing for the ones marked
 // writable (setpoints, differentials). Supersedes the old static,
@@ -110,6 +116,9 @@ export function RegisterControlPanel({ deviceId, registers, profileName }: Props
                 </td>
                 <td className="px-3 py-2 font-mono text-ink-muted align-top">
                   {r.data_type}{r.scale_factor !== 1 ? ` ×${r.scale_factor}` : ''}
+                  {r.register_type && r.register_type !== 'holding' && (
+                    <span className="block text-ink-muted/70">{REGISTER_TYPE_LABELS[r.register_type]}</span>
+                  )}
                 </td>
                 <td className="px-5 py-2 text-right align-top">
                   {r.writable ? (

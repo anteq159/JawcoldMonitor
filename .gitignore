@@ -21,6 +21,11 @@ frontend/.vite/
 backend/uploads/*
 !backend/uploads/.gitkeep
 
+# Reference manufacturer documentation used to build real device profiles -
+# copyrighted third-party material (e.g. Eliwell's bulletin explicitly
+# forbids redistribution without authorization), never for a public repo.
+sterownikData/
+
 # OS / editor noise
 .DS_Store
 .vscode/

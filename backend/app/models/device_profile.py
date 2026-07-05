@@ -34,5 +34,10 @@ class RegisterDefinition(Base):
     scale_factor: Mapped[float] = mapped_column(Float, default=1.0)
     writable: Mapped[bool] = mapped_column(Boolean, default=False)
     is_alarm_register: Mapped[bool] = mapped_column(Boolean, default=False)
+    # "holding" (default, function 3/6/16) | "input" (function 4,
+    # read-only) | "coil" (function 1, single bit) | "discrete_input"
+    # (function 2, read-only single bit). See RegisterMapEntry in
+    # drivers/base.py for why this exists.
+    register_type: Mapped[str] = mapped_column(String(16), default="holding")
 
     profile: Mapped[DeviceProfile] = relationship("DeviceProfile", back_populates="registers")

@@ -12,6 +12,12 @@ import { EmptyState } from '../components/UI/EmptyState'
 import { PageSpinner } from '../components/UI/Spinner'
 
 const DATA_TYPES = ['uint16', 'int16', 'uint32', 'int32', 'float32']
+const REGISTER_TYPES = [
+  { value: 'holding', label: 'Holding (3)' },
+  { value: 'input', label: 'Input (4, R/O)' },
+  { value: 'coil', label: 'Coil (1)' },
+  { value: 'discrete_input', label: 'Discrete (2, R/O)' },
+]
 
 const TABS = ['Carel', 'Danfoss', 'Eliwell', 'Inne'] as const
 type Tab = typeof TABS[number]
@@ -165,7 +171,7 @@ interface RegisterRow extends RegisterDefinitionInput {
 
 let rowKeySeq = 0
 const newRow = (): RegisterRow => ({
-  key: `r${rowKeySeq++}`, address: 0, name: '', unit: '', data_type: 'uint16', scale_factor: 1, writable: false,
+  key: `r${rowKeySeq++}`, address: 0, name: '', unit: '', data_type: 'uint16', scale_factor: 1, writable: false, register_type: 'holding',
 })
 
 function ProfileModal({ profile, onClose, onSaved }: {
@@ -268,6 +274,13 @@ function ProfileModal({ profile, onClose, onSaved }: {
                     onChange={(e) => updateRow(r.key, { scale_factor: Number(e.target.value) })}
                     className="w-14 bg-surface border border-border rounded px-1.5 py-1 text-xs text-ink"
                   />
+                  <select
+                    value={r.register_type ?? 'holding'} onChange={(e) => updateRow(r.key, { register_type: e.target.value as RegisterDefinitionInput['register_type'] })}
+                    title="Typ rejestru Modbus"
+                    className="w-28 bg-surface border border-border rounded px-1 py-1 text-xs text-ink"
+                  >
+                    {REGISTER_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+                  </select>
                   <label className="flex items-center gap-1 shrink-0 text-xs text-ink-muted" title="Edytowalny (do zapisu)">
                     <input
                       type="checkbox" checked={r.writable}

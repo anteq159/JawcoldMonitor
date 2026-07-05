@@ -11,6 +11,8 @@ class RegisterDefinitionOut(BaseModel):
     data_type: str
     scale_factor: float
     writable: bool = False
+    is_alarm_register: bool = False
+    register_type: str = "holding"
 
     model_config = {"from_attributes": True}
 
@@ -24,6 +26,7 @@ class RegisterDefinitionIn(BaseModel):
     scale_factor: float = 1.0
     writable: bool = False
     is_alarm_register: bool = False
+    register_type: str = "holding"
 
 
 class DeviceProfileOut(BaseModel):

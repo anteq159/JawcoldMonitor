@@ -9,6 +9,8 @@ export interface RegisterDefinition {
   data_type: string
   scale_factor: number
   writable: boolean
+  is_alarm_register: boolean
+  register_type: 'holding' | 'input' | 'coil' | 'discrete_input'
 }
 
 export interface RegisterDefinitionInput {
@@ -19,6 +21,8 @@ export interface RegisterDefinitionInput {
   data_type: string
   scale_factor: number
   writable: boolean
+  is_alarm_register?: boolean
+  register_type?: 'holding' | 'input' | 'coil' | 'discrete_input'
 }
 
 export interface DeviceProfileDetail {

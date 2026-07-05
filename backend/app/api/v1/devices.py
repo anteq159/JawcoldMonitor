@@ -120,6 +120,7 @@ async def write_register(
         await driver.write_register(
             device.modbus_address, register.address, body.name, body.value,
             data_type=register.data_type, scale_factor=register.scale_factor,
+            register_type=register.register_type,
         )
     except NotImplementedError as e:
         raise HTTPException(status_code=501, detail=str(e))

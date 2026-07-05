@@ -7,7 +7,17 @@ from typing import Dict, List, Optional
 class RegisterMapEntry:
     """One row of a manufacturer's built-in, representative register map.
     Mirrors schemas.device_profile.RegisterDefinitionIn so it can be seeded
-    straight into a DeviceProfile."""
+    straight into a DeviceProfile.
+
+    register_type: which of the 4 distinct Modbus object types this
+    address lives in - "holding" (function 3/6/16), "input" (function 4,
+    read-only), "coil" (function 1/5/15, single bit), "discrete_input"
+    (function 2, read-only single bit). Added when real Carel MPXone
+    documentation showed this matters in practice - e.g. temperature
+    readings there are Input Registers, not Holding Registers, and every
+    manufacturer driver before that had implicitly assumed "holding" for
+    everything. Writing to non-holding types isn't implemented yet (see
+    modbus_rtu.py) since no current profile needs it."""
     address: int
     name: str
     unit: Optional[str] = None
@@ -16,6 +26,7 @@ class RegisterMapEntry:
     scale_factor: float = 1.0
     writable: bool = False
     is_alarm_register: bool = False
+    register_type: str = "holding"
 
 
 @dataclass
@@ -118,13 +129,17 @@ class AbstractRS485Driver(ABC):
         value: float,
         data_type: str = "uint16",
         scale_factor: float = 1.0,
+        register_type: str = "holding",
     ) -> None:
         """Write a new value to a writable register (e.g. a setpoint).
-        register_address/data_type/scale_factor are the register's own
-        metadata (from its DeviceProfile entry) - a real driver needs them
-        to encode the value correctly; the mock driver ignores them and
-        keys purely off register_name. Raise on failure - callers treat a
-        normal return as success."""
+        register_address/data_type/scale_factor/register_type are the
+        register's own metadata (from its DeviceProfile entry) - a real
+        driver needs them to encode the value correctly; the mock driver
+        ignores them and keys purely off register_name. Raise on failure -
+        callers treat a normal return as success. A real driver should
+        raise NotImplementedError for register_type != "holding" until
+        coil/input writes are actually implemented, rather than silently
+        writing to the wrong address space."""
         ...
 
     async def close(self) -> None:

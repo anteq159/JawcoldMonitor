@@ -90,6 +90,7 @@ class MockRS485Driver(AbstractRS485Driver):
         value: float,
         data_type: str = "uint16",
         scale_factor: float = 1.0,
+        register_type: str = "holding",
     ) -> None:
         set_override(modbus_address, register_name, value)
 

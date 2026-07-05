@@ -54,25 +54,46 @@ def _encode(value: float, data_type: str) -> List[int]:
 
 def _batch_contiguous(registers) -> List[list]:
     """Group registers whose Modbus addresses are back-to-back into single
-    read requests, in address order. Matters on real RS485: each request is
-    a real round trip (~100-150ms at typical baud rates, not the mock
-    driver's near-zero latency), so reading e.g. four consecutive registers
-    as one request instead of four cuts real scan time substantially."""
-    ordered = sorted(registers, key=lambda r: r.address)
+    read requests, in address order, never mixing register_type within a
+    batch (each type is a separate Modbus function code / address space -
+    e.g. holding register 1 and input register 1 are unrelated addresses
+    that happen to share a number, not neighbors). Matters on real RS485:
+    each request is a real round trip (~100-150ms at typical baud rates,
+    not the mock driver's near-zero latency), so reading e.g. four
+    consecutive registers as one request instead of four cuts real scan
+    time substantially."""
+    by_type: Dict[str, list] = {}
+    for reg in registers:
+        by_type.setdefault(reg.register_type, []).append(reg)
+
     batches: List[list] = []
-    current: list = []
-    next_expected = None
-    for reg in ordered:
-        if current and reg.address == next_expected:
-            current.append(reg)
-        else:
-            if current:
-                batches.append(current)
-            current = [reg]
-        next_expected = reg.address + _register_count(reg.data_type)
-    if current:
-        batches.append(current)
+    for reg_type, group in by_type.items():
+        ordered = sorted(group, key=lambda r: r.address)
+        current: list = []
+        next_expected = None
+        for reg in ordered:
+            width = 1 if reg_type in ("coil", "discrete_input") else _register_count(reg.data_type)
+            if current and reg.address == next_expected:
+                current.append(reg)
+            else:
+                if current:
+                    batches.append(current)
+                current = [reg]
+            next_expected = reg.address + width
+        if current:
+            batches.append(current)
     return batches
+
+
+# pymodbus method name + response attribute per register_type. Coils and
+# discrete inputs are always exactly 1 bit each - no data_type/word-count
+# concept applies to them the way it does for registers.
+_READ_METHOD = {
+    "holding": "read_holding_registers",
+    "input": "read_input_registers",
+    "coil": "read_coils",
+    "discrete_input": "read_discrete_inputs",
+}
 
 
 class ModbusRTUDriver(AbstractRS485Driver):
@@ -126,12 +147,19 @@ class ModbusRTUDriver(AbstractRS485Driver):
 
         async with self._lock:
             for batch in _batch_contiguous(profile.registers):
+                reg_type = batch[0].register_type
+                is_bit_type = reg_type in ("coil", "discrete_input")
                 start = batch[0].address
-                count = sum(_register_count(r.data_type) for r in batch)
+                count = len(batch) if is_bit_type else sum(_register_count(r.data_type) for r in batch)
+                method = getattr(self._client, _READ_METHOD[reg_type])
                 try:
-                    r = await self._client.read_holding_registers(start, count=count, device_id=device.modbus_address)
+                    r = await method(start, count=count, device_id=device.modbus_address)
                     if r.isError():
-                        logger.debug("Read error addr=%d start=%d: %s", device.modbus_address, start, r)
+                        logger.debug("Read error addr=%d start=%d type=%s: %s", device.modbus_address, start, reg_type, r)
+                        continue
+                    if is_bit_type:
+                        for i, reg in enumerate(batch):
+                            result[reg.name] = {"value": 1.0 if r.bits[i] else 0.0, "unit": reg.unit or ""}
                         continue
                     offset = 0
                     for reg in batch:
@@ -164,7 +192,16 @@ class ModbusRTUDriver(AbstractRS485Driver):
         value: float,
         data_type: str = "uint16",
         scale_factor: float = 1.0,
+        register_type: str = "holding",
     ) -> None:
+        if register_type != "holding":
+            # No current profile has a writable coil/input register - real
+            # MPXone data does have some (e.g. PMP, manual valve
+            # positioning), but writing to the wrong Modbus object type
+            # silently would be worse than refusing outright.
+            raise NotImplementedError(
+                f"Zapis do rejestru typu '{register_type}' nie jest jeszcze obsługiwany"
+            )
         if not await self._ensure_connected():
             raise ConnectionError(f"Brak połączenia z portem {self._port}")
 
