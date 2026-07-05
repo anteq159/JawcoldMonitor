@@ -1,5 +1,6 @@
 from typing import Optional, List
 from sqlalchemy import String, Integer, Float, ForeignKey
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.base import Base, TimestampMixin
 
@@ -26,5 +27,11 @@ class DevicePosition(Base):
     device_id: Mapped[int] = mapped_column(ForeignKey("devices.id"), nullable=False)
     x_percent: Mapped[float] = mapped_column(Float, nullable=False)
     y_percent: Mapped[float] = mapped_column(Float, nullable=False)
+    # Up to 3 parameter names (device.profile.registers names, or a
+    # sensor's single implicit value) chosen to show on this device's map
+    # pin - empty means "not chosen yet", which the API/frontend falls
+    # back to showing the first available reading for, same as before
+    # this existed.
+    selected_params: Mapped[List[str]] = mapped_column(JSONB, default=list)
 
     floor_map: Mapped[FloorMap] = relationship("FloorMap", back_populates="positions")

@@ -1,14 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Upload, Trash2, MapPin, X, Save, Plus } from 'lucide-react'
-import { getMaps, uploadMap, savePositions, deleteMap, type FloorMap, type MapPosition } from '../api/maps'
+import { getMaps, uploadMap, savePositions, deleteMap, getMapFileBlobUrl, MAX_MAP_PIN_PARAMS, type FloorMap, type MapPosition } from '../api/maps'
 import { getDevices } from '../api/devices'
 import { useDeviceStore } from '../store/devices'
 import { DeviceStatusBadge } from '../components/Devices/DeviceStatusBadge'
 import { Modal } from '../components/UI/Modal'
 import { ConfirmDialog } from '../components/UI/ConfirmDialog'
 import { EmptyState } from '../components/UI/EmptyState'
-import { PageSpinner } from '../components/UI/Spinner'
+import { PageSpinner, Spinner } from '../components/UI/Spinner'
 import toast from 'react-hot-toast'
 import type { Device } from '../types/device'
 
@@ -95,6 +95,8 @@ export default function Map() {
 
 interface PendingPosition extends MapPosition { deviceName: string }
 
+interface ParamPickerState { device: Device; x: number; y: number; initialSelected: string[] }
+
 function MapEditor({ floorMap, devices, onDelete, onSaved }: {
   floorMap: FloorMap; devices: Device[]; onDelete: () => void; onSaved: (m: FloorMap) => void
 }) {
@@ -102,14 +104,36 @@ function MapEditor({ floorMap, devices, onDelete, onSaved }: {
   const containerRef = useRef<HTMLDivElement>(null)
   const liveReadings = useDeviceStore(s => s.liveReadings)
 
+  const [imgSrc, setImgSrc] = useState<string | null>(null)
+  const [imgError, setImgError] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    let objectUrl: string | null = null
+    setImgSrc(null)
+    setImgError(false)
+    getMapFileBlobUrl(floorMap.filename)
+      .then(url => {
+        if (cancelled) { URL.revokeObjectURL(url); return }
+        objectUrl = url
+        setImgSrc(url)
+      })
+      .catch(() => { if (!cancelled) setImgError(true) })
+    return () => {
+      cancelled = true
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
+    }
+  }, [floorMap.filename])
+
   const [positions, setPositions] = useState<PendingPosition[]>(() =>
     floorMap.positions.map(p => ({
-      device_id: p.device_id, x_percent: p.x_percent, y_percent: p.y_percent,
+      device_id: p.device_id, x_percent: p.x_percent, y_percent: p.y_percent, selected_params: p.selected_params ?? [],
       deviceName: devices.find(d => d.id === p.device_id)?.name ?? `#${p.device_id}`
     }))
   )
   const [editMode, setEditMode] = useState(false)
   const [pendingClick, setPendingClick] = useState<{ x: number; y: number } | null>(null)
+  const [paramPicker, setParamPicker] = useState<ParamPickerState | null>(null)
   const [saving, setSaving] = useState(false)
 
   const handleMapClick = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -120,13 +144,26 @@ function MapEditor({ floorMap, devices, onDelete, onSaved }: {
     setPendingClick({ x, y })
   }
 
-  const addDevice = (device: Device) => {
+  const pickDevice = (device: Device) => {
     if (!pendingClick) return
+    setParamPicker({ device, x: pendingClick.x, y: pendingClick.y, initialSelected: [] })
+    setPendingClick(null)
+  }
+
+  const editParams = (pos: PendingPosition) => {
+    const device = devices.find(d => d.id === pos.device_id)
+    if (!device) return
+    setParamPicker({ device, x: pos.x_percent, y: pos.y_percent, initialSelected: pos.selected_params })
+  }
+
+  const confirmParams = (selected: string[]) => {
+    if (!paramPicker) return
+    const { device, x, y } = paramPicker
     setPositions(prev => {
       const filtered = prev.filter(p => p.device_id !== device.id)
-      return [...filtered, { device_id: device.id, x_percent: pendingClick.x, y_percent: pendingClick.y, deviceName: device.name }]
+      return [...filtered, { device_id: device.id, x_percent: x, y_percent: y, selected_params: selected, deviceName: device.name }]
     })
-    setPendingClick(null)
+    setParamPicker(null)
   }
 
   const removePosition = (deviceId: number) => {
@@ -136,7 +173,7 @@ function MapEditor({ floorMap, devices, onDelete, onSaved }: {
   const save = async () => {
     setSaving(true)
     try {
-      const updated = await savePositions(floorMap.id, positions.map(p => ({ device_id: p.device_id, x_percent: p.x_percent, y_percent: p.y_percent })))
+      const updated = await savePositions(floorMap.id, positions.map(p => ({ device_id: p.device_id, x_percent: p.x_percent, y_percent: p.y_percent, selected_params: p.selected_params })))
       onSaved(updated)
       setEditMode(false)
       toast.success('Pozycje zapisane')
@@ -182,13 +219,21 @@ function MapEditor({ floorMap, devices, onDelete, onSaved }: {
       </div>
 
       <div ref={containerRef} className="relative w-full select-none" style={{ cursor: editMode ? 'crosshair' : 'default' }} onClick={handleMapClick}>
-        <img ref={imgRef} src={`/api/v1/maps/file/${floorMap.filename}`} alt={floorMap.name}
-          className="w-full h-auto block" draggable={false} />
+        {imgError ? (
+          <div className="p-8 text-center text-sm text-crit">Nie udało się wczytać pliku mapy z serwera.</div>
+        ) : !imgSrc ? (
+          <div className="p-12 flex justify-center"><Spinner className="text-accent w-8 h-8" /></div>
+        ) : (
+          <img ref={imgRef} src={imgSrc} alt={floorMap.name}
+            className="w-full h-auto block" draggable={false} onError={() => setImgError(true)} />
+        )}
 
         {positions.map(pos => {
           const device = devices.find(d => d.id === pos.device_id)
           const readings = liveReadings[pos.device_id] ?? {}
-          const firstReading = Object.entries(readings)[0]
+          const shown = pos.selected_params.length > 0
+            ? pos.selected_params.map(name => [name, readings[name]] as const).filter(([, v]) => v)
+            : Object.entries(readings).slice(0, 1)
 
           return (
             <div key={pos.device_id}
@@ -197,7 +242,14 @@ function MapEditor({ floorMap, devices, onDelete, onSaved }: {
               <div className="bg-surface border border-border rounded-lg px-2 py-1 text-xs shadow-lg min-w-max">
                 <div className="flex items-center gap-1.5">
                   <MapPin size={10} className={device?.status === 'online' ? 'text-good' : 'text-ink-muted'} />
-                  <span className="text-ink font-medium">{pos.deviceName}</span>
+                  {editMode ? (
+                    <button onClick={(e) => { e.stopPropagation(); editParams(pos) }}
+                      className="text-ink font-medium hover:text-accent transition-colors" title="Wybierz parametry do wyświetlenia">
+                      {pos.deviceName}
+                    </button>
+                  ) : (
+                    <span className="text-ink font-medium">{pos.deviceName}</span>
+                  )}
                   {editMode && (
                     <button onClick={(e) => { e.stopPropagation(); removePosition(pos.device_id) }}
                       className="text-ink-muted hover:text-crit ml-1">
@@ -205,11 +257,11 @@ function MapEditor({ floorMap, devices, onDelete, onSaved }: {
                     </button>
                   )}
                 </div>
-                {firstReading && (
-                  <div className="text-accent font-bold mt-0.5">
-                    {firstReading[1].value.toFixed(1)} {firstReading[1].unit}
+                {shown.map(([name, reading]) => (
+                  <div key={name} className="text-accent font-bold mt-0.5">
+                    {reading.value.toFixed(1)} {reading.unit} <span className="text-ink-muted font-normal">{name}</span>
                   </div>
-                )}
+                ))}
               </div>
               <div className="w-0 h-0 border-l-4 border-r-4 border-t-4 border-l-transparent border-r-transparent border-t-border-strong mx-auto" />
             </div>
@@ -222,7 +274,7 @@ function MapEditor({ floorMap, devices, onDelete, onSaved }: {
           <p className="text-xs text-ink-muted mb-2">Wybierz urządzenie do umieszczenia ({availableDevices.length} dostępnych):</p>
           <div className="flex flex-wrap gap-2">
             {availableDevices.map(d => (
-              <button key={d.id} onClick={() => addDevice(d)}
+              <button key={d.id} onClick={() => pickDevice(d)}
                 className="flex items-center gap-1.5 text-xs bg-surface-2 hover:border-border-strong border border-border text-ink px-3 py-1.5 rounded-lg transition-colors">
                 <DeviceStatusBadge status={d.status} />
                 {d.name}
@@ -233,6 +285,64 @@ function MapEditor({ floorMap, devices, onDelete, onSaved }: {
           </div>
         </div>
       )}
+
+      {paramPicker && (
+        <ParamPickerPanel
+          device={paramPicker.device}
+          availableParams={Object.keys(liveReadings[paramPicker.device.id] ?? {})}
+          initialSelected={paramPicker.initialSelected}
+          onConfirm={confirmParams}
+          onCancel={() => setParamPicker(null)}
+        />
+      )}
+    </div>
+  )
+}
+
+function ParamPickerPanel({ device, availableParams, initialSelected, onConfirm, onCancel }: {
+  device: Device; availableParams: string[]; initialSelected: string[]
+  onConfirm: (selected: string[]) => void; onCancel: () => void
+}) {
+  const [selected, setSelected] = useState<string[]>(initialSelected.filter(p => availableParams.includes(p)))
+
+  const toggle = (name: string) => {
+    setSelected(prev => {
+      if (prev.includes(name)) return prev.filter(p => p !== name)
+      if (prev.length >= MAX_MAP_PIN_PARAMS) {
+        toast.error(`Można wybrać maksymalnie ${MAX_MAP_PIN_PARAMS} parametry`)
+        return prev
+      }
+      return [...prev, name]
+    })
+  }
+
+  return (
+    <div className="px-5 py-3 border-t border-border">
+      <p className="text-xs text-ink-muted mb-2">
+        Parametry do wyświetlenia dla „{device.name}” ({selected.length}/{MAX_MAP_PIN_PARAMS}):
+      </p>
+      {availableParams.length === 0 ? (
+        <p className="text-xs text-ink-muted">Brak dostępnych odczytów dla tego urządzenia.</p>
+      ) : (
+        <div className="flex flex-wrap gap-2 mb-3">
+          {availableParams.map(name => {
+            const active = selected.includes(name)
+            return (
+              <button key={name} onClick={() => toggle(name)}
+                className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${active ? 'bg-accent border-accent text-white' : 'bg-surface-2 border-border text-ink hover:border-border-strong'}`}>
+                {name}
+              </button>
+            )
+          })}
+        </div>
+      )}
+      <div className="flex gap-2">
+        <button onClick={() => onConfirm(selected)}
+          className="text-xs bg-accent hover:bg-accent-strong text-white px-4 py-1.5 rounded-lg transition-colors">
+          Zapisz wybór
+        </button>
+        <button onClick={onCancel} className="text-xs text-ink-muted hover:text-ink px-3 py-1.5">Anuluj</button>
+      </div>
     </div>
   )
 }

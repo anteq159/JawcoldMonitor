@@ -7,52 +7,20 @@ import app.drivers.manufacturers  # noqa: F401 - triggers manufacturer driver re
 from app.drivers.registry import get_driver
 
 MOCK_DEVICES = {
+    # Trimmed to 2 controllers (2026-07-05) so this test environment's
+    # sample data matches what a lean real deployment would look like,
+    # rather than the wider demo fleet from Etap 1. Kept one sequential-
+    # alarm-code driver and one bitmask-alarm-code driver (Danfoss,
+    # Carel MPX) so both paths through decode_active_alarms() still have
+    # live coverage. Addresses kept as their original 1/6 rather than
+    # renumbered, so existing discovered Device rows didn't need updating.
     1: {
         "name": "Chłodnia mroźnicza #1",
         "manufacturer": "Danfoss",
     },
-    2: {
-        "name": "Witryna chłodnicza #1",
-        "manufacturer": "Carel",
-    },
-    3: {
-        "name": "Komora chłodnicza #1",
-        "manufacturer": "Eliwell",
-    },
-    4: {
-        "name": "Licznik energii",
-        "manufacturer": None,
-        "parameters": [
-            {"name": "Napięcie L1", "unit": "V", "base": 230.0, "noise": 2.0},
-            {"name": "Napięcie L2", "unit": "V", "base": 230.5, "noise": 2.0},
-            {"name": "Prąd L1", "unit": "A", "base": 4.2, "noise": 0.3},
-            {"name": "Moc czynna", "unit": "kW", "base": 1.8, "noise": 0.2},
-            {"name": "Energia", "unit": "kWh", "base": 1250.0, "noise": 0.01},
-        ],
-    },
-    5: {
-        "name": "Przetwornik ciśnienia",
-        "manufacturer": None,
-        "parameters": [
-            {"name": "Ciśnienie", "unit": "bar", "base": 2.5, "noise": 0.05},
-            {"name": "Temperatura medium", "unit": "°C", "base": 45.0, "noise": 1.0},
-        ],
-    },
     6: {
         "name": "Regał chłodniczy EEV #1",
         "manufacturer": "Carel MPX",
-    },
-    7: {
-        "name": "Sterownik nieznany #1",
-        # Deliberately not a registered manufacturer - simulates a controller
-        # answering on the bus whose brand/register map jawcold doesn't
-        # recognize yet, so the discovery/recognition-status flow has a
-        # real case to demonstrate.
-        "manufacturer": "Unknown-XR2000",
-        "parameters": [
-            {"name": "Rejestr 0", "unit": "", "base": 512.0, "noise": 3.0},
-            {"name": "Rejestr 1", "unit": "", "base": 88.0, "noise": 1.0},
-        ],
     },
 }
 

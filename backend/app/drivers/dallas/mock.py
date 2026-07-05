@@ -4,10 +4,11 @@ import math
 from typing import List, Optional
 from app.drivers.base import AbstractDallasDriver
 
+# Trimmed to 2 (2026-07-05) to match the lean 2-controller test set - see
+# app/drivers/rs485/mock.py.
 MOCK_SENSORS = [
     {"rom_id": "28-0000001a2b3c", "name": "Czujnik serwerowni", "base": 19.5, "noise": 0.3},
     {"rom_id": "28-0000002d4e5f", "name": "Czujnik magazynu", "base": 14.0, "noise": 0.8},
-    {"rom_id": "28-00000061728a", "name": "Czujnik zewnętrzny", "base": 12.0, "noise": 2.0},
 ]
 
 _ticks: dict = {s["rom_id"]: 0.0 for s in MOCK_SENSORS}

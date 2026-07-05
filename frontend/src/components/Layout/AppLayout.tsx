@@ -6,7 +6,7 @@ import { Toaster } from 'react-hot-toast'
 import { useWebSocket } from '../../hooks/useWebSocket'
 import { NewDeviceModal } from '../Alerts/NewDeviceModal'
 import { SetupWizard, isWizardCompleted } from '../Wizard/SetupWizard'
-import { getFavorites } from '../../api/favorites'
+import { getFavorites, getFavoriteParameters } from '../../api/favorites'
 import { useDeviceStore } from '../../store/devices'
 
 const TITLES: Record<string, string> = {
@@ -28,11 +28,20 @@ export function AppLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const location = useLocation()
   const setFavoriteIds = useDeviceStore((s) => s.setFavoriteIds)
+  const setFavoriteParameters = useDeviceStore((s) => s.setFavoriteParameters)
   const setWizardOpen = useDeviceStore((s) => s.setWizardOpen)
   useWebSocket()
 
   useEffect(() => {
     getFavorites().then((favs) => setFavoriteIds(new Set(favs.map((f) => f.device_id)))).catch(() => {})
+    getFavoriteParameters().then((favs) => setFavoriteParameters(
+      favs.map((f) => ({
+        id: `${f.source_type}:${f.source_id}:${f.param_name ?? ''}`,
+        type: f.source_type,
+        sourceId: f.source_id,
+        paramName: f.param_name ?? undefined,
+      }))
+    )).catch(() => {})
     if (!isWizardCompleted()) setWizardOpen(true)
   }, [])
 

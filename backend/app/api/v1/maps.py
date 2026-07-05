@@ -6,7 +6,8 @@ from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
-from pydantic import BaseModel
+from typing import List as TList
+from pydantic import BaseModel, field_validator
 
 from app.core.database import get_db
 from app.models.map import FloorMap, DevicePosition
@@ -19,12 +20,21 @@ MAPS_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "..", "uploads", 
 os.makedirs(MAPS_DIR, exist_ok=True)
 
 ALLOWED_TYPES = {"image/jpeg", "image/png", "image/svg+xml", "image/webp"}
+MAX_SELECTED_PARAMS = 3
 
 
 class PositionIn(BaseModel):
     device_id: int
     x_percent: float
     y_percent: float
+    selected_params: TList[str] = []
+
+    @field_validator("selected_params")
+    @classmethod
+    def _cap_selected_params(cls, v: TList[str]) -> TList[str]:
+        if len(v) > MAX_SELECTED_PARAMS:
+            raise ValueError(f"Można wybrać maksymalnie {MAX_SELECTED_PARAMS} parametry")
+        return v
 
 
 class PositionOut(BaseModel):
@@ -32,6 +42,7 @@ class PositionOut(BaseModel):
     device_id: int
     x_percent: float
     y_percent: float
+    selected_params: TList[str] = []
     model_config = {"from_attributes": True}
 
 
@@ -110,6 +121,7 @@ async def save_positions(
             device_id=pos.device_id,
             x_percent=pos.x_percent,
             y_percent=pos.y_percent,
+            selected_params=pos.selected_params,
         ))
     await db.commit()
     result = await db.execute(

@@ -5,6 +5,17 @@ import type { SystemStats } from '../types/websocket'
 
 export type WsStatus = 'connecting' | 'connected' | 'disconnected'
 
+export interface FavoriteParameter {
+  id: string
+  type: 'device' | 'sensor'
+  sourceId: number
+  paramName?: string
+}
+
+function favoriteParamId(f: { type: string; sourceId: number; paramName?: string }): string {
+  return `${f.type}:${f.sourceId}:${f.paramName ?? ''}`
+}
+
 interface DeviceState {
   devices: Device[]
   sensors: Sensor[]
@@ -19,6 +30,10 @@ interface DeviceState {
   setFavoriteIds: (ids: Set<number>) => void
   addFavoriteId: (id: number) => void
   removeFavoriteId: (id: number) => void
+  favoriteParameters: FavoriteParameter[]
+  setFavoriteParameters: (favs: FavoriteParameter[]) => void
+  addFavoriteParameter: (f: FavoriteParameter) => void
+  removeFavoriteParameter: (id: string) => void
   setDevices: (devices: Device[]) => void
   setSensors: (sensors: Sensor[]) => void
   updateDeviceStatus: (deviceId: number, status: Device['status']) => void
@@ -49,6 +64,12 @@ export const useDeviceStore = create<DeviceState>()((set) => ({
       next.delete(id)
       return { favoriteIds: next }
     }),
+  favoriteParameters: [],
+  setFavoriteParameters: (favs) => set({ favoriteParameters: favs }),
+  addFavoriteParameter: (f) =>
+    set((s) => (s.favoriteParameters.some((x) => x.id === f.id) ? s : { favoriteParameters: [...s.favoriteParameters, f] })),
+  removeFavoriteParameter: (id) =>
+    set((s) => ({ favoriteParameters: s.favoriteParameters.filter((f) => f.id !== id) })),
   setDevices: (devices) => set({ devices }),
   setSensors: (sensors) => set({ sensors }),
   updateDeviceStatus: (deviceId, status) =>
