@@ -4,6 +4,7 @@ import { Bell, CheckCircle, Plus, Trash2, Download } from 'lucide-react'
 import { getAlertRules, getAlertEvents, acknowledgeEvent, deleteAlertRule, createAlertRule } from '../api/alerts'
 import { downloadAlerts } from '../api/export'
 import { getDevices } from '../api/devices'
+import { useDeviceStore } from '../store/devices'
 import { Badge } from '../components/UI/Badge'
 import { Modal } from '../components/UI/Modal'
 import { EmptyState } from '../components/UI/EmptyState'
@@ -248,8 +249,13 @@ function AddRuleModal({ open, onClose, devices, onAdded }: {
   const [category, setCategory] = useState('Inne')
   const [loading, setLoading] = useState(false)
 
+  const liveReadings = useDeviceStore((s) => s.liveReadings)
   const selectedDevice = devices.find(d => String(d.id) === deviceId)
-  const parameters = selectedDevice?.parameters ?? []
+  // Live readings (whatever the manufacturer driver reports), not the
+  // separate device.parameters list - that's been empty for every
+  // auto-discovered device since Stage 1.2, which meant this dropdown was
+  // always empty too (silently falling back to a free-text field below).
+  const parameters = selectedDevice ? Object.keys(liveReadings[selectedDevice.id] ?? {}) : []
 
   const handleDeviceChange = (id: string) => {
     setDeviceId(id)
@@ -294,9 +300,10 @@ function AddRuleModal({ open, onClose, devices, onAdded }: {
             {parameters.length > 0 ? (
               <select value={paramName} onChange={e => setParamName(e.target.value)} required className="input">
                 <option value="">Wybierz parametr…</option>
-                {parameters.map(p => (
-                  <option key={p.id} value={p.name}>{p.name}{p.unit ? ` (${p.unit})` : ''}</option>
-                ))}
+                {parameters.map(name => {
+                  const unit = selectedDevice ? liveReadings[selectedDevice.id]?.[name]?.unit : null
+                  return <option key={name} value={name}>{name}{unit ? ` (${unit})` : ''}</option>
+                })}
               </select>
             ) : (
               <input value={paramName} onChange={e => setParamName(e.target.value)} required

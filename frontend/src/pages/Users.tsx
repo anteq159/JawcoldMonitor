@@ -4,6 +4,7 @@ import { getUsers, createUser, updateUser, deleteUser } from '../api/users'
 import { getRoles } from '../api/roles'
 import { getDevices } from '../api/devices'
 import { getUserVisibility, setUserVisibility, type VisibilityEntry } from '../api/visibility'
+import { useDeviceStore } from '../store/devices'
 import { Modal } from '../components/UI/Modal'
 import { ConfirmDialog } from '../components/UI/ConfirmDialog'
 import { Badge } from '../components/UI/Badge'
@@ -159,6 +160,13 @@ function VisibilityModal({ user, devices, onClose }: {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [allAllowed, setAllAllowed] = useState(false)
+  // Live readings (whatever the manufacturer driver reports), not the
+  // separate device.parameters list - that's been empty for every
+  // auto-discovered device since Stage 1.2, which meant this modal always
+  // showed "Brak parametrow" and per-parameter visibility restriction was
+  // silently non-functional for any real device.
+  const liveReadings = useDeviceStore((s) => s.liveReadings)
+  const paramNamesFor = (deviceId: number) => Object.keys(liveReadings[deviceId] ?? {})
 
   useEffect(() => {
     getUserVisibility(user.id).then(data => {
@@ -186,8 +194,8 @@ function VisibilityModal({ user, devices, onClose }: {
       } else {
         const vis: VisibilityEntry[] = []
         devices.forEach(d => {
-          d.parameters.forEach(p => {
-            vis.push({ device_id: d.id, parameter_name: p.name, visible: entries[`${d.id}::${p.name}`] ?? true })
+          paramNamesFor(d.id).forEach(name => {
+            vis.push({ device_id: d.id, parameter_name: name, visible: entries[`${d.id}::${name}`] ?? true })
           })
         })
         await setUserVisibility(user.id, vis)
@@ -216,28 +224,31 @@ function VisibilityModal({ user, devices, onClose }: {
           {!allAllowed && (
             <div className="space-y-3 max-h-80 overflow-y-auto pr-1">
               {devices.length === 0 && <p className="text-ink-muted text-sm">Brak urządzeń.</p>}
-              {devices.map(d => (
+              {devices.map(d => {
+                const paramNames = paramNamesFor(d.id)
+                return (
                 <div key={d.id}>
                   <p className="text-xs font-semibold text-ink-muted uppercase tracking-wide mb-1.5">{d.name}</p>
-                  {d.parameters.length === 0 ? (
-                    <p className="text-xs text-ink-muted ml-2">Brak parametrów</p>
+                  {paramNames.length === 0 ? (
+                    <p className="text-xs text-ink-muted ml-2">Oczekiwanie na pierwsze odczyty tego urządzenia...</p>
                   ) : (
                     <div className="space-y-1">
-                      {d.parameters.map(p => {
-                        const key = `${d.id}::${p.name}`
+                      {paramNames.map(name => {
+                        const key = `${d.id}::${name}`
                         const checked = entries[key] ?? true
+                        const unit = liveReadings[d.id]?.[name]?.unit
                         return (
-                          <label key={p.id} className="flex items-center gap-2 ml-2 cursor-pointer">
-                            <input type="checkbox" checked={checked} onChange={() => toggle(d.id, p.name)}
+                          <label key={name} className="flex items-center gap-2 ml-2 cursor-pointer">
+                            <input type="checkbox" checked={checked} onChange={() => toggle(d.id, name)}
                               className="rounded border-border-strong bg-surface-2 text-accent focus:ring-0" />
-                            <span className="text-sm text-ink-body">{p.name}{p.unit ? ` (${p.unit})` : ''}</span>
+                            <span className="text-sm text-ink-body">{name}{unit ? ` (${unit})` : ''}</span>
                           </label>
                         )
                       })}
                     </div>
                   )}
                 </div>
-              ))}
+              )})}
             </div>
           )}
 

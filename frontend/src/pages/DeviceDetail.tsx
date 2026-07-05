@@ -137,27 +137,6 @@ export default function DeviceDetail() {
         </div>
       </Card>
 
-      {device.parameters.length > 0 && (
-        <Card title="Parametry urządzenia">
-          <div className="divide-y divide-border">
-            {device.parameters.map((p) => (
-              <div key={p.id} className="flex items-center justify-between px-5 py-3">
-                <div>
-                  <p className="text-sm text-ink">{p.name}</p>
-                  <p className="text-xs text-ink-muted font-mono">Rejestr {p.register_address} · {p.data_type}</p>
-                </div>
-                <div className="text-right">
-                  {p.unit && <span className="text-xs text-ink-muted">{p.unit}</span>}
-                  {p.threshold_min != null && (
-                    <p className="text-xs text-ink-muted">min {p.threshold_min} / max {p.threshold_max}</p>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        </Card>
-      )}
-
       {profile && profile.registers.length > 0 && (
         <Card title="Zmienne sterownika">
           <RegisterControlPanel deviceId={device.id} registers={profile.registers} profileName={profile.name} />
