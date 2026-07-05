@@ -21,7 +21,13 @@ class CarelMpxOneBasicDriver(AbstractControllerDriver):
     source spreadsheet's own type/signedness columns didn't map cleanly
     onto a single obvious convention - verify against the full Carel
     variable definition doc before real hardware use, same caveat as
-    every profile here, just with real addresses underneath it this time."""
+    every profile here, just with real addresses underneath it this time.
+
+    "FOk" is really named "Compressor 2 output function status" in the
+    source list, with no separate "compressor 1" register anywhere in the
+    sheet - kept the real name/numbering as-is rather than smoothing it
+    into a generic "Sprężarka" to avoid implying a certainty about why
+    it's numbered that way that the source doesn't actually give."""
 
     manufacturer = "Carel MPXone Basic"
 
@@ -34,6 +40,7 @@ class CarelMpxOneBasicDriver(AbstractControllerDriver):
             RegisterMapEntry(address=54, name="Zawór elektromagnetyczny (DO_sol)", data_type="uint16", register_type="discrete_input"),
             RegisterMapEntry(address=60, name="Odszranianie (DO_def)", data_type="uint16", register_type="discrete_input"),
             RegisterMapEntry(address=62, name="Wentylator (DO_Fan)", data_type="uint16", register_type="discrete_input"),
+            RegisterMapEntry(address=78, name="Sprężarka 2 (FOk)", data_type="uint16", register_type="discrete_input"),
             RegisterMapEntry(address=14, name="Alarm drzwi (dor)", data_type="uint16", register_type="discrete_input"),
             RegisterMapEntry(address=55, name="Rejestr alarmów (OrAlrm)", data_type="uint16", is_alarm_register=True, register_type="discrete_input"),
         ]
@@ -68,6 +75,7 @@ class CarelMpxOneBasicDriver(AbstractControllerDriver):
             "Zawór elektromagnetyczny (DO_sol)": {"value": 1 if supply > 2 else 0, "unit": ""},
             "Odszranianie (DO_def)": {"value": 0, "unit": ""},
             "Wentylator (DO_Fan)": {"value": 1, "unit": ""},
+            "Sprężarka 2 (FOk)": {"value": 1 if supply > 2 else 0, "unit": ""},
             "Alarm drzwi (dor)": {"value": 0, "unit": ""},
             "Rejestr alarmów (OrAlrm)": {"value": 0, "unit": ""},
         }

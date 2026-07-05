@@ -12,7 +12,8 @@ class CarelMpxOneAdvancedDriver(AbstractControllerDriver):
     positioning on top of the Medium tier's EEV/HACCP feature set.
     Register addresses/types are real, taken from Carel's own "MPXone
     MODBUS Variable List.xlsx" (MPXone_ADVANCED sheet) - see the Basic
-    tier's docstring for the full caveat on data type/scale inference."""
+    tier's docstring for the full caveat on data type/scale inference,
+    including the note on "FOk"'s real name/numbering."""
 
     manufacturer = "Carel MPXone Advanced"
 
@@ -25,11 +26,13 @@ class CarelMpxOneAdvancedDriver(AbstractControllerDriver):
             RegisterMapEntry(address=134, name="Nastawa przegrzania (P3)", unit="K", data_type="int16", scale_factor=0.1, writable=True, register_type="holding"),
             RegisterMapEntry(address=155, name="Ręczne położenie zaworu (PMu)", unit="kroki", data_type="uint16", writable=True, register_type="holding"),
             RegisterMapEntry(address=16, name="Wyjście analogowe wentylatora skraplacza (FAE)", unit="%", data_type="int16", scale_factor=0.1, register_type="input"),
+            RegisterMapEntry(address=52, name="Wyjście analogowe sprężarki (FAG)", unit="%", data_type="int16", scale_factor=0.1, register_type="input"),
             RegisterMapEntry(address=20, name="Licznik alarmów HACCP HA (Han)", data_type="uint16", register_type="input"),
             RegisterMapEntry(address=21, name="Licznik alarmów HACCP HF (HFn)", data_type="uint16", register_type="input"),
             RegisterMapEntry(address=54, name="Zawór elektromagnetyczny (DO_sol)", data_type="uint16", register_type="discrete_input"),
             RegisterMapEntry(address=60, name="Odszranianie (DO_def)", data_type="uint16", register_type="discrete_input"),
             RegisterMapEntry(address=62, name="Wentylator (DO_Fan)", data_type="uint16", register_type="discrete_input"),
+            RegisterMapEntry(address=98, name="Sprężarka 2 (FOk)", data_type="uint16", register_type="discrete_input"),
             RegisterMapEntry(address=14, name="Alarm drzwi (dor)", data_type="uint16", register_type="discrete_input"),
             RegisterMapEntry(address=55, name="Rejestr alarmów (OrAlrm)", data_type="uint16", is_alarm_register=True, register_type="discrete_input"),
         ]
@@ -61,11 +64,13 @@ class CarelMpxOneAdvancedDriver(AbstractControllerDriver):
             "Nastawa przegrzania (P3)": {"value": 6.0, "unit": "K"},
             "Ręczne położenie zaworu (PMu)": {"value": valve_steps, "unit": "kroki"},
             "Wyjście analogowe wentylatora skraplacza (FAE)": {"value": fan_pct, "unit": "%"},
+            "Wyjście analogowe sprężarki (FAG)": {"value": round(max(0, min(100, 55 + 10 * math.sin(tick * 0.07) + random.uniform(-3, 3))), 0), "unit": "%"},
             "Licznik alarmów HACCP HA (Han)": {"value": 0, "unit": ""},
             "Licznik alarmów HACCP HF (HFn)": {"value": 0, "unit": ""},
             "Zawór elektromagnetyczny (DO_sol)": {"value": 1 if supply > 0.5 else 0, "unit": ""},
             "Odszranianie (DO_def)": {"value": 0, "unit": ""},
             "Wentylator (DO_Fan)": {"value": 1, "unit": ""},
+            "Sprężarka 2 (FOk)": {"value": 1 if supply > 0.5 else 0, "unit": ""},
             "Alarm drzwi (dor)": {"value": 0, "unit": ""},
             "Rejestr alarmów (OrAlrm)": {"value": 0, "unit": ""},
         }

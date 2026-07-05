@@ -41,7 +41,21 @@ class DanfossFc102Driver(AbstractControllerDriver):
     requires sending a correctly sequenced Control Word (specific bit
     combinations, not just "write a number") per the FC-series fieldbus
     profile - not something this app's simple single-register write
-    matches safely, so this driver is monitoring-only."""
+    matches safely, so this driver is monitoring-only.
+
+    Cross-checked the addressing correction above against a second copy
+    of this same register list living inside the original DanfossFC102.xls
+    (a "Data readout" sheet, separate from the "FC102 Modbus Holding
+    Registers" sheet used originally) which also has its own
+    "Conversion index" column - its index-to-factor table confirms simple
+    negative indices really do mean x10^index (e.g. -2 -> x0.01) with no
+    directional ambiguity, and independently reproduces the same +1 offset
+    on every overlapping register (its "Alarm Word" is listed as 16900,
+    Control Word as 16000 - both exactly 1 above this driver's addresses),
+    reinforcing that the correction was right rather than undermining it.
+    That sheet also has three more registers using confirmed-simple
+    indices that the curated PDF didn't happen to include, added below
+    (Frequency, Motor Thermal, Torque %)."""
 
     manufacturer = "Danfoss FC102"
 
@@ -50,7 +64,10 @@ class DanfossFc102Driver(AbstractControllerDriver):
             RegisterMapEntry(address=16029, name="Słowo statusu (16-03 Status Word)", data_type="uint16"),
             RegisterMapEntry(address=16009, name="Wartość zadana (16-01 Reference)", data_type="int32", scale_factor=0.001),
             RegisterMapEntry(address=16019, name="Wartość zadana % (16-02 Reference %)", unit="%", data_type="int16", scale_factor=0.1),
+            RegisterMapEntry(address=16129, name="Częstotliwość wyjściowa (16-13 Frequency)", unit="Hz", data_type="uint16", scale_factor=0.1),
             RegisterMapEntry(address=16139, name="Prąd silnika (16-14 Motor Current)", unit="A", data_type="int32", scale_factor=0.01),
+            RegisterMapEntry(address=16179, name="Obciążenie termiczne silnika (16-18 Motor Thermal)", unit="%", data_type="uint16"),
+            RegisterMapEntry(address=16219, name="Moment obrotowy (16-22 Torque)", unit="%", data_type="int16"),
             RegisterMapEntry(address=16299, name="Napięcie obwodu DC (16-30 DC Link Voltage)", unit="V", data_type="uint16"),
             RegisterMapEntry(address=16919, name="Słowo ostrzeżeń (16-92 Warning Word)", data_type="uint32"),
             RegisterMapEntry(address=16899, name="Słowo alarmów (16-90 Alarm Word)", data_type="uint32", is_alarm_register=True),
@@ -77,11 +94,15 @@ class DanfossFc102Driver(AbstractControllerDriver):
     def simulate_reading(self, tick: float) -> Dict[str, dict]:
         ref_pct = round(max(0, 70 + 15 * math.sin(tick * 0.05) + random.uniform(-2, 2)), 1)
         current = round(3.5 + (ref_pct / 100) * 4 + random.uniform(-0.2, 0.2), 2)
+        freq = round((ref_pct / 100) * 50, 1)
         return {
             "Słowo statusu (16-03 Status Word)": {"value": 0x0F, "unit": ""},
             "Wartość zadana (16-01 Reference)": {"value": ref_pct, "unit": ""},
             "Wartość zadana % (16-02 Reference %)": {"value": ref_pct, "unit": "%"},
+            "Częstotliwość wyjściowa (16-13 Frequency)": {"value": freq, "unit": "Hz"},
             "Prąd silnika (16-14 Motor Current)": {"value": current, "unit": "A"},
+            "Obciążenie termiczne silnika (16-18 Motor Thermal)": {"value": round(30 + (ref_pct / 100) * 25, 0), "unit": "%"},
+            "Moment obrotowy (16-22 Torque)": {"value": round(40 + (ref_pct / 100) * 30 + random.uniform(-2, 2), 0), "unit": "%"},
             "Napięcie obwodu DC (16-30 DC Link Voltage)": {"value": 565, "unit": "V"},
             "Słowo ostrzeżeń (16-92 Warning Word)": {"value": 0, "unit": ""},
             "Słowo alarmów (16-90 Alarm Word)": {"value": 0, "unit": ""},
