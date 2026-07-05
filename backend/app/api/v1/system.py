@@ -58,25 +58,6 @@ async def diagnostics(
     return get_recent(limit)
 
 
-@router.get("/update-check")
-async def update_check(_: User = Depends(require_role("Admin"))):
-    """Simulated - Etap 1 is demo/simulation stage per the project brief,
-    real self-update infrastructure (git/Docker image rollout) is Stage 3
-    deployment territory, not something to fake convincingly here."""
-    return {
-        "current_version": "1.0.0",
-        "latest_version": "1.0.0",
-        "up_to_date": True,
-        "checked_at": datetime.now(timezone.utc).isoformat(),
-        "changelog": [
-            {
-                "version": "1.0.0",
-                "notes": "Wersja demonstracyjna Etapu 1 — pełny interfejs, symulacja sterowników Danfoss/Carel/Eliwell.",
-            },
-        ],
-    }
-
-
 @router.get("/services", response_model=List[ServiceStatus])
 async def services_status(
     db: AsyncSession = Depends(get_db),

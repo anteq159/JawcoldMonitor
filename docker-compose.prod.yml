@@ -1,0 +1,13 @@
+services:
+  backend:
+    # Real hardware overlay - a container doesn't see host devices unless
+    # mapped explicitly, so PREVIEW_MODE=false alone isn't enough. Kept
+    # separate from docker-compose.yml (rather than baked into the shared
+    # base) because /dev/ttyUSB0 not existing would otherwise break the
+    # plain preview/demo path on any machine without a real adapter
+    # plugged in. Only the first RS485_PORTS entry is mapped since the
+    # scanner only ever opens ports[0] today (see app/services/scanner.py).
+    devices:
+      - ${RS485_PORTS:-/dev/ttyUSB0}:${RS485_PORTS:-/dev/ttyUSB0}
+    volumes:
+      - /sys/bus/w1/devices:/sys/bus/w1/devices:ro

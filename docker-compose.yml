@@ -38,6 +38,14 @@ services:
       RS485_PORTS: ${RS485_PORTS:-/dev/ttyUSB0}
       RS485_BAUDRATE: ${RS485_BAUDRATE:-9600}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:823}
+    # Bind-mounted rather than left baked into the image (COPY . . in the
+    # Dockerfile still runs, but this overlays it at runtime): an update
+    # uploaded through Settings extracts into this same host path, so it
+    # survives the container restart that applies it. Also means local
+    # code edits show up without a rebuild - a real side benefit, not a
+    # workaround.
+    volumes:
+      - ./backend/app:/app/app
     depends_on:
       postgres:
         condition: service_healthy

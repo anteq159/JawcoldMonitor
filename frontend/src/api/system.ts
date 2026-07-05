@@ -8,12 +8,17 @@ export interface DiagnosticEntry {
   message: string
 }
 
-export interface UpdateCheck {
+export interface UpdateMeta {
+  from_version: string
+  to_version: string
+  applied_at: string
+  action: 'update' | 'rollback'
+}
+
+export interface UpdateInfo {
   current_version: string
-  latest_version: string
-  up_to_date: boolean
-  checked_at: string
-  changelog: { version: string; notes: string }[]
+  last_update: UpdateMeta | null
+  rollback_available: boolean
 }
 
 export const getSystemStats = (): Promise<SystemStats> => api.get('/system/stats').then((r) => r.data)
@@ -23,4 +28,15 @@ export const getSerialPorts = (): Promise<{ ports: string[] }> => api.get('/syst
 export const getServicesStatus = (): Promise<ServiceStatus[]> => api.get('/system/services').then((r) => r.data)
 export const getDiagnostics = (limit = 100): Promise<DiagnosticEntry[]> =>
   api.get('/system/diagnostics', { params: { limit } }).then((r) => r.data)
-export const getUpdateCheck = (): Promise<UpdateCheck> => api.get('/system/update-check').then((r) => r.data)
+
+export const getUpdateInfo = (): Promise<UpdateInfo> => api.get('/system/update/info').then((r) => r.data)
+export const uploadUpdate = (file: File): Promise<UpdateMeta & { message: string }> => {
+  const form = new FormData()
+  form.append('file', file)
+  // Longer than the default client timeout - this copies a full app/
+  // backup and extracts the new tree before responding, not just a quick
+  // API round trip.
+  return api.post('/system/update/upload', form, { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 60000 }).then((r) => r.data)
+}
+export const rollbackUpdate = (): Promise<UpdateMeta & { message: string }> =>
+  api.post('/system/update/rollback').then((r) => r.data)

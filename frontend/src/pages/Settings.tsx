@@ -1,11 +1,12 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
-import { Download, Upload, RefreshCw, Wand2, Bell } from 'lucide-react'
+import { format } from 'date-fns'
+import { Download, Upload, RefreshCw, RotateCcw, Wand2, Bell } from 'lucide-react'
 import { Card } from '../components/UI/Card'
 import { ConfirmDialog } from '../components/UI/ConfirmDialog'
 import { downloadReadings, downloadAlerts } from '../api/export'
 import { downloadBackup, restoreBackup } from '../api/backup'
-import { getUpdateCheck, type UpdateCheck } from '../api/system'
+import { getUpdateInfo, uploadUpdate, rollbackUpdate, getServicesStatus, type UpdateInfo } from '../api/system'
 import { useDeviceStore } from '../store/devices'
 import { isNotificationSupported, getNotificationPermission, requestNotificationPermission } from '../utils/notifications'
 
@@ -31,7 +32,6 @@ export default function Settings() {
       <Card title="Informacje o systemie">
         <div className="p-5 space-y-3 text-sm text-ink-muted">
           <p>Swagger API: <a href="/api/v1/docs" target="_blank" rel="noreferrer" className="text-accent hover:underline">/api/v1/docs</a></p>
-          <p>Wersja: 1.0.0</p>
           <p>Stack: FastAPI + React + PostgreSQL + Redis</p>
           <button
             onClick={() => setWizardOpen(true)}
@@ -220,44 +220,147 @@ function BackupSection() {
 }
 
 function UpdatesSection() {
-  const [checking, setChecking] = useState(false)
-  const [result, setResult] = useState<UpdateCheck | null>(null)
+  const [info, setInfo] = useState<UpdateInfo | null>(null)
+  const [confirmFile, setConfirmFile] = useState<File | null>(null)
+  const [confirmRollback, setConfirmRollback] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [restarting, setRestarting] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const check = async () => {
-    setChecking(true)
+  useEffect(() => { getUpdateInfo().then(setInfo).catch(() => {}) }, [])
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) setConfirmFile(file)
+    e.target.value = ''
+  }
+
+  // The backend process exits itself right after responding so Docker's
+  // restart policy loads the new code - there's a real few-second gap
+  // where it won't answer, so poll until it does rather than guessing a
+  // fixed delay.
+  const waitForRestart = () => {
+    setRestarting(true)
+    let attempts = 0
+    const poll = setInterval(async () => {
+      attempts += 1
+      try {
+        await getServicesStatus()
+        clearInterval(poll)
+        window.location.reload()
+      } catch {
+        if (attempts >= 30) {
+          clearInterval(poll)
+          setRestarting(false)
+          toast.error('Aplikacja nie odpowiada po restarcie — sprawdź kontener ręcznie (docker compose logs backend)')
+        }
+      }
+    }, 2000)
+  }
+
+  const doUpload = async () => {
+    if (!confirmFile) return
+    setBusy(true)
     try {
-      setResult(await getUpdateCheck())
-    } catch {
-      toast.error('Błąd sprawdzania aktualizacji')
+      const result = await uploadUpdate(confirmFile)
+      toast.success(`${result.message} (${result.from_version} → ${result.to_version})`)
+      setConfirmFile(null)
+      waitForRestart()
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail ?? 'Błąd instalacji aktualizacji')
+      setConfirmFile(null)
     } finally {
-      setChecking(false)
+      setBusy(false)
     }
+  }
+
+  const doRollback = async () => {
+    setBusy(true)
+    try {
+      const result = await rollbackUpdate()
+      toast.success(`${result.message} (${result.from_version} → ${result.to_version})`)
+      setConfirmRollback(false)
+      waitForRestart()
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail ?? 'Błąd przywracania poprzedniej wersji')
+      setConfirmRollback(false)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (restarting) {
+    return (
+      <Card title="Aktualizacje">
+        <div className="p-5 flex items-center gap-3">
+          <RefreshCw size={16} className="animate-spin text-accent shrink-0" />
+          <p className="text-sm text-ink-body">Aplikacja się restartuje — strona odświeży się automatycznie za chwilę…</p>
+        </div>
+      </Card>
+    )
   }
 
   return (
     <Card title="Aktualizacje">
-      <div className="p-5 space-y-3">
-        <p className="text-sm text-ink-muted">Bieżąca wersja: <span className="text-ink font-medium">1.0.0</span></p>
-        <button
-          onClick={check}
-          disabled={checking}
-          className="flex items-center gap-2 bg-accent hover:bg-accent-strong disabled:opacity-50 text-white text-sm px-4 py-2 rounded-lg transition-colors"
-        >
-          <RefreshCw size={14} className={checking ? 'animate-spin' : ''} /> {checking ? 'Sprawdzanie…' : 'Sprawdź aktualizacje'}
-        </button>
-        {result && (
-          <div className="bg-surface-2 border border-border rounded-lg p-3 text-sm">
-            {result.up_to_date ? (
-              <p className="text-good">System jest aktualny (wersja {result.current_version}).</p>
-            ) : (
-              <p className="text-warn">Dostępna nowa wersja: {result.latest_version}</p>
-            )}
-            {result.changelog.map((c) => (
-              <p key={c.version} className="text-xs text-ink-muted mt-1">{c.version}: {c.notes}</p>
-            ))}
+      <div className="p-5 space-y-4">
+        <div>
+          <p className="text-sm text-ink-muted">
+            Bieżąca wersja: <span className="text-ink font-medium">{info?.current_version ?? '—'}</span>
+          </p>
+          {info?.last_update && (
+            <p className="text-xs text-ink-muted mt-1">
+              Ostatni{info.last_update.action === 'rollback' ? 'e wycofanie' : 'a aktualizacja'}: {info.last_update.from_version} → {info.last_update.to_version}
+              {' '}({format(new Date(info.last_update.applied_at), 'd MMM yyyy, HH:mm')})
+            </p>
+          )}
+        </div>
+
+        <div>
+          <p className="text-sm text-ink-body mb-2">
+            Wgraj plik aktualizacji (.zip) — aplikacja zostanie zaktualizowana i sama się zrestartuje.
+          </p>
+          <input ref={fileInputRef} type="file" accept=".zip" className="hidden" onChange={handleFileSelect} />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={busy}
+            className="flex items-center gap-2 bg-accent hover:bg-accent-strong disabled:opacity-50 text-white text-sm px-4 py-2 rounded-lg transition-colors"
+          >
+            <Upload size={14} /> Wgraj plik aktualizacji
+          </button>
+        </div>
+
+        {info?.rollback_available && (
+          <div className="pt-4 border-t border-border">
+            <p className="text-sm text-ink-body mb-2">
+              Zachowana jest kopia sprzed ostatniej aktualizacji — możesz ją przywrócić, jeśli coś nie działa poprawnie.
+            </p>
+            <button
+              onClick={() => setConfirmRollback(true)}
+              disabled={busy}
+              className="flex items-center gap-2 text-warn hover:text-warn/80 border border-border disabled:opacity-50 text-sm px-4 py-2 rounded-lg transition-colors"
+            >
+              <RotateCcw size={14} /> Wycofaj ostatnią aktualizację
+            </button>
           </div>
         )}
       </div>
+
+      <ConfirmDialog
+        open={!!confirmFile}
+        title="Zainstalować aktualizację?"
+        message={`Aplikacja zostanie zaktualizowana z pliku „${confirmFile?.name}” i automatycznie zrestartowana. Bieżąca wersja zostanie zachowana jako kopia zapasowa na wypadek problemów.`}
+        confirmLabel="Zainstaluj"
+        onConfirm={doUpload}
+        onClose={() => setConfirmFile(null)}
+      />
+      <ConfirmDialog
+        open={confirmRollback}
+        title="Wycofać aktualizację?"
+        message="Aplikacja wróci do wersji sprzed ostatniej aktualizacji i zostanie zrestartowana."
+        confirmLabel="Wycofaj"
+        onConfirm={doRollback}
+        onClose={() => setConfirmRollback(false)}
+      />
     </Card>
   )
 }

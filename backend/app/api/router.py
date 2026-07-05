@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from app.api.v1 import auth, devices, sensors, readings, alerts, users, logs, system, export, maps, visibility, roles, favorites, device_profiles, backup
+from app.api.v1 import auth, devices, sensors, readings, alerts, users, logs, system, export, maps, visibility, roles, favorites, device_profiles, backup, updates
 
 api_router = APIRouter(prefix="/api/v1")
 
@@ -7,6 +7,7 @@ api_router.include_router(auth.router)
 api_router.include_router(devices.router)
 api_router.include_router(device_profiles.router)
 api_router.include_router(backup.router)
+api_router.include_router(updates.router)
 api_router.include_router(sensors.router)
 api_router.include_router(readings.router)
 api_router.include_router(alerts.router)
