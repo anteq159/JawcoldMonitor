@@ -10,7 +10,9 @@ export interface MapPositionOut extends MapPosition { id: number }
 export interface DrawingPoint { x: number; y: number }
 export interface DrawingLine { type: 'line'; points: DrawingPoint[]; color: string; width: number; arrow_end: boolean }
 export interface DrawingLabel { type: 'label'; x: number; y: number; text: string; size: 'sm' | 'md' }
-export type DrawingElement = DrawingLine | DrawingLabel
+export type ShapeKind = 'rect' | 'circle' | 'triangle' | 'diamond'
+export interface DrawingShape { type: 'shape'; shape: ShapeKind; x: number; y: number; w: number; h: number; color: string; filled: boolean }
+export type DrawingElement = DrawingLine | DrawingLabel | DrawingShape
 
 export interface FloorMap {
   id: number

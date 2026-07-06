@@ -64,6 +64,7 @@ class SchematicCreate(BaseModel):
 
 MAX_DRAWING_ELEMENTS = 200
 DRAWING_COLORS = {"#C23B3B", "#2B6CB0", "#C97C1B", "#7D8E8A"}  # tłoczenie/ssanie/ciecz/neutralny
+SHAPE_KINDS = {"rect", "circle", "triangle", "diamond"}
 
 
 def _validate_drawing(elements: TList[dict]) -> TList[dict]:
@@ -109,6 +110,28 @@ def _validate_drawing(elements: TList[dict]) -> TList[dict]:
                 "y": check_coord(el.get("y")),
                 "text": text,
                 "size": size,
+            })
+        elif el_type == "shape":
+            shape = el.get("shape")
+            if shape not in SHAPE_KINDS:
+                raise HTTPException(status_code=400, detail=f"Nieznana figura: {shape}")
+            color = el.get("color")
+            if color not in DRAWING_COLORS:
+                raise HTTPException(status_code=400, detail="Niedozwolony kolor figury")
+            w = el.get("w")
+            h = el.get("h")
+            if not isinstance(w, (int, float)) or not isinstance(h, (int, float)) \
+                    or not (0.5 <= float(w) <= 50) or not (0.5 <= float(h) <= 50):
+                raise HTTPException(status_code=400, detail="Rozmiar figury: 0.5-50%")
+            clean.append({
+                "type": "shape",
+                "shape": shape,
+                "x": check_coord(el.get("x")),
+                "y": check_coord(el.get("y")),
+                "w": round(float(w), 2),
+                "h": round(float(h), 2),
+                "color": color,
+                "filled": bool(el.get("filled")),
             })
         else:
             raise HTTPException(status_code=400, detail=f"Nieznany typ elementu: {el_type}")

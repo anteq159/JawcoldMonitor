@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
-import { Save, Trash2, Pencil, Type, MapPin, MousePointer2, Spline } from 'lucide-react'
+import { Save, Trash2, Pencil, Type, MapPin, MousePointer2, Spline, Square, Circle, Triangle, Diamond } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { saveDrawing, savePositions, type FloorMap, type DrawingElement, type DrawingLine, type DrawingPoint } from '../../api/maps'
+import { saveDrawing, savePositions, type FloorMap, type DrawingElement, type DrawingLine, type DrawingPoint, type ShapeKind } from '../../api/maps'
 import { useAuthStore } from '../../store/auth'
 import { useDeviceStore } from '../../store/devices'
 import { DeviceStatusBadge } from '../Devices/DeviceStatusBadge'
@@ -24,10 +24,26 @@ const WIDTHS = [2, 3, 4]
 // fit the actual container. One scale factor for all content means the
 // schematic is pixel-identical on every device/resolution - nothing
 // shifts relative to anything else, it only zooms.
-const BASE_W = 1000
-const BASE_H = 625  // 16:10
+// 1600x1000 (raised from 1000x625, same 1.6 aspect so existing drawings
+// keep true 45° angles): fixed-size content like labels and device tiles
+// occupies proportionally less canvas, leaving room for complex circuits.
+const BASE_W = 1600
+const BASE_H = 1000
 
-type Mode = 'line' | 'label' | 'pin' | 'select'
+type Mode = 'line' | 'label' | 'shape' | 'pin' | 'select'
+
+const SHAPES: { kind: ShapeKind; icon: React.ReactNode; label: string }[] = [
+  { kind: 'rect', icon: <Square size={12} />, label: 'Prostokąt' },
+  { kind: 'circle', icon: <Circle size={12} />, label: 'Koło' },
+  { kind: 'triangle', icon: <Triangle size={12} />, label: 'Trójkąt' },
+  { kind: 'diamond', icon: <Diamond size={12} />, label: 'Romb' },
+]
+// Shape sizes in logical stage pixels (converted to percent on insert)
+const SHAPE_SIZES = [
+  { label: 'S', px: 60 },
+  { label: 'M', px: 100 },
+  { label: 'L', px: 160 },
+]
 
 interface ParamPickerState { device: Device; x: number; y: number; initialSelected: string[] }
 
@@ -57,6 +73,9 @@ export function SchematicEditor({ floorMap, devices, onDelete, onSaved }: {
   const [color, setColor] = useState(COLORS[0].hex)
   const [lineWidth, setLineWidth] = useState(3)
   const [arrowEnd, setArrowEnd] = useState(true)
+  const [shapeKind, setShapeKind] = useState<ShapeKind>('rect')
+  const [shapeSize, setShapeSize] = useState(100)
+  const [shapeFilled, setShapeFilled] = useState(true)
   const [draft, setDraft] = useState<DrawingPoint[]>([])
   const [cursor, setCursor] = useState<DrawingPoint | null>(null)
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null)
@@ -126,6 +145,16 @@ export function SchematicEditor({ floorMap, devices, onDelete, onSaved }: {
     } else if (mode === 'label') {
       if (labelDraft) commitLabel()
       else setLabelDraft({ x: pt.x, y: pt.y, text: '' })
+    } else if (mode === 'shape') {
+      // Size chosen in stage px; stored as percent per axis so the shape
+      // keeps the same pixel proportions on the fixed-ratio stage.
+      setElements(prev => [...prev, {
+        type: 'shape', shape: shapeKind,
+        x: pt.x, y: pt.y,
+        w: Math.min(50, (shapeSize / BASE_W) * 100),
+        h: Math.min(50, (shapeSize / BASE_H) * 100),
+        color, filled: shapeFilled,
+      }])
     } else if (mode === 'pin') {
       setPendingClick(pt)
     } else {
@@ -219,6 +248,7 @@ export function SchematicEditor({ floorMap, devices, onDelete, onSaved }: {
 
   const MODES: { value: Mode; icon: React.ReactNode; label: string }[] = [
     { value: 'line', icon: <Spline size={12} />, label: 'Linia' },
+    { value: 'shape', icon: <Square size={12} />, label: 'Figura' },
     { value: 'label', icon: <Type size={12} />, label: 'Tekst' },
     { value: 'pin', icon: <MapPin size={12} />, label: 'Urządzenie' },
     { value: 'select', icon: <MousePointer2 size={12} />, label: 'Zaznacz' },
@@ -240,15 +270,17 @@ export function SchematicEditor({ floorMap, devices, onDelete, onSaved }: {
                   </button>
                 ))}
               </div>
+              {(mode === 'line' || mode === 'shape') && (
+                <div className="flex gap-1">
+                  {COLORS.map(c => (
+                    <button key={c.hex} onClick={() => setColor(c.hex)} title={c.label}
+                      className={`w-5 h-5 rounded-full border-2 transition-transform ${color === c.hex ? 'border-ink scale-110' : 'border-transparent'}`}
+                      style={{ backgroundColor: c.hex }} />
+                  ))}
+                </div>
+              )}
               {mode === 'line' && (
                 <>
-                  <div className="flex gap-1">
-                    {COLORS.map(c => (
-                      <button key={c.hex} onClick={() => setColor(c.hex)} title={c.label}
-                        className={`w-5 h-5 rounded-full border-2 transition-transform ${color === c.hex ? 'border-ink scale-110' : 'border-transparent'}`}
-                        style={{ backgroundColor: c.hex }} />
-                    ))}
-                  </div>
                   <select value={lineWidth} onChange={e => setLineWidth(Number(e.target.value))}
                     className="text-xs bg-surface border border-border rounded px-1 py-0.5 text-ink">
                     {WIDTHS.map(w => <option key={w} value={w}>{w}px</option>)}
@@ -257,6 +289,31 @@ export function SchematicEditor({ floorMap, devices, onDelete, onSaved }: {
                     <input type="checkbox" checked={arrowEnd} onChange={e => setArrowEnd(e.target.checked)}
                       className="rounded border-border-strong bg-surface text-accent focus:ring-0" />
                     strzałka
+                  </label>
+                </>
+              )}
+              {mode === 'shape' && (
+                <>
+                  <div className="flex gap-1 bg-surface-2 rounded-lg p-0.5">
+                    {SHAPES.map(s => (
+                      <button key={s.kind} onClick={() => setShapeKind(s.kind)} title={s.label}
+                        className={`p-1.5 rounded-md transition-colors ${shapeKind === s.kind ? 'bg-accent text-white' : 'text-ink-muted hover:text-ink'}`}>
+                        {s.icon}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="flex gap-1 bg-surface-2 rounded-lg p-0.5">
+                    {SHAPE_SIZES.map(s => (
+                      <button key={s.label} onClick={() => setShapeSize(s.px)}
+                        className={`text-xs px-2 py-1 rounded-md transition-colors ${shapeSize === s.px ? 'bg-accent text-white' : 'text-ink-muted hover:text-ink'}`}>
+                        {s.label}
+                      </button>
+                    ))}
+                  </div>
+                  <label className="flex items-center gap-1 text-xs text-ink-muted">
+                    <input type="checkbox" checked={shapeFilled} onChange={e => setShapeFilled(e.target.checked)}
+                      className="rounded border-border-strong bg-surface text-accent focus:ring-0" />
+                    wypełnienie
                   </label>
                 </>
               )}
@@ -336,6 +393,43 @@ export function SchematicEditor({ floorMap, devices, onDelete, onSaved }: {
                     )}
                     {el.arrow_end && arrowHead(el) && (
                       <polygon points={arrowHead(el)!} fill={el.color} pointerEvents="none" />
+                    )}
+                  </g>
+                )
+              }
+              if (el.type === 'shape') {
+                const c = toPx({ x: el.x, y: el.y })
+                const w = (el.w / 100) * BASE_W
+                const h = (el.h / 100) * BASE_H
+                const selected = selectedIdx === i
+                const fill = el.filled ? '#FFFFFF' : 'none'
+                const common = {
+                  stroke: el.color, strokeWidth: 2.5, fill,
+                  opacity: selected ? 0.6 : 1,
+                  style: editMode && mode === 'select' ? { cursor: 'pointer', pointerEvents: 'all' as const } : { pointerEvents: 'none' as const },
+                  onClick: editMode && mode === 'select'
+                    ? (e: React.MouseEvent) => { e.stopPropagation(); setSelectedIdx(i) }
+                    : undefined,
+                }
+                return (
+                  <g key={i}>
+                    {selected && (
+                      <rect x={c.x - w / 2 - 5} y={c.y - h / 2 - 5} width={w + 10} height={h + 10}
+                        fill="none" stroke={el.color} strokeWidth={1.5} strokeDasharray="4 3" opacity={0.6} pointerEvents="none" />
+                    )}
+                    {el.shape === 'rect' && (
+                      <rect x={c.x - w / 2} y={c.y - h / 2} width={w} height={h} rx={3} {...common} />
+                    )}
+                    {el.shape === 'circle' && (
+                      <ellipse cx={c.x} cy={c.y} rx={w / 2} ry={h / 2} {...common} />
+                    )}
+                    {el.shape === 'triangle' && (
+                      <polygon points={`${c.x},${c.y - h / 2} ${c.x - w / 2},${c.y + h / 2} ${c.x + w / 2},${c.y + h / 2}`}
+                        strokeLinejoin="round" {...common} />
+                    )}
+                    {el.shape === 'diamond' && (
+                      <polygon points={`${c.x},${c.y - h / 2} ${c.x + w / 2},${c.y} ${c.x},${c.y + h / 2} ${c.x - w / 2},${c.y}`}
+                        strokeLinejoin="round" {...common} />
                     )}
                   </g>
                 )
