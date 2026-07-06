@@ -56,3 +56,7 @@ export const getRuntimeSettings = (): Promise<RuntimeSetting[]> =>
   api.get('/system/settings').then((r) => r.data)
 export const updateRuntimeSettings = (values: Record<string, string>): Promise<{ changed: string[]; restart_required: boolean }> =>
   api.put('/system/settings', { values }).then((r) => r.data)
+
+export type PowerAction = 'restart-app' | 'reboot' | 'shutdown'
+export const powerAction = (action: PowerAction): Promise<{ message: string }> =>
+  api.post(`/system/power/${action}`).then((r) => r.data)

@@ -114,7 +114,6 @@ demonstracyjny bez sprzętu: `PREVIEW_MODE=true` i sam `docker compose up -d`.
 |---|---|
 | **Admin** | wszystko: użytkownicy, konfiguracja profili, kopie, aktualizacje |
 | **Serwisant** | codzienna obsługa: dodawanie/edycja urządzeń, zapis nastaw, reguły i potwierdzanie alarmów, eksporty |
-| **Viewer** | tylko podgląd odczytów, wykresów i logów |
 
 Własne role z dowolnym zestawem uprawnień tworzy się w zakładce
 **Role i uprawnienia**. Uprawnienia egzekwuje backend — ukrywanie przycisków

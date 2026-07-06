@@ -4,7 +4,7 @@ from app.models.base import Base
 
 
 class UserDeviceVisibility(Base):
-    """Which parameters a Viewer user can see per device. Empty = all visible."""
+    """Which parameters a restricted user can see per device. Empty = all visible."""
     __tablename__ = "user_device_visibility"
     __table_args__ = (
         UniqueConstraint("user_id", "device_id", "parameter_name", name="uq_user_dev_param"),

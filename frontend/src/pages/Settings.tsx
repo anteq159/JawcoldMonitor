@@ -6,7 +6,7 @@ import { Card } from '../components/UI/Card'
 import { ConfirmDialog } from '../components/UI/ConfirmDialog'
 import { downloadReadings, downloadAlerts } from '../api/export'
 import { downloadBackup, restoreBackup } from '../api/backup'
-import { getUpdateInfo, uploadUpdate, rollbackUpdate, getServicesStatus, getRuntimeSettings, updateRuntimeSettings, type UpdateInfo, type RuntimeSetting } from '../api/system'
+import { getUpdateInfo, uploadUpdate, rollbackUpdate, getServicesStatus, getRuntimeSettings, updateRuntimeSettings, powerAction, type UpdateInfo, type RuntimeSetting, type PowerAction } from '../api/system'
 import { useDeviceStore } from '../store/devices'
 import { useAuthStore } from '../store/auth'
 import { isNotificationSupported, getNotificationPermission, requestNotificationPermission } from '../utils/notifications'
@@ -32,6 +32,7 @@ export default function Settings() {
       {canExport && <ExportCard title="Eksport alarmów" download={downloadAlerts} />}
       {isAdmin && <BackupSection />}
       {isAdmin && <UpdatesSection />}
+      {isAdmin && <PowerSection />}
 
       <Card title="Informacje o systemie">
         <div className="p-5 space-y-3 text-sm text-ink-muted">
@@ -125,6 +126,63 @@ function SystemSettingsSection() {
           {saving ? 'Zapisywanie…' : `Zapisz zmiany${Object.keys(dirty).length ? ` (${Object.keys(dirty).length})` : ''}`}
         </button>
       </div>
+    </Card>
+  )
+}
+
+function PowerSection() {
+  const [confirm, setConfirm] = useState<PowerAction | null>(null)
+  const [busy, setBusy] = useState(false)
+
+  const ACTIONS: { action: PowerAction; label: string; description: string; danger: boolean }[] = [
+    { action: 'restart-app', label: 'Restart aplikacji', description: 'Restartuje sam JawcoldMonitor (kilkanaście sekund przerwy). Stosowane też po zmianie portu RS485.', danger: false },
+    { action: 'reboot', label: 'Restart Raspberry', description: 'Ponowne uruchomienie całego urządzenia.', danger: true },
+    { action: 'shutdown', label: 'Wyłącz Raspberry', description: 'Bezpieczne wyłączenie — ponowne włączenie wymaga fizycznego odłączenia i podłączenia zasilania.', danger: true },
+  ]
+
+  const run = async (action: PowerAction) => {
+    setBusy(true)
+    try {
+      const res = await powerAction(action)
+      toast.success(res.message, { duration: 8000 })
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail ?? 'Operacja nie powiodła się', { duration: 10000 })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const current = ACTIONS.find((a) => a.action === confirm)
+
+  return (
+    <Card title="Zarządzanie urządzeniem">
+      <div className="p-5 space-y-3">
+        {ACTIONS.map((a) => (
+          <div key={a.action} className="flex items-center justify-between gap-4">
+            <p className="text-xs text-ink-muted flex-1">{a.description}</p>
+            <button
+              onClick={() => setConfirm(a.action)}
+              disabled={busy}
+              className={`shrink-0 text-sm px-4 py-2 rounded-lg border transition-colors disabled:opacity-40 ${
+                a.danger
+                  ? 'border-crit/40 text-crit hover:bg-crit hover:text-white'
+                  : 'border-border text-ink-muted hover:text-ink hover:bg-surface-2'
+              }`}
+            >
+              {a.label}
+            </button>
+          </div>
+        ))}
+      </div>
+      <ConfirmDialog
+        open={confirm !== null}
+        title={current?.label ?? ''}
+        message={`Czy na pewno wykonać: ${current?.label.toLowerCase()}? ${current?.danger ? 'Monitoring będzie niedostępny do ponownego uruchomienia.' : ''}`}
+        confirmLabel="Wykonaj"
+        danger={current?.danger ?? false}
+        onConfirm={() => { if (confirm) run(confirm) }}
+        onClose={() => setConfirm(null)}
+      />
     </Card>
   )
 }

@@ -45,7 +45,6 @@ DEFAULT_PERMISSIONS = [
 DEFAULT_ROLES = {
     "Admin": [p[0] for p in DEFAULT_PERMISSIONS],
     "Serwisant": ["device:read", "device:write", "alert:manage", "alert:acknowledge", "log:read", "export:any"],
-    "Viewer": ["device:read", "log:read"],
 }
 
 

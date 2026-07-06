@@ -1,3 +1,4 @@
+import asyncio
 import glob
 from datetime import datetime, timezone
 from typing import List
@@ -196,3 +197,61 @@ async def update_runtime_settings(
 
     restart_needed = any(EDITABLE_SETTINGS[k].restart_required for k in changed)
     return {"changed": changed, "restart_required": restart_needed}
+
+
+@router.post("/power/{action}")
+async def power_action(
+    action: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role("Admin")),
+):
+    """Device management from the panel: restart the application, reboot
+    or shut down the Raspberry. App restart reuses the update mechanism's
+    self-exit (Docker's restart policy brings up a fresh process). Host
+    reboot/shutdown is attempted via systemctl and reported honestly with
+    501 when the environment doesn't allow it (an unprivileged container
+    cannot power the host off - see README)."""
+    from fastapi import HTTPException
+    from app.models.log import EventLog
+    from app.services.update_apply import schedule_restart
+
+    labels = {
+        "restart-app": "restart aplikacji",
+        "reboot": "restart Raspberry",
+        "shutdown": "wyłączenie Raspberry",
+    }
+    if action not in labels:
+        raise HTTPException(status_code=404, detail="Nieznana akcja")
+
+    db.add(EventLog(
+        event_type="power_action",
+        user_id=current_user.id,
+        message=f"{current_user.username}: {labels[action]} z panelu",
+    ))
+    await db.commit()
+
+    if action == "restart-app":
+        schedule_restart()
+        return {"message": "Aplikacja restartuje się teraz."}
+
+    command = ["systemctl", "reboot"] if action == "reboot" else ["systemctl", "poweroff"]
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            *command,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        _, stderr = await asyncio.wait_for(proc.communicate(), timeout=5)
+        if proc.returncode != 0:
+            raise RuntimeError(stderr.decode().strip() or f"kod wyjścia {proc.returncode}")
+    except FileNotFoundError:
+        raise HTTPException(
+            status_code=501,
+            detail=(
+                f"Nie można wykonać: {labels[action]} — aplikacja działa w kontenerze "
+                "bez dostępu do hosta. Zrestartuj Raspberry przez SSH (sudo reboot)."
+            ),
+        )
+    except Exception as e:
+        raise HTTPException(status_code=501, detail=f"Nie udało się: {labels[action]} — {e}")
+    return {"message": f"Wykonuję: {labels[action]}…"}
