@@ -1,7 +1,12 @@
-import { Menu, Wifi, WifiOff, Loader2, Cpu as CpuIcon, MemoryStick, Thermometer } from 'lucide-react'
+import { Menu, Wifi, WifiOff, Loader2, Cpu as CpuIcon, MemoryStick, Thermometer, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 import { useDeviceStore } from '../../store/devices'
 
-interface Props { onMenuClick: () => void; title: string }
+interface Props {
+  onMenuClick: () => void
+  onToggleSidebar: () => void
+  sidebarCollapsed: boolean
+  title: string
+}
 
 const WS_LABEL: Record<string, string> = {
   connected: 'Połączono',
@@ -9,7 +14,7 @@ const WS_LABEL: Record<string, string> = {
   disconnected: 'Rozłączono',
 }
 
-export function Header({ onMenuClick, title }: Props) {
+export function Header({ onMenuClick, onToggleSidebar, sidebarCollapsed, title }: Props) {
   const stats = useDeviceStore((s) => s.systemStats)
   const wsStatus = useDeviceStore((s) => s.wsStatus)
 
@@ -17,6 +22,14 @@ export function Header({ onMenuClick, title }: Props) {
     <header className="h-14 bg-surface border-b border-border flex items-center px-4 gap-4 shrink-0">
       <button onClick={onMenuClick} className="text-ink-muted hover:text-ink lg:hidden" aria-label="Otwórz menu">
         <Menu size={20} />
+      </button>
+      <button
+        onClick={onToggleSidebar}
+        className="hidden lg:block text-ink-muted hover:text-ink transition-colors"
+        aria-label={sidebarCollapsed ? 'Pokaż panel boczny' : 'Schowaj panel boczny'}
+        title={sidebarCollapsed ? 'Pokaż panel boczny' : 'Schowaj panel boczny'}
+      >
+        {sidebarCollapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
       </button>
       <h1 className="text-sm font-semibold text-ink flex-1">{title}</h1>
 

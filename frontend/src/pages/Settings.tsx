@@ -25,7 +25,7 @@ export default function Settings() {
   const isAdmin = useAuthStore((s) => s.isAdmin())
 
   return (
-    <div className="space-y-6 max-w-2xl">
+    <div className="space-y-6">
       {isAdmin && <SystemSettingsSection />}
       <NotificationsSection />
       {canExport && <ExportCard title="Eksport odczytów" download={downloadReadings} />}
@@ -91,7 +91,7 @@ function SystemSettingsSection() {
         {loading ? <p className="text-sm text-ink-muted">Ładowanie…</p> : categories.map((cat) => (
           <div key={cat}>
             <h4 className="text-xs font-semibold text-ink-muted uppercase tracking-wide mb-2">{cat}</h4>
-            <div className="grid sm:grid-cols-2 gap-3">
+            <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
               {settings.filter((s) => s.category === cat).map((s) => (
                 <div key={s.key}>
                   <label className="block text-xs text-ink-muted mb-1">

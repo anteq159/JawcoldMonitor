@@ -28,6 +28,16 @@ const TITLES: Record<string, string> = {
 
 export function AppLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  // Desktop sidebar collapse - persisted so the choice survives reloads.
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(
+    () => localStorage.getItem('jawcold-sidebar-collapsed') === '1'
+  )
+  const toggleSidebar = () => {
+    setSidebarCollapsed((c) => {
+      localStorage.setItem('jawcold-sidebar-collapsed', c ? '0' : '1')
+      return !c
+    })
+  }
   const location = useLocation()
   const setFavoriteIds = useDeviceStore((s) => s.setFavoriteIds)
   const setFavoriteParameters = useDeviceStore((s) => s.setFavoriteParameters)
@@ -59,8 +69,14 @@ export function AppLayout() {
 
   return (
     <div className="flex h-screen overflow-hidden bg-bg text-ink-body">
-      {/* Desktop sidebar */}
-      <div className="hidden lg:flex">
+      {/* Desktop sidebar - width animates to 0 when collapsed; the inner
+          Sidebar keeps its fixed w-64 so contents slide out instead of
+          squishing during the transition */}
+      <div
+        className={`hidden lg:block overflow-hidden transition-[width] duration-300 ease-in-out motion-reduce:transition-none ${
+          sidebarCollapsed ? 'w-0' : 'w-64'
+        }`}
+      >
         <Sidebar />
       </div>
 
@@ -75,7 +91,12 @@ export function AppLayout() {
       )}
 
       <div className="flex flex-col flex-1 min-w-0">
-        <Header onMenuClick={() => setSidebarOpen(true)} title={title} />
+        <Header
+          onMenuClick={() => setSidebarOpen(true)}
+          onToggleSidebar={toggleSidebar}
+          sidebarCollapsed={sidebarCollapsed}
+          title={title}
+        />
         <main className="flex-1 overflow-y-auto p-4 md:p-6">
           {/* key on pathname re-mounts the wrapper per navigation so the
               entrance animation plays on every page change, not only the
