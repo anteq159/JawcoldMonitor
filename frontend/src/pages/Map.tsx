@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Upload, Trash2, MapPin, X, Save, Plus } from 'lucide-react'
-import { getMaps, uploadMap, savePositions, deleteMap, getMapFileBlobUrl, MAX_MAP_PIN_PARAMS, type FloorMap, type MapPosition } from '../api/maps'
+import { Upload, Trash2, MapPin, Save, Plus, Workflow, Image as ImageIcon } from 'lucide-react'
+import { getMaps, uploadMap, savePositions, deleteMap, getMapFileBlobUrl, createSchematic, type FloorMap, type MapPosition } from '../api/maps'
 import { getDevices } from '../api/devices'
 import { useDeviceStore } from '../store/devices'
 import { useAuthStore } from '../store/auth'
@@ -10,6 +10,9 @@ import { Modal } from '../components/UI/Modal'
 import { ConfirmDialog } from '../components/UI/ConfirmDialog'
 import { EmptyState } from '../components/UI/EmptyState'
 import { PageSpinner, Spinner } from '../components/UI/Spinner'
+import { ParamPickerPanel } from '../components/Map/ParamPickerPanel'
+import { DevicePinsLayer, type PendingPosition } from '../components/Map/DevicePinsLayer'
+import { SchematicEditor } from '../components/Map/SchematicEditor'
 import toast from 'react-hot-toast'
 import type { Device } from '../types/device'
 
@@ -21,6 +24,7 @@ export default function Map() {
   const [activeMap, setActiveMap] = useState<FloorMap | null>(null)
   const [loading, setLoading] = useState(true)
   const [showUpload, setShowUpload] = useState(searchParams.get('upload') === '1' && useAuthStore.getState().can('config:write'))
+  const [showNewSchematic, setShowNewSchematic] = useState(false)
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
 
   const load = async () => {
@@ -48,16 +52,23 @@ export default function Map() {
         <div className="flex gap-2 flex-wrap">
           {maps.map(m => (
             <button key={m.id} onClick={() => setActiveMap(m)}
-              className={`px-4 py-1.5 text-sm rounded-lg border transition-colors ${activeMap?.id === m.id ? 'bg-accent border-accent text-white' : 'border-border text-ink-muted hover:text-ink'}`}>
+              className={`flex items-center gap-1.5 px-4 py-1.5 text-sm rounded-lg border transition-colors ${activeMap?.id === m.id ? 'bg-accent border-accent text-white' : 'border-border text-ink-muted hover:text-ink'}`}>
+              {m.kind === 'schematic' ? <Workflow size={13} /> : <ImageIcon size={13} />}
               {m.name}
             </button>
           ))}
         </div>
         {canConfigure && (
-          <button onClick={() => setShowUpload(true)}
-            className="flex items-center gap-2 bg-accent hover:bg-accent-strong text-white text-sm px-4 py-2 rounded-lg shrink-0">
-            <Plus size={14} /> Wgraj mapę
-          </button>
+          <div className="flex gap-2 shrink-0">
+            <button onClick={() => setShowNewSchematic(true)}
+              className="flex items-center gap-2 border border-border text-ink-muted hover:text-ink text-sm px-4 py-2 rounded-lg transition-colors">
+              <Workflow size={14} /> Nowy schemat
+            </button>
+            <button onClick={() => setShowUpload(true)}
+              className="flex items-center gap-2 bg-accent hover:bg-accent-strong text-white text-sm px-4 py-2 rounded-lg">
+              <Plus size={14} /> Wgraj mapę
+            </button>
+          </div>
         )}
       </div>
 
@@ -73,6 +84,14 @@ export default function Map() {
             ) : undefined}
           />
         </div>
+      ) : activeMap.kind === 'schematic' ? (
+        <SchematicEditor
+          key={activeMap.id}
+          floorMap={activeMap}
+          devices={devices}
+          onDelete={() => setConfirmDeleteOpen(true)}
+          onSaved={updated => { setActiveMap(updated); load() }}
+        />
       ) : (
         <MapEditor
           key={activeMap.id}
@@ -84,6 +103,7 @@ export default function Map() {
       )}
 
       <UploadModal open={showUpload} onClose={() => setShowUpload(false)} onUploaded={m => { setMaps(prev => [...prev, m]); setActiveMap(m); setShowUpload(false) }} />
+      <NewSchematicModal open={showNewSchematic} onClose={() => setShowNewSchematic(false)} onCreated={m => { setMaps(prev => [...prev, m]); setActiveMap(m); setShowNewSchematic(false) }} />
 
       <ConfirmDialog
         open={confirmDeleteOpen}
@@ -97,7 +117,8 @@ export default function Map() {
   )
 }
 
-interface PendingPosition extends MapPosition { deviceName: string }
+// PendingPosition moved to components/Map/DevicePinsLayer (shared with
+// SchematicEditor); ParamPickerPanel moved to components/Map/ParamPickerPanel.
 
 interface ParamPickerState { device: Device; x: number; y: number; initialSelected: string[] }
 
@@ -117,6 +138,7 @@ function MapEditor({ floorMap, devices, onDelete, onSaved }: {
     let objectUrl: string | null = null
     setImgSrc(null)
     setImgError(false)
+    if (!floorMap.filename) { setImgError(true); return }
     getMapFileBlobUrl(floorMap.filename)
       .then(url => {
         if (cancelled) { URL.revokeObjectURL(url); return }
@@ -233,45 +255,13 @@ function MapEditor({ floorMap, devices, onDelete, onSaved }: {
             className="w-full h-auto block" draggable={false} onError={() => setImgError(true)} />
         )}
 
-        {positions.map(pos => {
-          const device = devices.find(d => d.id === pos.device_id)
-          const readings = liveReadings[pos.device_id] ?? {}
-          const shown = pos.selected_params.length > 0
-            ? pos.selected_params.map(name => [name, readings[name]] as const).filter(([, v]) => v)
-            : Object.entries(readings).slice(0, 1)
-
-          return (
-            <div key={pos.device_id}
-              className="absolute -translate-x-1/2 -translate-y-full pointer-events-auto"
-              style={{ left: `${pos.x_percent}%`, top: `${pos.y_percent}%` }}>
-              <div className="bg-surface border border-border rounded-lg px-2 py-1 text-xs shadow-lg min-w-max">
-                <div className="flex items-center gap-1.5">
-                  <MapPin size={10} className={device?.status === 'online' ? 'text-good' : 'text-ink-muted'} />
-                  {editMode ? (
-                    <button onClick={(e) => { e.stopPropagation(); editParams(pos) }}
-                      className="text-ink font-medium hover:text-accent transition-colors" title="Wybierz parametry do wyświetlenia">
-                      {pos.deviceName}
-                    </button>
-                  ) : (
-                    <span className="text-ink font-medium">{pos.deviceName}</span>
-                  )}
-                  {editMode && (
-                    <button onClick={(e) => { e.stopPropagation(); removePosition(pos.device_id) }}
-                      className="text-ink-muted hover:text-crit ml-1">
-                      <X size={10} />
-                    </button>
-                  )}
-                </div>
-                {shown.map(([name, reading]) => (
-                  <div key={name} className="text-accent font-bold mt-0.5">
-                    {reading.value.toFixed(1)} {reading.unit} <span className="text-ink-muted font-normal">{name}</span>
-                  </div>
-                ))}
-              </div>
-              <div className="w-0 h-0 border-l-4 border-r-4 border-t-4 border-l-transparent border-r-transparent border-t-border-strong mx-auto" />
-            </div>
-          )
-        })}
+        <DevicePinsLayer
+          positions={positions}
+          devices={devices}
+          editMode={editMode}
+          onEditParams={editParams}
+          onRemove={removePosition}
+        />
       </div>
 
       {pendingClick && editMode && (
@@ -304,51 +294,51 @@ function MapEditor({ floorMap, devices, onDelete, onSaved }: {
   )
 }
 
-function ParamPickerPanel({ device, availableParams, initialSelected, onConfirm, onCancel }: {
-  device: Device; availableParams: string[]; initialSelected: string[]
-  onConfirm: (selected: string[]) => void; onCancel: () => void
+function NewSchematicModal({ open, onClose, onCreated }: {
+  open: boolean; onClose: () => void; onCreated: (m: FloorMap) => void
 }) {
-  const [selected, setSelected] = useState<string[]>(initialSelected.filter(p => availableParams.includes(p)))
+  const [name, setName] = useState('')
+  const [loading, setLoading] = useState(false)
 
-  const toggle = (name: string) => {
-    setSelected(prev => {
-      if (prev.includes(name)) return prev.filter(p => p !== name)
-      if (prev.length >= MAX_MAP_PIN_PARAMS) {
-        toast.error(`Można wybrać maksymalnie ${MAX_MAP_PIN_PARAMS} parametry`)
-        return prev
-      }
-      return [...prev, name]
-    })
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!name.trim()) return
+    setLoading(true)
+    try {
+      const m = await createSchematic(name.trim())
+      onCreated(m)
+      toast.success('Schemat utworzony — kliknij „Edytuj schemat", aby rysować')
+      setName('')
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail ?? 'Błąd tworzenia schematu')
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
-    <div className="px-5 py-3 border-t border-border">
-      <p className="text-xs text-ink-muted mb-2">
-        Parametry do wyświetlenia dla „{device.name}” ({selected.length}/{MAX_MAP_PIN_PARAMS}):
-      </p>
-      {availableParams.length === 0 ? (
-        <p className="text-xs text-ink-muted">Brak dostępnych odczytów dla tego urządzenia.</p>
-      ) : (
-        <div className="flex flex-wrap gap-2 mb-3">
-          {availableParams.map(name => {
-            const active = selected.includes(name)
-            return (
-              <button key={name} onClick={() => toggle(name)}
-                className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${active ? 'bg-accent border-accent text-white' : 'bg-surface-2 border-border text-ink hover:border-border-strong'}`}>
-                {name}
-              </button>
-            )
-          })}
+    <Modal open={open} onClose={onClose} title="Nowy schemat obiegu">
+      <form onSubmit={submit} className="space-y-4">
+        <div>
+          <label className="block text-xs text-ink-muted mb-1.5">Nazwa schematu</label>
+          <input value={name} onChange={e => setName(e.target.value)} required autoFocus
+            placeholder="np. Agregat CO2" className="input" />
         </div>
-      )}
-      <div className="flex gap-2">
-        <button onClick={() => onConfirm(selected)}
-          className="text-xs bg-accent hover:bg-accent-strong text-white px-4 py-1.5 rounded-lg transition-colors">
-          Zapisz wybór
-        </button>
-        <button onClick={onCancel} className="text-xs text-ink-muted hover:text-ink px-3 py-1.5">Anuluj</button>
-      </div>
-    </div>
+        <p className="text-xs text-ink-muted">
+          Schemat rysuje się bezpośrednio w przeglądarce: kolorowe rury (tłoczenie/ssanie/ciecz)
+          ze strzałkami, etykiety tekstowe i kafelki urządzeń z żywymi odczytami.
+        </p>
+        <div className="flex gap-3">
+          <button type="submit" disabled={loading || !name.trim()}
+            className="flex-1 bg-accent hover:bg-accent-strong disabled:opacity-40 text-white text-sm py-2 rounded-lg transition-colors">
+            {loading ? 'Tworzenie…' : 'Utwórz schemat'}
+          </button>
+          <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-ink-muted border border-border rounded-lg">
+            Anuluj
+          </button>
+        </div>
+      </form>
+    </Modal>
   )
 }
 
