@@ -67,7 +67,8 @@
 @media (prefers-reduced-motion: reduce) {
   .animate-page-in,
   .animate-modal-in,
-  .animate-overlay-in {
+  .animate-overlay-in,
+  .animate-slide-in-left {
     animation: none;
   }
 }

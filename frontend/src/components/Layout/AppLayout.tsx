@@ -80,11 +80,12 @@ export function AppLayout() {
         <Sidebar />
       </div>
 
-      {/* Mobile sidebar overlay */}
+      {/* Mobile sidebar overlay - backdrop fades in, drawer slides in from
+          the left (same entrance-only animation convention as the modals) */}
       {sidebarOpen && (
         <div className="fixed inset-0 z-40 lg:hidden">
-          <div className="absolute inset-0 bg-ink/30" onClick={() => setSidebarOpen(false)} />
-          <div className="absolute left-0 top-0 h-full z-50">
+          <div className="absolute inset-0 bg-ink/30 animate-overlay-in" onClick={() => setSidebarOpen(false)} />
+          <div className="absolute left-0 top-0 h-full z-50 animate-slide-in-left">
             <Sidebar onClose={() => setSidebarOpen(false)} />
           </div>
         </div>

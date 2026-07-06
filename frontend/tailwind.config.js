@@ -60,11 +60,16 @@ export default {
           from: { opacity: '0' },
           to: { opacity: '1' },
         },
+        'slide-in-left': {
+          from: { transform: 'translateX(-100%)' },
+          to: { transform: 'translateX(0)' },
+        },
       },
       animation: {
         'page-in': 'page-in 0.25s ease-out',
         'modal-in': 'modal-in 0.18s ease-out',
         'overlay-in': 'overlay-in 0.15s ease-out',
+        'slide-in-left': 'slide-in-left 0.25s ease-out',
       },
     },
   },
