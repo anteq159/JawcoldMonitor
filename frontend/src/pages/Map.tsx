@@ -122,6 +122,12 @@ export default function Map() {
 
 interface ParamPickerState { device: Device; x: number; y: number; initialSelected: string[] }
 
+// Fixed logical stage width for image maps - the image renders at this
+// width and the whole stage (image + pins) scales by ONE factor to fit
+// the screen, so pin tiles keep identical size and placement relative to
+// the map on every device/resolution.
+const MAP_STAGE_W = 1000
+
 function MapEditor({ floorMap, devices, onDelete, onSaved }: {
   floorMap: FloorMap; devices: Device[]; onDelete: () => void; onSaved: (m: FloorMap) => void
 }) {
@@ -132,6 +138,20 @@ function MapEditor({ floorMap, devices, onDelete, onSaved }: {
 
   const [imgSrc, setImgSrc] = useState<string | null>(null)
   const [imgError, setImgError] = useState(false)
+  const [natSize, setNatSize] = useState<{ w: number; h: number } | null>(null)
+  const [scale, setScale] = useState(0)
+
+  // natSize in deps: the observed container only exists after the image's
+  // intrinsic size is known, so attach the observer once it renders.
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    const ro = new ResizeObserver((entries) => {
+      setScale(entries[0].contentRect.width / MAP_STAGE_W)
+    })
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [natSize])
 
   useEffect(() => {
     let cancelled = false
@@ -245,24 +265,51 @@ function MapEditor({ floorMap, devices, onDelete, onSaved }: {
         </div>
       </div>
 
-      <div ref={containerRef} className="relative w-full select-none" style={{ cursor: editMode ? 'crosshair' : 'default' }} onClick={handleMapClick}>
-        {imgError ? (
-          <div className="p-8 text-center text-sm text-crit">Nie udało się wczytać pliku mapy z serwera.</div>
-        ) : !imgSrc ? (
-          <div className="p-12 flex justify-center"><Spinner className="text-accent w-8 h-8" /></div>
-        ) : (
-          <img ref={imgRef} src={imgSrc} alt={floorMap.name}
-            className="w-full h-auto block" draggable={false} onError={() => setImgError(true)} />
-        )}
-
-        <DevicePinsLayer
-          positions={positions}
-          devices={devices}
-          editMode={editMode}
-          onEditParams={editParams}
-          onRemove={removePosition}
-        />
-      </div>
+      {imgError ? (
+        <div className="p-8 text-center text-sm text-crit">Nie udało się wczytać pliku mapy z serwera.</div>
+      ) : !imgSrc || !natSize ? (
+        <div className="p-12 flex justify-center">
+          <Spinner className="text-accent w-8 h-8" />
+          {/* hidden probe: reads the image's intrinsic size before the
+              scaled stage can be laid out */}
+          {imgSrc && (
+            <img src={imgSrc} alt="" className="hidden"
+              onLoad={(e) => setNatSize({ w: e.currentTarget.naturalWidth || 1, h: e.currentTarget.naturalHeight || 1 })}
+              onError={() => setImgError(true)} />
+          )}
+        </div>
+      ) : (
+        <div
+          ref={containerRef}
+          className="relative w-full select-none overflow-hidden"
+          style={{ aspectRatio: `${natSize.w} / ${natSize.h}`, cursor: editMode ? 'crosshair' : 'default' }}
+          onClick={handleMapClick}
+        >
+          {/* One uniformly scaled stage (image + pins): identical pin size
+              and placement relative to the map on every resolution. */}
+          {scale > 0 && (
+            <div
+              className="absolute top-0 left-0 pointer-events-none"
+              style={{
+                width: MAP_STAGE_W,
+                height: MAP_STAGE_W * (natSize.h / natSize.w),
+                transform: `scale(${scale})`,
+                transformOrigin: 'top left',
+              }}
+            >
+              <img ref={imgRef} src={imgSrc} alt={floorMap.name}
+                className="w-full h-full block" draggable={false} onError={() => setImgError(true)} />
+              <DevicePinsLayer
+                positions={positions}
+                devices={devices}
+                editMode={editMode}
+                onEditParams={editParams}
+                onRemove={removePosition}
+              />
+            </div>
+          )}
+        </div>
+      )}
 
       {pendingClick && editMode && (
         <div className="px-5 py-3 border-t border-border">

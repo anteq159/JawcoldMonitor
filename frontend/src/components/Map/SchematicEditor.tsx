@@ -19,6 +19,14 @@ const COLORS = [
 ]
 const WIDTHS = [2, 3, 4]
 
+// Fixed logical canvas: everything (lines, labels, pins) is laid out in
+// this coordinate space and the WHOLE stage is scaled by one factor to
+// fit the actual container. One scale factor for all content means the
+// schematic is pixel-identical on every device/resolution - nothing
+// shifts relative to anything else, it only zooms.
+const BASE_W = 1000
+const BASE_H = 625  // 16:10
+
 type Mode = 'line' | 'label' | 'pin' | 'select'
 
 interface ParamPickerState { device: Device; x: number; y: number; initialSelected: string[] }
@@ -35,7 +43,7 @@ export function SchematicEditor({ floorMap, devices, onDelete, onSaved }: {
   const canEdit = useAuthStore((s) => s.can('config:write'))
   const liveReadings = useDeviceStore(s => s.liveReadings)
 
-  const [size, setSize] = useState({ w: 0, h: 0 })
+  const [scale, setScale] = useState(0)
   const [elements, setElements] = useState<DrawingElement[]>(floorMap.drawing ?? [])
   const [positions, setPositions] = useState<PendingPosition[]>(() =>
     floorMap.positions.map(p => ({
@@ -61,14 +69,14 @@ export function SchematicEditor({ floorMap, devices, onDelete, onSaved }: {
     const el = containerRef.current
     if (!el) return
     const ro = new ResizeObserver((entries) => {
-      const r = entries[0].contentRect
-      setSize({ w: r.width, h: r.height })
+      setScale(entries[0].contentRect.width / BASE_W)
     })
     ro.observe(el)
     return () => ro.disconnect()
   }, [])
 
-  const toPx = (p: DrawingPoint) => ({ x: (p.x / 100) * size.w, y: (p.y / 100) * size.h })
+  // Percent -> logical stage pixels (fixed base, independent of screen).
+  const toPx = (p: DrawingPoint) => ({ x: (p.x / 100) * BASE_W, y: (p.y / 100) * BASE_H })
 
   const eventToPercent = (e: React.MouseEvent): DrawingPoint => {
     const rect = containerRef.current!.getBoundingClientRect()
@@ -78,12 +86,22 @@ export function SchematicEditor({ floorMap, devices, onDelete, onSaved }: {
     }
   }
 
-  // Orthogonal snap: each new segment is horizontal or vertical, whichever
-  // is closer to where the user actually clicked - the SCADA pipe look.
+  // Snap each new segment to the nearest of 8 directions (every 45°):
+  // horizontal/vertical pipe runs plus 45° diagonals, computed in logical
+  // stage pixels so angles are true regardless of screen size.
   const snap = (prev: DrawingPoint, pt: DrawingPoint): DrawingPoint => {
-    const dx = Math.abs(pt.x - prev.x) * size.w
-    const dy = Math.abs(pt.y - prev.y) * size.h
-    return dx > dy ? { x: pt.x, y: prev.y } : { x: prev.x, y: pt.y }
+    const a = toPx(prev)
+    const b = toPx(pt)
+    const dx = b.x - a.x
+    const dy = b.y - a.y
+    const angle = Math.round(Math.atan2(dy, dx) / (Math.PI / 4)) * (Math.PI / 4)
+    const len = dx * Math.cos(angle) + dy * Math.sin(angle)  // projection onto the snapped direction
+    const sx = a.x + len * Math.cos(angle)
+    const sy = a.y + len * Math.sin(angle)
+    return {
+      x: Math.min(100, Math.max(0, (sx / BASE_W) * 100)),
+      y: Math.min(100, Math.max(0, (sy / BASE_H) * 100)),
+    }
   }
 
   const finishLine = () => {
@@ -274,21 +292,29 @@ export function SchematicEditor({ floorMap, devices, onDelete, onSaved }: {
       {editMode && mode === 'line' && (
         <div className="px-5 py-1.5 border-b border-border bg-surface-2/50">
           <p className="text-[11px] text-ink-muted">
-            Klikaj, aby dodawać punkty (linie łamią się pod kątem prostym) · Enter lub podwójny klik kończy linię · Backspace cofa punkt · Esc anuluje
+            Klikaj, aby dodawać punkty (linie łamią się co 45°: poziomo, pionowo lub po skosie) · Enter lub podwójny klik kończy linię · Backspace cofa punkt · Esc anuluje
           </p>
         </div>
       )}
 
       <div
         ref={containerRef}
-        className="relative w-full select-none bg-surface-2/60"
-        style={{ aspectRatio: '16 / 10', cursor: editMode && mode !== 'select' ? 'crosshair' : 'default' }}
+        className="relative w-full select-none bg-surface-2/60 overflow-hidden"
+        style={{ aspectRatio: `${BASE_W} / ${BASE_H}`, cursor: editMode && mode !== 'select' ? 'crosshair' : 'default' }}
         onClick={handleCanvasClick}
         onDoubleClick={(e) => { e.preventDefault(); if (editMode && mode === 'line') finishLine() }}
         onMouseMove={handleMouseMove}
       >
-        {size.w > 0 && (
-          <svg className="absolute inset-0 w-full h-full" width={size.w} height={size.h}>
+        {/* Fixed logical stage scaled as one unit: identical layout on
+            every device, content only zooms. pointer-events-none lets
+            canvas clicks land on the container; interactive children
+            (select targets, labels, pins) opt back in individually. */}
+        {scale > 0 && (
+        <div
+          className="absolute top-0 left-0 pointer-events-none"
+          style={{ width: BASE_W, height: BASE_H, transform: `scale(${scale})`, transformOrigin: 'top left' }}
+        >
+          <svg className="absolute inset-0" width={BASE_W} height={BASE_H} style={{ pointerEvents: 'none' }}>
             {elements.map((el, i) => {
               if (el.type === 'line') {
                 const pts = el.points.map(toPx).map(p => `${p.x},${p.y}`).join(' ')
@@ -324,43 +350,44 @@ export function SchematicEditor({ floorMap, devices, onDelete, onSaved }: {
                 strokeLinejoin="round" pointerEvents="none" />
             )}
           </svg>
-        )}
 
-        {/* text labels as HTML for easy styling/selection */}
-        {elements.map((el, i) => el.type === 'label' ? (
-          <div key={`label-${i}`}
-            className={`absolute -translate-x-1/2 -translate-y-1/2 px-1.5 py-0.5 rounded border text-ink bg-surface/90 ${el.size === 'md' ? 'text-sm' : 'text-xs'} ${selectedIdx === i ? 'border-accent ring-2 ring-accent/30' : 'border-border'} ${editMode && mode === 'select' ? 'cursor-pointer' : ''}`}
-            style={{ left: `${el.x}%`, top: `${el.y}%` }}
-            onClick={(e) => { if (editMode && mode === 'select') { e.stopPropagation(); setSelectedIdx(i) } }}>
-            {el.text}
-          </div>
-        ) : null)}
+          {/* text labels as HTML for easy styling/selection */}
+          {elements.map((el, i) => el.type === 'label' ? (
+            <div key={`label-${i}`}
+              className={`absolute -translate-x-1/2 -translate-y-1/2 px-1.5 py-0.5 rounded border text-ink bg-surface/90 pointer-events-auto ${el.size === 'md' ? 'text-sm' : 'text-xs'} ${selectedIdx === i ? 'border-accent ring-2 ring-accent/30' : 'border-border'} ${editMode && mode === 'select' ? 'cursor-pointer' : ''}`}
+              style={{ left: `${el.x}%`, top: `${el.y}%` }}
+              onClick={(e) => { if (editMode && mode === 'select') { e.stopPropagation(); setSelectedIdx(i) } }}>
+              {el.text}
+            </div>
+          ) : null)}
 
-        {/* inline label input */}
-        {labelDraft && (
-          <input
-            autoFocus
-            value={labelDraft.text}
-            onChange={e => setLabelDraft({ ...labelDraft, text: e.target.value })}
-            onKeyDown={e => { if (e.key === 'Enter') commitLabel(); if (e.key === 'Escape') setLabelDraft(null) }}
-            onBlur={commitLabel}
-            onClick={e => e.stopPropagation()}
-            placeholder="Tekst…"
-            className="absolute -translate-x-1/2 -translate-y-1/2 w-36 bg-surface border border-accent rounded px-1.5 py-0.5 text-xs text-ink focus:outline-none"
-            style={{ left: `${labelDraft.x}%`, top: `${labelDraft.y}%` }}
+          {/* inline label input */}
+          {labelDraft && (
+            <input
+              autoFocus
+              value={labelDraft.text}
+              onChange={e => setLabelDraft({ ...labelDraft, text: e.target.value })}
+              onKeyDown={e => { if (e.key === 'Enter') commitLabel(); if (e.key === 'Escape') setLabelDraft(null) }}
+              onBlur={commitLabel}
+              onClick={e => e.stopPropagation()}
+              placeholder="Tekst…"
+              className="absolute -translate-x-1/2 -translate-y-1/2 w-36 bg-surface border border-accent rounded px-1.5 py-0.5 text-xs text-ink focus:outline-none pointer-events-auto"
+              style={{ left: `${labelDraft.x}%`, top: `${labelDraft.y}%` }}
+            />
+          )}
+
+          <DevicePinsLayer
+            positions={positions}
+            devices={devices}
+            editMode={editMode && mode === 'pin'}
+            onEditParams={(pos) => {
+              const device = devices.find(d => d.id === pos.device_id)
+              if (device) setParamPicker({ device, x: pos.x_percent, y: pos.y_percent, initialSelected: pos.selected_params })
+            }}
+            onRemove={(deviceId) => setPositions(prev => prev.filter(p => p.device_id !== deviceId))}
           />
+        </div>
         )}
-
-        <DevicePinsLayer
-          positions={positions}
-          devices={devices}
-          editMode={editMode && mode === 'pin'}
-          onEditParams={(pos) => {
-            const device = devices.find(d => d.id === pos.device_id)
-            if (device) setParamPicker({ device, x: pos.x_percent, y: pos.y_percent, initialSelected: pos.selected_params })
-          }}
-          onRemove={(deviceId) => setPositions(prev => prev.filter(p => p.device_id !== deviceId))}
-        />
       </div>
 
       {pendingClick && editMode && (
