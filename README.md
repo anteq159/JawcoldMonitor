@@ -63,32 +63,36 @@ sudo usermod -aG docker $USER   # przeloguj się po tej komendzie
 
 3. Dla czujników DS18B20: `sudo raspi-config` → Interface Options → 1-Wire → Enable.
 
-### Uruchomienie aplikacji
+### Uruchomienie aplikacji — jedna komenda
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/anteq159/JawcoldMonitor/main/install.sh | bash
+```
+
+Skrypt sam: instaluje Dockera (jeśli brak), klonuje repozytorium do
+`~/JawcoldMonitor`, generuje `.env` z **losowym `SECRET_KEY` i hasłem bazy**,
+wykrywa adapter RS485 i uruchamia aplikację. Ponowne uruchomienie skryptu jest
+bezpieczne (aktualizuje repo, nie nadpisuje `.env` ani danych).
+
+Panel: `http://<adres-pi>` (port 80). Po zalogowaniu wszystkie ustawienia
+robocze (interwały skanowania, alarmy, powiadomienia, kopie zapasowe, port
+RS485) zmienia się w zakładce **Ustawienia → Konfiguracja systemu** — plik
+`.env` to tylko wartości startowe.
+
+<details>
+<summary>Instalacja ręczna (bez skryptu)</summary>
 
 ```bash
 git clone https://github.com/anteq159/JawcoldMonitor.git
 cd JawcoldMonitor
 cp .env.example .env
-nano .env
-```
-
-W `.env` **koniecznie** ustaw:
-
-| Zmienna | Opis |
-|---|---|
-| `DB_PASSWORD` | silne, losowe hasło bazy danych |
-| `SECRET_KEY` | losowy ciąg min. 32 znaki (`openssl rand -hex 32`) — **aplikacja produkcyjna nie wystartuje z domyślnym** |
-| `RS485_PORTS` | port adaptera, zwykle `/dev/ttyUSB0` |
-| `ALLOWED_ORIGINS` | adres, pod którym otwierasz panel, np. `http://192.168.1.50` |
-
-Start (tryb produkcyjny, z realnym sprzętem):
-
-```bash
+nano .env   # ustaw DB_PASSWORD, SECRET_KEY (openssl rand -hex 32), RS485_PORTS, ALLOWED_ORIGINS
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 ```
 
-Panel: `http://<adres-pi>` (port 80). Tryb demonstracyjny bez sprzętu:
-`PREVIEW_MODE=true` w `.env` i sam `docker compose up -d`.
+Aplikacja produkcyjna **nie wystartuje** z domyślnym `SECRET_KEY`. Tryb
+demonstracyjny bez sprzętu: `PREVIEW_MODE=true` i sam `docker compose up -d`.
+</details>
 
 ---
 
@@ -130,7 +134,9 @@ w interfejsie jest tylko ułatwieniem.
 
 ### Powiadomienia e-mail / Telegram
 
-Konfiguracja w `.env` (po zmianie: `docker compose restart backend`):
+Konfiguracja w panelu: **Ustawienia → Konfiguracja systemu** (działa od razu,
+bez restartu). Te same wartości można podać z góry w `.env` jako wartości
+startowe:
 
 ```bash
 # E-mail (SMTP)
@@ -159,7 +165,8 @@ zatrzymuje monitoringu — trafia do logów.
 
 - **Ręczna**: Ustawienia → Kopie zapasowe (pobranie/przywrócenie pliku JSON —
   obejmuje sterowniki, profile, czujniki i reguły alarmowe).
-- **Automatyczna**: w `.env`:
+- **Automatyczna**: włączana w **Ustawienia → Konfiguracja systemu**
+  (lub startowo w `.env`):
 
 ```bash
 BACKUP_AUTO_ENABLED=true

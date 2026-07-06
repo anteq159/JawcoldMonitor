@@ -6,7 +6,7 @@ import { Card } from '../components/UI/Card'
 import { ConfirmDialog } from '../components/UI/ConfirmDialog'
 import { downloadReadings, downloadAlerts } from '../api/export'
 import { downloadBackup, restoreBackup } from '../api/backup'
-import { getUpdateInfo, uploadUpdate, rollbackUpdate, getServicesStatus, type UpdateInfo } from '../api/system'
+import { getUpdateInfo, uploadUpdate, rollbackUpdate, getServicesStatus, getRuntimeSettings, updateRuntimeSettings, type UpdateInfo, type RuntimeSetting } from '../api/system'
 import { useDeviceStore } from '../store/devices'
 import { useAuthStore } from '../store/auth'
 import { isNotificationSupported, getNotificationPermission, requestNotificationPermission } from '../utils/notifications'
@@ -26,6 +26,7 @@ export default function Settings() {
 
   return (
     <div className="space-y-6 max-w-2xl">
+      {isAdmin && <SystemSettingsSection />}
       <NotificationsSection />
       {canExport && <ExportCard title="Eksport odczytów" download={downloadReadings} />}
       {canExport && <ExportCard title="Eksport alarmów" download={downloadAlerts} />}
@@ -45,6 +46,86 @@ export default function Settings() {
         </div>
       </Card>
     </div>
+  )
+}
+
+function SystemSettingsSection() {
+  const [settings, setSettings] = useState<RuntimeSetting[]>([])
+  const [dirty, setDirty] = useState<Record<string, string>>({})
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+
+  const load = () => getRuntimeSettings().then(setSettings).finally(() => setLoading(false))
+  useEffect(() => { load() }, [])
+
+  const currentValue = (s: RuntimeSetting) => dirty[s.key] !== undefined ? dirty[s.key] : s.value
+  const setValue = (key: string, value: string) => setDirty((d) => ({ ...d, [key]: value }))
+
+  const save = async () => {
+    if (Object.keys(dirty).length === 0) return
+    setSaving(true)
+    try {
+      const res = await updateRuntimeSettings(dirty)
+      setDirty({})
+      await load()
+      toast.success(res.restart_required
+        ? 'Zapisano. Zmiany portu RS485 zadziałają po restarcie aplikacji.'
+        : 'Ustawienia zapisane i zastosowane')
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail ?? 'Błąd zapisu ustawień')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const categories = [...new Set(settings.map((s) => s.category))]
+
+  return (
+    <Card title="Konfiguracja systemu">
+      <div className="p-5 space-y-5">
+        <p className="text-xs text-ink-muted">
+          Wartości z .env są punktem startowym — zmiany zapisane tutaj mają pierwszeństwo
+          i działają od razu (pola oznaczone „restart" po ponownym uruchomieniu).
+        </p>
+        {loading ? <p className="text-sm text-ink-muted">Ładowanie…</p> : categories.map((cat) => (
+          <div key={cat}>
+            <h4 className="text-xs font-semibold text-ink-muted uppercase tracking-wide mb-2">{cat}</h4>
+            <div className="grid sm:grid-cols-2 gap-3">
+              {settings.filter((s) => s.category === cat).map((s) => (
+                <div key={s.key}>
+                  <label className="block text-xs text-ink-muted mb-1">
+                    {s.label}
+                    {s.restart_required && <span className="ml-1 text-warn">(restart)</span>}
+                  </label>
+                  {s.type === 'bool' ? (
+                    <select value={currentValue(s)} onChange={(e) => setValue(s.key, e.target.value)} className="input">
+                      <option value="true">Tak</option>
+                      <option value="false">Nie</option>
+                    </select>
+                  ) : (
+                    <input
+                      type={s.secret ? 'password' : (s.type === 'int' || s.type === 'float') ? 'number' : 'text'}
+                      step={s.type === 'float' ? 'any' : undefined}
+                      value={currentValue(s)}
+                      onChange={(e) => setValue(s.key, e.target.value)}
+                      placeholder={s.secret ? (s.is_set ? '••••••• (ustawione — wpisz aby zmienić)' : 'nie ustawione') : undefined}
+                      className="input"
+                    />
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+        <button
+          onClick={save}
+          disabled={saving || Object.keys(dirty).length === 0}
+          className="bg-accent hover:bg-accent-strong disabled:opacity-40 text-white text-sm px-5 py-2 rounded-lg transition-colors"
+        >
+          {saving ? 'Zapisywanie…' : `Zapisz zmiany${Object.keys(dirty).length ? ` (${Object.keys(dirty).length})` : ''}`}
+        </button>
+      </div>
+    </Card>
   )
 }
 

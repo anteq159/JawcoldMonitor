@@ -40,3 +40,19 @@ export const uploadUpdate = (file: File): Promise<UpdateMeta & { message: string
 }
 export const rollbackUpdate = (): Promise<UpdateMeta & { message: string }> =>
   api.post('/system/update/rollback').then((r) => r.data)
+
+export interface RuntimeSetting {
+  key: string
+  label: string
+  category: string
+  type: 'int' | 'float' | 'bool' | 'str'
+  value: string
+  is_set: boolean | null
+  restart_required: boolean
+  secret: boolean
+}
+
+export const getRuntimeSettings = (): Promise<RuntimeSetting[]> =>
+  api.get('/system/settings').then((r) => r.data)
+export const updateRuntimeSettings = (values: Record<string, string>): Promise<{ changed: string[]; restart_required: boolean }> =>
+  api.put('/system/settings', { values }).then((r) => r.data)

@@ -248,6 +248,12 @@ async def lifespan(app: FastAPI):
     await _init_defaults()
     await _init_manufacturer_profiles()
     await _init_generic_profiles()
+    # Apply web-edited setting overrides BEFORE the scanner starts, so
+    # RS485 parameters changed from the UI are picked up by init_drivers().
+    from app.services.runtime_settings import load_overrides
+    from app.models.app_setting import AppSetting  # noqa: F401 - mapper registration
+    async with AsyncSessionLocal() as db:
+        await load_overrides(db)
     scanner_task = asyncio.create_task(scanner_loop())
     yield
     scanner_task.cancel()

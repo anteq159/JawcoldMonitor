@@ -131,3 +131,68 @@ async def dashboard_summary(
         "recent_readings": recent_list,
         "system": system,
     }
+
+
+@router.get("/settings")
+async def list_runtime_settings(
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_role("Admin")),
+):
+    """All web-editable operational settings with their CURRENT effective
+    values (env bootstrap or DB override, whichever applies). Secrets are
+    returned as empty strings with is_set - the UI submits a new value to
+    change one and simply doesn't submit the field to keep it."""
+    from app.services.runtime_settings import EDITABLE_SETTINGS
+    out = []
+    for key, meta in EDITABLE_SETTINGS.items():
+        current = getattr(settings, key)
+        out.append({
+            "key": key,
+            "label": meta.label,
+            "category": meta.category,
+            "type": meta.type,
+            "value": "" if meta.secret else str(current),
+            "is_set": bool(current) if meta.secret else None,
+            "restart_required": meta.restart_required,
+            "secret": meta.secret,
+        })
+    return out
+
+
+@router.put("/settings")
+async def update_runtime_settings(
+    body: dict,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role("Admin")),
+):
+    """Persist and immediately apply the submitted subset of settings.
+    Body: {"values": {"KEY": "value", ...}}. Validation errors abort the
+    whole batch (400) before anything is written."""
+    from app.services.runtime_settings import EDITABLE_SETTINGS, coerce, save_setting
+    from app.models.log import EventLog
+    from fastapi import HTTPException
+
+    values = body.get("values") or {}
+    # Validate everything first so a typo in one field doesn't half-apply
+    for key, raw in values.items():
+        if key not in EDITABLE_SETTINGS:
+            raise HTTPException(status_code=400, detail=f"Nieznane ustawienie: {key}")
+        try:
+            coerce(key, str(raw))
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
+    changed = []
+    for key, raw in values.items():
+        await save_setting(db, key, str(raw))
+        changed.append(key)
+    if changed:
+        db.add(EventLog(
+            event_type="settings_changed",
+            user_id=current_user.id,
+            message=f"{current_user.username}: zmieniono ustawienia: {', '.join(sorted(changed))}",
+        ))
+        await db.commit()
+
+    restart_needed = any(EDITABLE_SETTINGS[k].restart_required for k in changed)
+    return {"changed": changed, "restart_required": restart_needed}

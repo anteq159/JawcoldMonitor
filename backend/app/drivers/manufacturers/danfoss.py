@@ -8,52 +8,53 @@ from app.drivers.registry import register_driver
 
 @register_driver("Danfoss")
 class DanfossDriver(AbstractControllerDriver):
-    """Danfoss AK-CC 210 refrigeration/case controller. Register
-    addresses remain unconfirmed placeholders - the real, official
-    Danfoss AK-CC 210 instructions manual (RI8MC65M, found on the web)
-    confirms Modbus is a real communication option for this controller
-    but is a keypad/parameter reference (codes like r01, A13, u09 as
-    navigated via the physical buttons), not a Modbus register map, same
-    situation as this project's Carel MPXPRO manual. What IS real and
-    fixed here: the alarm/fault codes and the factory setpoint, both
-    taken directly from that manual's alarm/fault/status code tables and
-    settings table - the previous version of this driver had invented
-    alarm codes that don't match (e.g. claimed A3 was a high-temperature
-    alarm; the real A1 is high temperature and A3 doesn't exist at all).
-    Also corrected the simulated setpoint from an invented -18°C freezer
-    value to the manual's actual documented factory default (2.0°C) -
-    AK-CC 210 is a general-purpose case/room controller, not specifically
-    a freezer unit."""
+    """Danfoss AK-CC 2xx case/room controller. Rebuilt from a real,
+    official Danfoss document found on the web: "Parameter identification
+    (modbus) AK-CC 250" (RZ8CZ102, 084B8524, SW 2.21) - the closest AK-CC
+    family member with a public Modbus PNU table (the AK-CC 210's own
+    published manual is keypad-only, so the model hint below now says
+    AK-CC 250, the device this data is actually confirmed for).
+
+    The table confirms the AK-CC 2xx family shares Danfoss's EKC 2xx/3xx
+    PNU architecture (same addresses for temperatures, relays, DI status)
+    BUT with its own alarm-destination bit numbering: here Door alarm is
+    PNU 20008 and HACCP is 20007, unlike EKC 302D (Door 20007) and EKC
+    202D1 (Door 20010) - reading a sibling model's map would silently
+    swap alarm meanings, which is exactly why each driver carries its own
+    numbers. One inference, flagged honestly: the AK-CC 250 sheet lists
+    Max/Min cutout at PNU 102/103 but omits the setpoint row itself;
+    PNU 100 (Cutout) is taken from the confirmed EKC 202D1/302D tables
+    where 102/103 carry the same meaning - verify on real hardware before
+    relying on setpoint WRITES. Danfoss "Float" here means a scaled
+    16-bit integer (Scale column 01 = x0.1), not IEEE-754."""
 
     manufacturer = "Danfoss"
 
     def default_register_map(self) -> List[RegisterMapEntry]:
         return [
-            RegisterMapEntry(address=0, name="Temperatura komory", unit="°C", data_type="int16", scale_factor=0.1),
-            RegisterMapEntry(address=1, name="Temperatura parownika", unit="°C", data_type="int16", scale_factor=0.1),
-            RegisterMapEntry(address=2, name="Nastawa (SP)", unit="°C", data_type="int16", scale_factor=0.1, writable=True),
-            RegisterMapEntry(address=3, name="Różnica załączania (r01)", unit="°C", data_type="int16", scale_factor=0.1, writable=True),
-            RegisterMapEntry(address=10, name="Sprężarka", data_type="uint16"),
-            RegisterMapEntry(address=11, name="Odszranianie", data_type="uint16"),
-            RegisterMapEntry(address=12, name="Wentylator parownika", data_type="uint16"),
-            RegisterMapEntry(address=20, name="Kod alarmu", data_type="uint16", is_alarm_register=True),
+            RegisterMapEntry(address=100, name="Nastawa (Cutout)", unit="°C", data_type="int16", scale_factor=0.1, writable=True),
+            RegisterMapEntry(address=101, name="Różnica załączania (r01)", unit="°C", data_type="int16", scale_factor=0.1, writable=True),
+            RegisterMapEntry(address=2546, name="Temperatura odniesienia (u28)", unit="°C", data_type="int16", scale_factor=0.1),
+            RegisterMapEntry(address=2530, name="Temperatura S3", unit="°C", data_type="int16", scale_factor=0.1),
+            RegisterMapEntry(address=2531, name="Temperatura S4", unit="°C", data_type="int16", scale_factor=0.1),
+            RegisterMapEntry(address=1011, name="Temperatura S5 (parownik)", unit="°C", data_type="int16", scale_factor=0.1),
+            RegisterMapEntry(address=2002, name="Wejście cyfrowe DI1", data_type="uint16"),
+            RegisterMapEntry(address=1036, name="Stan odszraniania", data_type="uint16"),
+            RegisterMapEntry(address=2510, name="Sprężarka (Comp1/LLSV)", data_type="uint16"),
+            RegisterMapEntry(address=2511, name="Wentylator parownika", data_type="uint16"),
+            RegisterMapEntry(address=2512, name="Przekaźnik odszraniania", data_type="uint16"),
+            RegisterMapEntry(address=20005, name="Alarm wysokiej temperatury", data_type="uint16"),
+            RegisterMapEntry(address=20006, name="Alarm niskiej temperatury", data_type="uint16"),
+            RegisterMapEntry(address=20008, name="Alarm drzwi", data_type="uint16"),
+            RegisterMapEntry(address=2541, name="Błąd sterownika (EKC Error)", data_type="uint16", is_alarm_register=True),
         ]
 
     def identify(self, model_hint: Optional[str] = None) -> ControllerModel:
-        return ControllerModel(model=model_hint or "AK-CC 210", description="Elektroniczny sterownik chłodniczy Danfoss AK-CC")
+        return ControllerModel(model=model_hint or "AK-CC 250", description="Elektroniczny sterownik chłodniczy Danfoss AK-CC 250")
 
     def known_alarm_codes(self) -> List[AlarmDescription]:
-        # Real codes from the manual's "Alarm code display" table. The
-        # manual describes the physical display cycling through ONE
-        # active alarm code at a time (sequential), not a combined
-        # bitmask - codes intentionally kept non-power-of-two so
-        # _is_bitmask_style() doesn't misclassify this as Carel-style.
         return [
-            AlarmDescription(code=1, name="A1", description="Alarm wysokiej temperatury", severity="warning"),
-            AlarmDescription(code=2, name="A2", description="Alarm niskiej temperatury", severity="warning"),
-            AlarmDescription(code=3, name="A4", description="Alarm drzwi", severity="info"),
-            AlarmDescription(code=5, name="A15", description="Alarm wejścia cyfrowego DI1", severity="warning"),
-            AlarmDescription(code=6, name="A60", description="Alarm HACCP", severity="warning"),
+            AlarmDescription(code=1, name="EKC Error", description="Błąd wewnętrzny sterownika (np. EEPROM)", severity="critical"),
         ]
 
     def decode_alarm(self, code: int) -> AlarmDescription:
@@ -64,18 +65,22 @@ class DanfossDriver(AbstractControllerDriver):
 
     def simulate_reading(self, tick: float) -> Dict[str, dict]:
         room = round(2 + 1.5 * math.sin(tick * 0.05) + random.uniform(-0.3, 0.3), 1)
-        evap = round(room - 6 + random.uniform(-0.5, 0.5), 1)
+        s4 = round(room - 5 + random.uniform(-0.5, 0.5), 1)
+        s5 = round(room - 6 + random.uniform(-0.5, 0.5), 1)
         return {
-            "Temperatura komory": {"value": room, "unit": "°C"},
-            "Temperatura parownika": {"value": evap, "unit": "°C"},
-            "Nastawa (SP)": {"value": 2.0, "unit": "°C"},
+            "Nastawa (Cutout)": {"value": 2.0, "unit": "°C"},
             "Różnica załączania (r01)": {"value": 2.0, "unit": "°C"},
-            "Sprężarka": {"value": 1 if room > 2 else 0, "unit": ""},
-            "Odszranianie": {"value": 0, "unit": ""},
+            "Temperatura odniesienia (u28)": {"value": 2.0, "unit": "°C"},
+            "Temperatura S3": {"value": room, "unit": "°C"},
+            "Temperatura S4": {"value": s4, "unit": "°C"},
+            "Temperatura S5 (parownik)": {"value": s5, "unit": "°C"},
+            "Wejście cyfrowe DI1": {"value": 0, "unit": ""},
+            "Stan odszraniania": {"value": 0, "unit": ""},
+            "Sprężarka (Comp1/LLSV)": {"value": 1 if room > 2 else 0, "unit": ""},
             "Wentylator parownika": {"value": 1, "unit": ""},
-            # 0 = no active alarm. Was never simulated before, so the
-            # register control panel always showed this as a dead "-" and
-            # nothing existed to decode - real hardware alarm reading
-            # (Etap 3.3) has this to actually exercise now.
-            "Kod alarmu": {"value": 0, "unit": ""},
+            "Przekaźnik odszraniania": {"value": 0, "unit": ""},
+            "Alarm wysokiej temperatury": {"value": 0, "unit": ""},
+            "Alarm niskiej temperatury": {"value": 0, "unit": ""},
+            "Alarm drzwi": {"value": 0, "unit": ""},
+            "Błąd sterownika (EKC Error)": {"value": 0, "unit": ""},
         }
