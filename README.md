@@ -189,9 +189,17 @@ Każda automatyczna kopia (i ewentualny błąd) zapisuje się w Logach zdarzeń.
 
 ## 7. Aktualizacje
 
-Ustawienia → Aktualizacje → wgraj plik `updates/<wersja>.zip` z tego
-repozytorium. Aplikacja instaluje paczkę, wykonuje migracje bazy i restartuje
-się; dostępne jest wycofanie do wersji sprzed aktualizacji (rollback).
+- **Backend** (logika, sterowniki, migracje): Ustawienia → Aktualizacje →
+  wgraj plik `updates/<wersja>.zip` z tego repozytorium. Aplikacja instaluje
+  paczkę, wykonuje migracje bazy i restartuje się; dostępny jest rollback.
+- **Frontend (interfejs)**: paczki .zip go **nie** obejmują — interfejs jest
+  wbudowany w obraz Dockera przy instalacji. Aby zaktualizować interfejs,
+  uruchom ponownie komendę instalacyjną na Raspberry (bezpieczne — pobiera
+  nowy kod i przebudowuje kontenery, nie ruszając `.env` ani danych):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/anteq159/JawcoldMonitor/main/install.sh | bash
+```
 
 ---
 

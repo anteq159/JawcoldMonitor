@@ -61,14 +61,16 @@
   }
 }
 
-/* Entrance animations (animate-page-in / animate-modal-in / animate-overlay-in)
-   are decorative - for users who ask the OS to minimize motion, skip them
-   entirely rather than shortening them. */
+/* Reduced motion (system "Ogranicz ruch" - common default on phones):
+   swap movement-based entrances (slide/rise/scale) for a plain opacity
+   fade instead of removing feedback entirely. Overlay-in is already
+   opacity-only, so reusing its keyframes here gives every entrance the
+   same gentle fade with zero translation. */
 @media (prefers-reduced-motion: reduce) {
   .animate-page-in,
   .animate-modal-in,
   .animate-overlay-in,
   .animate-slide-in-left {
-    animation: none;
+    animation: overlay-in 0.2s ease-out;
   }
 }
