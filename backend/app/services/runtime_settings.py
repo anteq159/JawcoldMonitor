@@ -106,6 +106,8 @@ async def load_overrides(db: AsyncSession) -> int:
     result = await db.execute(select(AppSetting))
     applied = 0
     for row in result.scalars():
+        if row.key.startswith("_"):
+            continue  # internal rows (e.g. _SECRET_KEY), not UI settings
         if row.key not in EDITABLE_SETTINGS:
             logger.warning("Skipping unknown app_setting %r", row.key)
             continue

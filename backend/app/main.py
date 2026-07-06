@@ -223,23 +223,45 @@ async def _init_generic_profiles():
 
 # Known placeholder secrets: the code default and the .env.example value.
 # Tokens signed with a public secret are forgeable by anyone who has read
-# the repository - refusing to start beats running silently insecure.
+# the repository - when one of these is detected, a random key is
+# generated and persisted at first boot instead (see _ensure_secret_key).
 _PLACEHOLDER_SECRETS = {
     "dev-secret-key-change-in-production-32chars",
     "change_me_at_least_32_chars_random_string",
 }
 
 
+async def _ensure_secret_key():
+    """Factory-fresh installs must be usable AND secure without touching
+    .env: when SECRET_KEY is still a placeholder, generate a random key at
+    first boot and persist it in app_settings (the DB survives updates and
+    container rebuilds, unlike anything under app/, which the update
+    mechanism wipes). A real key set in .env always wins - the DB copy is
+    only the fallback for installs that never configured one. Stored under
+    a "_"-prefixed key so it is not exposed through the web-editable
+    settings whitelist."""
+    if settings.SECRET_KEY not in _PLACEHOLDER_SECRETS:
+        return
+    import secrets as pysecrets
+    from app.models.app_setting import AppSetting
+    async with AsyncSessionLocal() as db:
+        row = await db.get(AppSetting, "_SECRET_KEY")
+        if row is None:
+            row = AppSetting(key="_SECRET_KEY", value=pysecrets.token_hex(32))
+            db.add(row)
+            await db.commit()
+            logger.warning(
+                "SECRET_KEY nie był ustawiony - wygenerowano losowy klucz "
+                "i zapisano trwale w bazie (instalacja gotowa do użytku)."
+            )
+        settings.SECRET_KEY = row.value
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Starting JawcoldMonitor (PREVIEW=%s)", settings.PREVIEW_MODE)
-    if not settings.PREVIEW_MODE and settings.SECRET_KEY in _PLACEHOLDER_SECRETS:
-        raise RuntimeError(
-            "SECRET_KEY ma wartość domyślną. Ustaw losowy klucz w .env "
-            "(np. `openssl rand -hex 32`) i uruchom ponownie. "
-            "Tryb produkcyjny nie wystartuje z jawnym kluczem."
-        )
     await init_db()
+    await _ensure_secret_key()
     await init_redis()
     redis = get_redis()
     ws_manager.init_redis(redis)

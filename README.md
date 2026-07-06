@@ -90,7 +90,8 @@ nano .env   # ustaw DB_PASSWORD, SECRET_KEY (openssl rand -hex 32), RS485_PORTS,
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 ```
 
-Aplikacja produkcyjna **nie wystartuje** z domyślnym `SECRET_KEY`. Tryb
+Bez własnego `SECRET_KEY` aplikacja wygeneruje losowy przy pierwszym starcie
+i zapisze go trwale w bazie. Tryb
 demonstracyjny bez sprzętu: `PREVIEW_MODE=true` i sam `docker compose up -d`.
 </details>
 
@@ -205,7 +206,9 @@ curl -fsSL https://raw.githubusercontent.com/anteq159/JawcoldMonitor/main/instal
 
 ## 8. Bezpieczeństwo / HTTPS
 
-- `SECRET_KEY` z wartością domyślną **blokuje start** w trybie produkcyjnym.
+- `SECRET_KEY`: jeśli nie ustawisz własnego, przy pierwszym starcie generowany
+  jest losowy klucz i zapisywany trwale w bazie — instalacja prosto z GitHuba
+  jest od razu bezpieczna. Własny klucz w `.env` zawsze ma pierwszeństwo.
 - Hasła: pierwsze logowanie wymusza zmianę; logowanie ma limit prób.
 - WebSocket i całe API wymagają zalogowania.
 - **HTTPS**: wystaw aplikację przez reverse proxy z certyfikatem. Najprościej
