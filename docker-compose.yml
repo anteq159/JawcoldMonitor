@@ -38,6 +38,21 @@ services:
       RS485_PORTS: ${RS485_PORTS:-/dev/ttyUSB0}
       RS485_BAUDRATE: ${RS485_BAUDRATE:-9600}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:823}
+      OFFLINE_ALARM_MINUTES: ${OFFLINE_ALARM_MINUTES:-5}
+      DISK_ALARM_PERCENT: ${DISK_ALARM_PERCENT:-90}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      ALERT_EMAIL_TO: ${ALERT_EMAIL_TO:-}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+      NOTIFY_SYSTEM_CHANNELS: ${NOTIFY_SYSTEM_CHANNELS:-}
+      BACKUP_AUTO_ENABLED: ${BACKUP_AUTO_ENABLED:-false}
+      BACKUP_INTERVAL_HOURS: ${BACKUP_INTERVAL_HOURS:-24}
+      BACKUP_DIR: ${BACKUP_DIR:-backups}
+      BACKUP_RETENTION_COUNT: ${BACKUP_RETENTION_COUNT:-14}
     # Bind-mounted rather than left baked into the image (COPY . . in the
     # Dockerfile still runs, but this overlays it at runtime): an update
     # uploaded through Settings extracts into this same host path, so it

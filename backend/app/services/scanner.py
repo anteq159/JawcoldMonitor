@@ -1,6 +1,9 @@
 import asyncio
+import json
 import logging
+import os
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Dict, Optional, Set
 
 from sqlalchemy import select, delete
@@ -17,6 +20,7 @@ from app.models.log import EventLog
 from app.websocket.manager import ws_manager
 from app.websocket import events as ws_events
 from app.services.system_stats import get_system_stats
+from app.services import notifications
 from app.drivers.registry import get_driver
 from app.drivers.base import decode_active_alarms
 
@@ -34,6 +38,13 @@ _last_tick: Optional[datetime] = None
 # currently active per device, so a steady alarm logs once, not every
 # scan cycle, and a WS event fires when it actually clears.
 _active_hw_alarms: Dict[int, Set[int]] = {}
+# Offline-too-long alarm (edge-triggered): when each device was last seen
+# going offline, and which ones have already fired the alarm.
+_offline_since: Dict[int, datetime] = {}
+_offline_alarmed: Set[int] = set()
+_last_disk_check: Optional[datetime] = None
+_disk_alarmed = False
+_last_auto_backup: Optional[datetime] = None
 
 
 def get_last_tick() -> Optional[datetime]:
@@ -75,6 +86,8 @@ async def scanner_loop():
             await _scan_dallas()
             await _maybe_broadcast_stats()
             await _maybe_prune_readings()
+            await _maybe_check_disk()
+            await _maybe_auto_backup()
         except asyncio.CancelledError:
             raise
         except Exception as e:
@@ -126,6 +139,8 @@ async def _scan_known_devices():
                     log = EventLog(event_type=event_type, device_id=device.id, message=f"{device.name} → {new_status}")
                     db.add(log)
                     await db.commit()
+
+                await _track_offline_alarm(db, device, is_online)
 
                 if is_online:
                     readings_data = await _rs485_driver.read_parameters(device)
@@ -328,6 +343,12 @@ async def _check_alerts(db: AsyncSession, device_id, sensor_id, readings: dict):
                     "category": rule.category,
                     "message": event.message,
                 }))
+                if rule.notify_channels:
+                    await notifications.notify(
+                        rule.notify_channels,
+                        f"[JawcoldMonitor] ALARM: {rule.name}",
+                        f"{event.message}\nWażność: {rule.severity} · Kategoria: {rule.category}",
+                    )
             elif not triggered and active_event:
                 active_event.resolved_at = datetime.now(timezone.utc)
                 await db.commit()
@@ -375,6 +396,10 @@ async def _check_hardware_alarms(db: AsyncSession, device: Device, readings: dic
             await ws_manager.broadcast(ws_events.hardware_alarm(
                 device.id, device.name, alarm.code, alarm.name, alarm.description, alarm.severity, "active",
             ))
+            await notifications.notify_system(
+                f"[JawcoldMonitor] Alarm sterownika: {device.name}",
+                f"{device.name}: {alarm.name} — {alarm.description}",
+            )
         if newly_resolved:
             # Codes alone are enough to log/broadcast a clear message even
             # though known_alarm_codes() would need a second lookup for
@@ -393,6 +418,120 @@ async def _check_hardware_alarms(db: AsyncSession, device: Device, readings: dic
         _active_hw_alarms[device.id] = active_codes
     except Exception as e:
         logger.warning("Hardware alarm check error device=%d: %s", device.id, e)
+
+
+async def _track_offline_alarm(db: AsyncSession, device: Device, is_online: bool):
+    """A device being offline for one scan is routine (bus collision, brief
+    power dip); offline for OFFLINE_ALARM_MINUTES straight means a real
+    problem - a dead controller in a working freezer looks exactly like
+    this. Edge-triggered: one alarm when the threshold is crossed, one
+    all-clear when the device comes back."""
+    if settings.OFFLINE_ALARM_MINUTES <= 0:
+        return
+    now = datetime.now(timezone.utc)
+    if is_online:
+        _offline_since.pop(device.id, None)
+        if device.id in _offline_alarmed:
+            _offline_alarmed.discard(device.id)
+            db.add(EventLog(
+                event_type="device_offline_resolved",
+                device_id=device.id,
+                message=f"{device.name}: urządzenie ponownie online",
+            ))
+            await db.commit()
+            await notifications.notify_system(
+                f"[JawcoldMonitor] {device.name} ponownie online",
+                f"Urządzenie {device.name} (adres {device.modbus_address}) wróciło do komunikacji.",
+            )
+        return
+
+    since = _offline_since.setdefault(device.id, now)
+    minutes = (now - since).total_seconds() / 60
+    if minutes >= settings.OFFLINE_ALARM_MINUTES and device.id not in _offline_alarmed:
+        _offline_alarmed.add(device.id)
+        message = (
+            f"{device.name}: brak komunikacji od {settings.OFFLINE_ALARM_MINUTES} min "
+            f"(adres {device.modbus_address})"
+        )
+        db.add(EventLog(event_type="device_offline_alarm", device_id=device.id, message=message))
+        await db.commit()
+        await ws_manager.broadcast(ws_events.hardware_alarm(
+            device.id, device.name, 0, "OFFLINE",
+            f"Brak komunikacji od {settings.OFFLINE_ALARM_MINUTES} min", "critical", "active",
+        ))
+        await notifications.notify_system(f"[JawcoldMonitor] ALARM: {device.name} offline", message)
+
+
+async def _maybe_check_disk():
+    """SD card filling up is how a Pi deployment dies quietly: readings stop
+    being written and Postgres eventually corrupts. One alarm when usage
+    crosses DISK_ALARM_PERCENT, re-armed only after dropping 5 points below
+    (hysteresis, so 89.9%/90.1% flapping doesn't spam)."""
+    global _last_disk_check, _disk_alarmed
+    if settings.DISK_ALARM_PERCENT <= 0:
+        return
+    if not _due(_last_disk_check, 300):
+        return
+    _last_disk_check = datetime.now(timezone.utc)
+    try:
+        stats = await get_system_stats()
+        percent = float(stats.get("disk_percent", 0))
+        if percent >= settings.DISK_ALARM_PERCENT and not _disk_alarmed:
+            _disk_alarmed = True
+            message = f"Dysk zapełniony w {percent:.0f}% (próg {settings.DISK_ALARM_PERCENT}%)"
+            async with AsyncSessionLocal() as db:
+                db.add(EventLog(event_type="disk_alarm", message=message))
+                await db.commit()
+            await notifications.notify_system("[JawcoldMonitor] ALARM: mało miejsca na dysku", message)
+        elif percent < settings.DISK_ALARM_PERCENT - 5 and _disk_alarmed:
+            _disk_alarmed = False
+    except Exception as e:
+        logger.warning("Disk check error: %s", e)
+
+
+async def _maybe_auto_backup():
+    """Periodic JSON backup - same payload as the manual Ustawienia backup -
+    written to BACKUP_DIR, which a deployment should point at a mounted USB
+    stick or network share so copies survive the SD card. Keeps the newest
+    BACKUP_RETENTION_COUNT files."""
+    global _last_auto_backup
+    if not settings.BACKUP_AUTO_ENABLED:
+        return
+    if not _due(_last_auto_backup, settings.BACKUP_INTERVAL_HOURS * 3600):
+        return
+    _last_auto_backup = datetime.now(timezone.utc)
+    from app.services.backup import export_backup
+    try:
+        backup_dir = Path(settings.BACKUP_DIR)
+        backup_dir.mkdir(parents=True, exist_ok=True)
+        async with AsyncSessionLocal() as db:
+            payload = await export_backup(db)
+            filename = backup_dir / f"jawcold_backup_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.json"
+            data = payload.model_dump_json(indent=2)
+            await asyncio.to_thread(filename.write_text, data, "utf-8")
+
+            # Retention: newest N by name (timestamped names sort correctly)
+            existing = sorted(backup_dir.glob("jawcold_backup_*.json"))
+            for old in existing[:-settings.BACKUP_RETENTION_COUNT]:
+                await asyncio.to_thread(os.remove, old)
+
+            db.add(EventLog(
+                event_type="auto_backup",
+                message=f"Automatyczna kopia zapasowa: {filename.name}",
+            ))
+            await db.commit()
+        logger.info("Auto backup written: %s", filename)
+    except Exception as e:
+        logger.warning("Auto backup failed: %s", e)
+        try:
+            async with AsyncSessionLocal() as db:
+                db.add(EventLog(event_type="auto_backup_failed", message=f"Błąd automatycznej kopii: {e}"))
+                await db.commit()
+        except Exception:
+            pass
+        await notifications.notify_system(
+            "[JawcoldMonitor] Błąd automatycznej kopii zapasowej", str(e),
+        )
 
 
 async def _maybe_broadcast_stats():

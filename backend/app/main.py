@@ -222,9 +222,24 @@ async def _init_generic_profiles():
         await db.commit()
 
 
+# Known placeholder secrets: the code default and the .env.example value.
+# Tokens signed with a public secret are forgeable by anyone who has read
+# the repository - refusing to start beats running silently insecure.
+_PLACEHOLDER_SECRETS = {
+    "dev-secret-key-change-in-production-32chars",
+    "change_me_at_least_32_chars_random_string",
+}
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Starting JawcoldMonitor (PREVIEW=%s)", settings.PREVIEW_MODE)
+    if not settings.PREVIEW_MODE and settings.SECRET_KEY in _PLACEHOLDER_SECRETS:
+        raise RuntimeError(
+            "SECRET_KEY ma wartość domyślną. Ustaw losowy klucz w .env "
+            "(np. `openssl rand -hex 32`) i uruchom ponownie. "
+            "Tryb produkcyjny nie wystartuje z jawnym kluczem."
+        )
     await init_db()
     await init_redis()
     redis = get_redis()

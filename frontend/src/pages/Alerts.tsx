@@ -253,7 +253,11 @@ function AddRuleModal({ open, onClose, devices, onAdded }: {
   const [threshold, setThreshold] = useState('')
   const [severity, setSeverity] = useState('warning')
   const [category, setCategory] = useState('Inne')
+  const [notifyChannels, setNotifyChannels] = useState<string[]>([])
   const [loading, setLoading] = useState(false)
+
+  const toggleChannel = (ch: string) =>
+    setNotifyChannels((prev) => prev.includes(ch) ? prev.filter(c => c !== ch) : [...prev, ch])
 
   const liveReadings = useDeviceStore((s) => s.liveReadings)
   const selectedDevice = devices.find(d => String(d.id) === deviceId)
@@ -280,9 +284,10 @@ function AddRuleModal({ open, onClose, devices, onAdded }: {
         threshold_value: Number(threshold),
         severity: severity as 'info' | 'warning' | 'critical',
         category,
+        notify_channels: notifyChannels,
       })
       onAdded(); onClose()
-      setDeviceId(''); setParamName(''); setName(''); setThreshold(''); setCategory('Inne')
+      setDeviceId(''); setParamName(''); setName(''); setThreshold(''); setCategory('Inne'); setNotifyChannels([])
     } finally {
       setLoading(false)
     }
@@ -352,6 +357,23 @@ function AddRuleModal({ open, onClose, devices, onAdded }: {
             <select value={category} onChange={e => setCategory(e.target.value)} className="input">
               {ALERT_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
+          </div>
+        </div>
+
+        <div>
+          <label className="block text-xs text-ink-muted mb-1">Powiadomienia (wymaga konfiguracji SMTP/Telegram w .env)</label>
+          <div className="flex gap-4">
+            {[['email', 'E-mail'], ['telegram', 'Telegram']].map(([value, label]) => (
+              <label key={value} className="flex items-center gap-1.5 text-sm text-ink-body">
+                <input
+                  type="checkbox"
+                  checked={notifyChannels.includes(value)}
+                  onChange={() => toggleChannel(value)}
+                  className="rounded border-border-strong bg-surface text-accent focus:ring-0"
+                />
+                {label}
+              </label>
+            ))}
           </div>
         </div>
 
