@@ -36,3 +36,6 @@ sterownikData/
 
 # Logs
 *.log
+
+# Automatic backup output (runtime data, never tracked)
+backend/backups/

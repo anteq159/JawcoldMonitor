@@ -244,8 +244,7 @@ panelu do internetu.
 
 ```
 backend/     FastAPI, sterowniki urządzeń (app/drivers/), migracje Alembic
-frontend/    React + Vite
-docker/      nginx (serwuje frontend, proxy /api i /ws)
+frontend/    React + Vite; nginx.conf (serwuje frontend, proxy /api i /ws)
 updates/     paczki aktualizacji do wgrania przez UI
 database/    init.sql
 ```

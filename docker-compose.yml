@@ -37,7 +37,7 @@ services:
       PREVIEW_MODE: ${PREVIEW_MODE:-false}
       RS485_PORTS: ${RS485_PORTS:-/dev/ttyUSB0}
       RS485_BAUDRATE: ${RS485_BAUDRATE:-9600}
-      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:823}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost}
       OFFLINE_ALARM_MINUTES: ${OFFLINE_ALARM_MINUTES:-5}
       DISK_ALARM_PERCENT: ${DISK_ALARM_PERCENT:-90}
       SMTP_HOST: ${SMTP_HOST:-}
@@ -67,6 +67,11 @@ services:
     volumes:
       - ./backend/app:/app/app
       - ./backend/alembic/versions:/app/alembic/versions
+      # Uploaded floor maps and automatic backups live under /app inside
+      # the container - without these binds a rebuild (install.sh re-run
+      # with --build) would silently wipe them.
+      - ./backend/uploads:/app/uploads
+      - ./backend/backups:/app/backups
     depends_on:
       postgres:
         condition: service_healthy
@@ -77,7 +82,7 @@ services:
     build: ./frontend
     restart: unless-stopped
     ports:
-      - "823:80"
+      - "80:80"
     depends_on:
       - backend
 

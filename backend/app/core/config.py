@@ -17,7 +17,9 @@ class Settings(BaseSettings):
     DISCOVERY_SCAN_INTERVAL: int = 60
     DALLAS_SCAN_INTERVAL: int = 30
     PROFILE_REMOTE_URL: str = ""
-    ALLOWED_ORIGINS: str = "http://localhost:823"
+    # Production panel is same-origin behind nginx (port 80); :823 is the
+    # Vite dev server, which proxies /api anyway - both kept for dev use.
+    ALLOWED_ORIGINS: str = "http://localhost,http://localhost:823"
     # Etap 3.4 (Raspberry Pi performance): readings accumulated to millions
     # of rows within hours of testing in this session - unbounded on a
     # real deployment's SD card that's a real problem, not a hypothetical
