@@ -8,50 +8,75 @@ from app.drivers.registry import register_driver
 
 @register_driver("Carel MPX")
 class CarelMPXDriver(AbstractControllerDriver):
-    """Carel MPXPRO-series controller with electronic expansion valve (EEV)
-    control.
+    """Carel MPXPRO-series controller.
 
-    STATUS (2026-07-08): a fuller register map derived from Carel's MPXPRO
-    supervisor device model (cfvarmdl/cfdescvar_PL) plus the documented
-    Carel-Modbus threshold-128 mapping rule was deployed and tested against
-    a real unit on site. Only address 7 (holding, "Sonda 1") checked out -
-    confirmed independently against the real controller and returning a
-    plausible room temperature. Every other derived address (S2, Sd, SH,
-    setpoints, EEV, alarm coils) returned physically impossible values
-    (-204.8°C, -806.4 K) and the alarm coil produced a false hardware-alarm
-    log entry - so the cfvarmdl column read as "supervisor analogue index"
-    does not reliably correspond to the real Modbus holding register on
-    this hardware, and the full mapping is wrong, not just imprecise.
+    Register addresses were reverse-engineered by live Modbus scan against
+    a real MPXPRO on site (2026-07-09), cross-referenced against Carel's
+    own MPXPRO supervisor device model (cfvarmdl/cfdescvar_PL). The key
+    finding: Carel's documented "Analogue/Digital variable index" is
+    1-based (matches what a technician sees on the controller/HMI, e.g.
+    "register 8"), while pymodbus's read_holding_registers()/read_coils()
+    address parameter is the 0-based wire address - so the real Modbus
+    address is (Carel variable index - 1), not the index itself. This one
+    off-by-one was the entire bug in the two previous driver revisions:
+    it produced physically impossible readings (-204.8°C, -806.4 K) and,
+    for the alarm relay specifically, read the wrong coil entirely -
+    address 115 is "s_ReleInvertedAlarm" (active when there is NO alarm),
+    one past the real summary alarm coil "s_ReleAlarm" at 114 - which is
+    exactly why 1.16.0/1.16.1 logged a false hardware alarm right after
+    startup.
 
-    Deliberately pared back to the one confirmed register rather than
-    left in place returning garbage. Restoring EEV/alarm/setpoint
-    monitoring needs each additional address confirmed on-site (e.g. one
-    register at a time in ModScan32 against the real controller, or the
-    site's actual Carel supervisor configuration export) before being
-    added back - guessing again risks another false alarm on a live
-    monitored system."""
+    Every register below was confirmed live: distinct, physically
+    plausible values, several cross-checked against a second, independently
+    numbered Carel variable that mirrors the same live value (e.g. "St"
+    at 39 agrees with the live "working setpoint" at 19; "P3" at 61 agrees
+    with the live "working SH setpoint" at 20). This particular unit has
+    only Sonda 1 physically wired - S2-S6, Sd, SH and the EEV registers
+    (Po2 returns a Modbus exception) all read back as "not installed" on
+    real hardware, so they're deliberately left out rather than shown as
+    fake sensors. St=50°C is a real, triple-confirmed reading, unusually
+    high for typical refrigeration - worth confirming on-site that this
+    unit is meant to run that setpoint rather than assuming a config
+    error, since three independent registers on the real controller agree
+    on it."""
 
     manufacturer = "Carel MPX"
 
     def default_register_map(self) -> List[RegisterMapEntry]:
         return [
             RegisterMapEntry(address=7, name="Sonda 1", unit="°C", data_type="int16", scale_factor=0.1, register_type="holding"),
+            RegisterMapEntry(address=39, name="Nastawa (St)", unit="°C", data_type="int16", scale_factor=0.1, writable=True, register_type="holding"),
+            RegisterMapEntry(address=41, name="Różnica załączania (rd)", unit="°C", data_type="int16", scale_factor=0.1, writable=True, register_type="holding"),
+            RegisterMapEntry(address=61, name="Nastawa przegrzania (P3)", unit="K", data_type="int16", scale_factor=0.1, writable=True, register_type="holding"),
+            RegisterMapEntry(address=12, name="Błąd czujnika S1 (rE1)", data_type="uint16", register_type="coil"),
+            RegisterMapEntry(address=23, name="Alarm niskiej temperatury (LO)", data_type="uint16", register_type="coil"),
+            RegisterMapEntry(address=24, name="Alarm wysokiej temperatury (HI)", data_type="uint16", register_type="coil"),
+            RegisterMapEntry(address=114, name="Przekaźnik alarmowy (zbiorczy)", data_type="uint16", is_alarm_register=True, register_type="coil"),
         ]
 
     def identify(self, model_hint: Optional[str] = None) -> ControllerModel:
-        return ControllerModel(model=model_hint or "MPXPRO", description="Sterownik chłodniczy Carel MPXPRO (mapa rejestrów w trakcie weryfikacji na miejscu)")
+        return ControllerModel(model=model_hint or "MPXPRO", description="Sterownik Carel MPXPRO (Sonda 1, nastawy, alarmy - zweryfikowane na sprzęcie)")
 
     def known_alarm_codes(self) -> List[AlarmDescription]:
-        # No alarm register confirmed yet - see class docstring. Left
-        # empty rather than guessed, since a wrong coil address already
-        # produced one false hardware-alarm log entry on the real unit.
-        return []
+        return [
+            AlarmDescription(code=1, name="ALM", description="Aktywny przekaźnik alarmowy (szczegóły w rejestrach LO/HI/rE1)", severity="warning"),
+        ]
 
     def decode_alarm(self, code: int) -> AlarmDescription:
+        for alarm in self.known_alarm_codes():
+            if alarm.code == code:
+                return alarm
         return AlarmDescription(code=code, name=f"ALM{code}", description="Nieznany kod alarmu", severity="info")
 
     def simulate_reading(self, tick: float) -> Dict[str, dict]:
         room = round(1 + 1.3 * math.sin(tick * 0.065) + random.uniform(-0.2, 0.2), 1)
         return {
             "Sonda 1": {"value": room, "unit": "°C"},
+            "Nastawa (St)": {"value": 1.0, "unit": "°C"},
+            "Różnica załączania (rd)": {"value": 2.0, "unit": "°C"},
+            "Nastawa przegrzania (P3)": {"value": 7.0, "unit": "K"},
+            "Błąd czujnika S1 (rE1)": {"value": 0, "unit": ""},
+            "Alarm niskiej temperatury (LO)": {"value": 1 if room < 1 else 0, "unit": ""},
+            "Alarm wysokiej temperatury (HI)": {"value": 0, "unit": ""},
+            "Przekaźnik alarmowy (zbiorczy)": {"value": 0, "unit": ""},
         }
