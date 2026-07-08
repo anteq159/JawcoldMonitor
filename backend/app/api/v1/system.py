@@ -143,7 +143,9 @@ async def list_runtime_settings(
     values (env bootstrap or DB override, whichever applies). Secrets are
     returned as empty strings with is_set - the UI submits a new value to
     change one and simply doesn't submit the field to keep it."""
-    from app.services.runtime_settings import EDITABLE_SETTINGS
+    from app.services.runtime_settings import (
+        EDITABLE_SETTINGS, ENV_FILE_SETTINGS, ENV_FILE_HINTS, read_env_file_setting,
+    )
     out = []
     for key, meta in EDITABLE_SETTINGS.items():
         current = getattr(settings, key)
@@ -157,6 +159,20 @@ async def list_runtime_settings(
             "restart_required": meta.restart_required,
             "secret": meta.secret,
         })
+    # Deploy-level values living in the host .env (docker compose reads
+    # them, not this process) - shown in the same form, applied differently
+    for key, meta in ENV_FILE_SETTINGS.items():
+        out.append({
+            "key": key,
+            "label": meta.label,
+            "category": meta.category,
+            "type": meta.type,
+            "value": read_env_file_setting(key, "80" if key == "PANEL_PORT" else ""),
+            "is_set": None,
+            "restart_required": False,
+            "secret": False,
+            "hint": ENV_FILE_HINTS.get(key),
+        })
     return out
 
 
@@ -169,23 +185,40 @@ async def update_runtime_settings(
     """Persist and immediately apply the submitted subset of settings.
     Body: {"values": {"KEY": "value", ...}}. Validation errors abort the
     whole batch (400) before anything is written."""
-    from app.services.runtime_settings import EDITABLE_SETTINGS, coerce, save_setting
+    from app.services.runtime_settings import (
+        EDITABLE_SETTINGS, ENV_FILE_SETTINGS, coerce, save_setting,
+        validate_env_file_setting, write_env_file_setting,
+    )
     from app.models.log import EventLog
     from fastapi import HTTPException
 
     values = body.get("values") or {}
     # Validate everything first so a typo in one field doesn't half-apply
     for key, raw in values.items():
-        if key not in EDITABLE_SETTINGS:
+        if key in EDITABLE_SETTINGS:
+            try:
+                coerce(key, str(raw))
+            except ValueError as e:
+                raise HTTPException(status_code=400, detail=str(e))
+        elif key in ENV_FILE_SETTINGS:
+            try:
+                validate_env_file_setting(key, str(raw))
+            except ValueError as e:
+                raise HTTPException(status_code=400, detail=str(e))
+        else:
             raise HTTPException(status_code=400, detail=f"Nieznane ustawienie: {key}")
-        try:
-            coerce(key, str(raw))
-        except ValueError as e:
-            raise HTTPException(status_code=400, detail=str(e))
 
     changed = []
     for key, raw in values.items():
-        await save_setting(db, key, str(raw))
+        if key in ENV_FILE_SETTINGS:
+            # Written to the host .env, not app_settings - docker compose
+            # applies it on the next `up -d`, not this process.
+            try:
+                write_env_file_setting(key, validate_env_file_setting(key, str(raw)))
+            except ValueError as e:
+                raise HTTPException(status_code=400, detail=str(e))
+        else:
+            await save_setting(db, key, str(raw))
         changed.append(key)
     if changed:
         db.add(EventLog(
@@ -195,8 +228,13 @@ async def update_runtime_settings(
         ))
         await db.commit()
 
-    restart_needed = any(EDITABLE_SETTINGS[k].restart_required for k in changed)
-    return {"changed": changed, "restart_required": restart_needed}
+    restart_needed = any(k in EDITABLE_SETTINGS and EDITABLE_SETTINGS[k].restart_required for k in changed)
+    compose_apply_required = any(k in ENV_FILE_SETTINGS for k in changed)
+    return {
+        "changed": changed,
+        "restart_required": restart_needed,
+        "compose_apply_required": compose_apply_required,
+    }
 
 
 @router.post("/power/{action}")

@@ -50,11 +50,14 @@ export interface RuntimeSetting {
   is_set: boolean | null
   restart_required: boolean
   secret: boolean
+  hint?: string
 }
 
 export const getRuntimeSettings = (): Promise<RuntimeSetting[]> =>
   api.get('/system/settings').then((r) => r.data)
-export const updateRuntimeSettings = (values: Record<string, string>): Promise<{ changed: string[]; restart_required: boolean }> =>
+export const updateRuntimeSettings = (
+  values: Record<string, string>,
+): Promise<{ changed: string[]; restart_required: boolean; compose_apply_required?: boolean }> =>
   api.put('/system/settings', { values }).then((r) => r.data)
 
 export type PowerAction = 'restart-app' | 'reboot' | 'shutdown'

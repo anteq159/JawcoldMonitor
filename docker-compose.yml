@@ -72,6 +72,11 @@ services:
       # with --build) would silently wipe them.
       - ./backend/uploads:/app/uploads
       - ./backend/backups:/app/backups
+      # The host .env, so the panel can edit deploy-level values like
+      # PANEL_PORT from Ustawienia. install.sh always creates .env before
+      # `compose up` - don't run compose manually without it, or Docker
+      # will create a directory named .env in its place.
+      - ./.env:/app/host.env
     depends_on:
       postgres:
         condition: service_healthy
@@ -82,7 +87,7 @@ services:
     build: ./frontend
     restart: unless-stopped
     ports:
-      - "80:80"
+      - "${PANEL_PORT:-80}:80"
     depends_on:
       - backend
 

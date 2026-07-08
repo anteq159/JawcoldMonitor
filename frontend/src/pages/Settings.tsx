@@ -69,7 +69,9 @@ function SystemSettingsSection() {
       const res = await updateRuntimeSettings(dirty)
       setDirty({})
       await load()
-      toast.success(res.restart_required
+      toast.success(res.compose_apply_required
+        ? 'Zapisano. Nowy port panelu zadziała po „docker compose up -d" na Raspberry (lub ponownym uruchomieniu install.sh).'
+        : res.restart_required
         ? 'Zapisano. Zmiany portu RS485 zadziałają po restarcie aplikacji.'
         : 'Ustawienia zapisane i zastosowane')
     } catch (err: any) {
@@ -113,6 +115,7 @@ function SystemSettingsSection() {
                       className="input"
                     />
                   )}
+                  {s.hint && <p className="mt-1 text-[11px] leading-snug text-ink-muted">{s.hint}</p>}
                 </div>
               ))}
             </div>

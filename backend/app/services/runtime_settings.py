@@ -18,6 +18,7 @@ should require shell access, not a web form.
 """
 
 import logging
+import os
 from dataclasses import dataclass
 from typing import Dict
 
@@ -70,6 +71,82 @@ EDITABLE_SETTINGS: Dict[str, SettingMeta] = {
     "BACKUP_DIR": SettingMeta("Katalog kopii", "Kopie zapasowe", "str"),
     "BACKUP_RETENTION_COUNT": SettingMeta("Ile ostatnich plików trzymać", "Kopie zapasowe", "int"),
 }
+
+
+# --- Ustawienia z pliku .env hosta (poziom wdrożenia, nie aplikacji) ---
+# PANEL_PORT is consumed by docker compose (host port mapping of the nginx
+# container), not by this process - so it can't live in app_settings and a
+# setattr can't apply it. The host .env is bind-mounted into the container
+# and edited in place; the change takes effect only when compose re-reads
+# the file: `docker compose up -d` on the Pi (or re-running install.sh).
+HOST_ENV_FILE = os.environ.get("HOST_ENV_FILE", "/app/host.env")
+
+ENV_FILE_SETTINGS: Dict[str, SettingMeta] = {
+    "PANEL_PORT": SettingMeta("Port panelu WWW (HTTP)", "Sieć", "int"),
+}
+
+ENV_FILE_HINTS: Dict[str, str] = {
+    "PANEL_PORT": (
+        "Zmiana zadziała po wykonaniu na Raspberry: "
+        "cd ~/JawcoldMonitor && docker compose up -d "
+        "(albo po ponownym uruchomieniu install.sh)."
+    ),
+}
+
+
+def read_env_file_setting(key: str, default: str) -> str:
+    """Current value of KEY in the mounted host .env; default when the
+    file or the line is missing (e.g. dev without docker)."""
+    try:
+        with open(HOST_ENV_FILE, "r", encoding="utf-8") as f:
+            for line in f:
+                stripped = line.strip()
+                if stripped.startswith(f"{key}="):
+                    return stripped.split("=", 1)[1].strip()
+    except OSError:
+        pass
+    return default
+
+
+def write_env_file_setting(key: str, value: str) -> None:
+    """Rewrite exactly one KEY=value line in the host .env, preserving
+    every other line byte-for-byte (the file also holds SECRET_KEY and
+    DB_PASSWORD). Appends the line when it doesn't exist yet (installs
+    created before the key was introduced). Raises ValueError with a
+    Polish message when the file isn't available (dev without docker)."""
+    try:
+        with open(HOST_ENV_FILE, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+    except OSError:
+        raise ValueError(
+            f"Plik .env hosta niedostępny ({HOST_ENV_FILE}) - "
+            f"{key} można zmienić tylko w instalacji Docker."
+        )
+    replaced = False
+    for i, line in enumerate(lines):
+        if line.strip().startswith(f"{key}="):
+            lines[i] = f"{key}={value}\n"
+            replaced = True
+            break
+    if not replaced:
+        if lines and not lines[-1].endswith("\n"):
+            lines[-1] += "\n"
+        lines.append(f"{key}={value}\n")
+    with open(HOST_ENV_FILE, "w", encoding="utf-8") as f:
+        f.writelines(lines)
+
+
+def validate_env_file_setting(key: str, raw: str) -> str:
+    raw = raw.strip()
+    if key == "PANEL_PORT":
+        try:
+            port = int(raw)
+        except ValueError:
+            raise ValueError(f"Nieprawidłowy port: '{raw}'")
+        if not (1 <= port <= 65535):
+            raise ValueError("Port panelu musi być w zakresie 1-65535")
+        return str(port)
+    return raw
 
 
 def coerce(key: str, raw: str):

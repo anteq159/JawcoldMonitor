@@ -95,6 +95,18 @@ i zapisze go trwale w bazie. Tryb
 demonstracyjny bez sprzętu: `PREVIEW_MODE=true` i sam `docker compose up -d`.
 </details>
 
+### Port panelu WWW
+
+Panel domyślnie działa na porcie **80** (`http://<adres-pi>`). Port można
+zmienić na dwa sposoby:
+
+- w pliku `.env` — wpis `PANEL_PORT=8080`, potem `docker compose up -d`,
+- z panelu — **Ustawienia → Konfiguracja systemu → Sieć → Port panelu WWW**;
+  zapis trafia do `.env` na hoście, a nowy port zaczyna działać po wykonaniu
+  na Raspberry `cd ~/JawcoldMonitor && docker compose up -d` (albo po
+  ponownym uruchomieniu `install.sh`). Aplikacja nie może sama przełączyć
+  portu, bo mapowanie portów wykonuje Docker przy tworzeniu kontenera.
+
 ---
 
 ## 3. Pierwsze uruchomienie

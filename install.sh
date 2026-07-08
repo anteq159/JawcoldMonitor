@@ -81,6 +81,11 @@ log "Buduję i uruchamiam kontenery (pierwszy raz na Pi może potrwać kilkanaś
 $DOCKER compose $COMPOSE_FILES up -d --build
 
 IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
-log "Gotowe! Panel: http://${IP:-localhost}"
+# PANEL_PORT can be changed in .env or from the Ustawienia page - show
+# the URL people will actually reach, with :port only when non-default.
+PANEL_PORT="$(grep -E '^PANEL_PORT=' .env 2>/dev/null | head -1 | cut -d= -f2)"
+PORT_SUFFIX=""
+[ -n "$PANEL_PORT" ] && [ "$PANEL_PORT" != "80" ] && PORT_SUFFIX=":$PANEL_PORT"
+log "Gotowe! Panel: http://${IP:-localhost}${PORT_SUFFIX}"
 log "Logowanie: admin / admin (system wymusi zmianę hasła)."
 log "Dalsza konfiguracja (powiadomienia, kopie, alarmy): zakładka Ustawienia w panelu."
