@@ -50,6 +50,7 @@ EDITABLE_SETTINGS: Dict[str, SettingMeta] = {
     # RS485 (restart)
     "RS485_PORTS": SettingMeta("Port RS485", "RS485", "str", restart_required=True),
     "RS485_BAUDRATE": SettingMeta("Prędkość transmisji (baud)", "RS485", "int", restart_required=True),
+    "RS485_STOPBITS": SettingMeta("Bity stopu (1 lub 2)", "RS485", "int", restart_required=True),
     "MODBUS_TIMEOUT": SettingMeta("Timeout Modbus (s)", "RS485", "float", restart_required=True),
     # Alarmy systemowe
     "OFFLINE_ALARM_MINUTES": SettingMeta("Alarm offline po (min, 0 = wył.)", "Alarmy systemowe", "int"),

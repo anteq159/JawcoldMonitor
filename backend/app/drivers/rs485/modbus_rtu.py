@@ -97,10 +97,11 @@ _READ_METHOD = {
 
 
 class ModbusRTUDriver(AbstractRS485Driver):
-    def __init__(self, port: str, baudrate: int, timeout: float):
+    def __init__(self, port: str, baudrate: int, timeout: float, stopbits: int = 1):
         self._port = port
         self._baudrate = baudrate
         self._timeout = timeout
+        self._stopbits = stopbits
         self._client = None
         self._lock = asyncio.Lock()
         self._connect()
@@ -113,7 +114,7 @@ class ModbusRTUDriver(AbstractRS485Driver):
                 baudrate=self._baudrate,
                 timeout=self._timeout,
                 parity="N",
-                stopbits=1,
+                stopbits=self._stopbits,
                 bytesize=8,
             )
         except ImportError:
@@ -121,6 +122,11 @@ class ModbusRTUDriver(AbstractRS485Driver):
             self._client = None
 
     async def _ensure_connected(self) -> bool:
+        # Must be called while holding self._lock: two coroutines (scanner
+        # loop + /devices/discover endpoint) racing into connect() open the
+        # serial port twice - the second open fails with "Could not
+        # exclusively lock port" and the reconnect kills the request in
+        # flight on the first.
         if not self._client:
             return False
         if not self._client.connected:
@@ -128,9 +134,9 @@ class ModbusRTUDriver(AbstractRS485Driver):
         return self._client.connected
 
     async def ping(self, address: int) -> bool:
-        if not await self._ensure_connected():
-            return False
         async with self._lock:
+            if not await self._ensure_connected():
+                return False
             try:
                 r = await self._client.read_holding_registers(0, count=1, device_id=address)
                 return not r.isError()
@@ -139,13 +145,13 @@ class ModbusRTUDriver(AbstractRS485Driver):
 
     async def read_parameters(self, device) -> Dict[str, dict]:
         result: Dict[str, dict] = {}
-        if not await self._ensure_connected():
-            return result
         profile = getattr(device, "profile", None)
         if not profile or not profile.registers:
             return result
 
         async with self._lock:
+            if not await self._ensure_connected():
+                return result
             for batch in _batch_contiguous(profile.registers):
                 reg_type = batch[0].register_type
                 is_bit_type = reg_type in ("coil", "discrete_input")
@@ -202,9 +208,6 @@ class ModbusRTUDriver(AbstractRS485Driver):
             raise NotImplementedError(
                 f"Zapis do rejestru typu '{register_type}' nie jest jeszcze obsługiwany"
             )
-        if not await self._ensure_connected():
-            raise ConnectionError(f"Brak połączenia z portem {self._port}")
-
         raw_value = value / scale_factor if scale_factor else value
         try:
             words = _encode(raw_value, data_type)
@@ -214,6 +217,8 @@ class ModbusRTUDriver(AbstractRS485Driver):
             raise ValueError(f"Wartość {value} nie mieści się w rejestrze typu {data_type}") from e
 
         async with self._lock:
+            if not await self._ensure_connected():
+                raise ConnectionError(f"Brak połączenia z portem {self._port}")
             try:
                 if len(words) == 1:
                     r = await self._client.write_register(register_address, words[0], device_id=modbus_address)

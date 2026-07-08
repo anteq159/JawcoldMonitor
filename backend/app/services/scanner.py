@@ -72,7 +72,7 @@ def init_drivers():
         from app.drivers.dallas.w1 import W1DallasDriver
         ports = settings.rs485_port_list
         if ports:
-            _rs485_driver = ModbusRTUDriver(ports[0], settings.RS485_BAUDRATE, settings.MODBUS_TIMEOUT)
+            _rs485_driver = ModbusRTUDriver(ports[0], settings.RS485_BAUDRATE, settings.MODBUS_TIMEOUT, settings.RS485_STOPBITS)
         _dallas_driver = W1DallasDriver()
 
 

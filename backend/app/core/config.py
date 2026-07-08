@@ -11,6 +11,9 @@ class Settings(BaseSettings):
     REFRESH_TOKEN_EXPIRE_MINUTES: int = 10080  # 7 days
     RS485_PORTS: str = "/dev/ttyUSB0"
     RS485_BAUDRATE: int = 9600
+    # Carel MPXpro: port supervisor pracuje na sztywno na 19200 8N2 -
+    # bez 2 bitów stopu sterownik nie odpowie mimo poprawnego okablowania.
+    RS485_STOPBITS: int = 1
     MODBUS_TIMEOUT: float = 0.15
     DISCOVERY_MAX_ADDRESS: int = 32
     KNOWN_SCAN_INTERVAL: int = 10
