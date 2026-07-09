@@ -52,3 +52,7 @@ def hardware_alarm(device_id: int, device_name: str, code: int, name: str, descr
         "device_id": device_id, "device_name": device_name, "code": code,
         "name": name, "description": description, "severity": severity, "status": status,
     }}
+
+
+def hardware_alarm_acknowledged(alarm_id: int) -> dict:
+    return {"type": "hardware_alarm_acknowledged", "data": {"alarm_id": alarm_id}}

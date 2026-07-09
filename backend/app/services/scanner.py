@@ -17,6 +17,7 @@ from app.models.sensor import Sensor
 from app.models.reading import Reading
 from app.models.alert import AlertRule, AlertEvent
 from app.models.log import EventLog
+from app.models.hardware_alarm import HardwareAlarmEvent
 from app.websocket.manager import ws_manager
 from app.websocket import events as ws_events
 from app.services.system_stats import get_system_stats
@@ -76,9 +77,22 @@ def init_drivers():
         _dallas_driver = W1DallasDriver()
 
 
+async def _rehydrate_active_hw_alarms():
+    """Reload _active_hw_alarms from the DB's HardwareAlarmEvent rows on
+    startup - it's otherwise in-memory only, so a backend restart while a
+    real alarm is active would forget it was already logged and re-fire a
+    duplicate "triggered" entry/notification on the next scan."""
+    from app.models.hardware_alarm import HardwareAlarmEvent
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(select(HardwareAlarmEvent).where(HardwareAlarmEvent.active == True))
+        for row in result.scalars():
+            _active_hw_alarms.setdefault(row.device_id, set()).add(row.code)
+
+
 async def scanner_loop():
     global _last_tick
     init_drivers()
+    await _rehydrate_active_hw_alarms()
     while True:
         try:
             await _scan_known_devices()
@@ -393,6 +407,13 @@ async def _check_hardware_alarms(db: AsyncSession, device: Device, readings: dic
                 device_id=device.id,
                 message=f"{device.name}: alarm sterownika {alarm.name} — {alarm.description}",
             ))
+            # Persistent, acknowledgeable state (Etap: zatwierdzanie alarmu)
+            # - separate from EventLog, which is an append-only audit trail
+            # with no notion of "currently active" or "dealt with".
+            db.add(HardwareAlarmEvent(
+                device_id=device.id, code=alarm.code, name=alarm.name,
+                description=alarm.description, severity=alarm.severity,
+            ))
             await ws_manager.broadcast(ws_events.hardware_alarm(
                 device.id, device.name, alarm.code, alarm.name, alarm.description, alarm.severity, "active",
             ))
@@ -409,6 +430,15 @@ async def _check_hardware_alarms(db: AsyncSession, device: Device, readings: dic
                 device_id=device.id,
                 message=f"{device.name}: alarm sterownika ustąpił (kod {sorted(newly_resolved)})",
             ))
+            open_rows = await db.execute(select(HardwareAlarmEvent).where(
+                HardwareAlarmEvent.device_id == device.id,
+                HardwareAlarmEvent.code.in_(newly_resolved),
+                HardwareAlarmEvent.active == True,
+            ))
+            now = datetime.now(timezone.utc)
+            for row in open_rows.scalars():
+                row.active = False
+                row.resolved_at = now
             await ws_manager.broadcast(ws_events.hardware_alarm(
                 device.id, device.name, min(newly_resolved), "", "", "info", "resolved",
             ))

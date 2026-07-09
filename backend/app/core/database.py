@@ -54,5 +54,6 @@ async def init_db() -> None:
     import app.models.map  # noqa
     import app.models.visibility  # noqa
     import app.models.favorite  # noqa
+    import app.models.hardware_alarm  # noqa
 
     await asyncio.to_thread(_run_migrations_sync)

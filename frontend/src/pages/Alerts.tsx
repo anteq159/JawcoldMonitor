@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
 import { Bell, CheckCircle, Plus, Trash2, Download } from 'lucide-react'
 import { getAlertRules, getAlertEvents, acknowledgeEvent, deleteAlertRule, createAlertRule } from '../api/alerts'
+import { getHardwareAlarms, acknowledgeHardwareAlarm, type HardwareAlarmEvent } from '../api/hardwareAlarms'
 import { downloadAlerts } from '../api/export'
 import { getDevices } from '../api/devices'
 import { useDeviceStore } from '../store/devices'
@@ -45,9 +46,10 @@ export default function Alerts() {
   const canExport = useAuthStore((s) => s.can('export:any'))
   const [rules, setRules] = useState<AlertRule[]>([])
   const [events, setEvents] = useState<AlertEvent[]>([])
+  const [hwAlarms, setHwAlarms] = useState<HardwareAlarmEvent[]>([])
   const [devices, setDevices] = useState<Device[]>([])
   const [loading, setLoading] = useState(true)
-  const [tab, setTab] = useState<'events' | 'rules'>('events')
+  const [tab, setTab] = useState<'events' | 'hardware' | 'rules'>('events')
   const [showAdd, setShowAdd] = useState(false)
   const [showExport, setShowExport] = useState(false)
 
@@ -57,12 +59,13 @@ export default function Alerts() {
 
   const load = async () => {
     const since = new Date(Date.now() - RANGE_MS[filterRange]).toISOString()
-    const [r, e, d] = await Promise.all([
+    const [r, e, hw, d] = await Promise.all([
       getAlertRules(),
       getAlertEvents({ severity: filterSeverity || undefined, category: filterCategory || undefined, since }),
+      getHardwareAlarms(),
       getDevices(),
     ])
-    setRules(r); setEvents(e); setDevices(d)
+    setRules(r); setEvents(e); setHwAlarms(hw); setDevices(d)
   }
 
   useEffect(() => { load().finally(() => setLoading(false)) }, [])
@@ -71,6 +74,11 @@ export default function Alerts() {
   const ack = async (id: number) => {
     await acknowledgeEvent(id)
     setEvents(ev => ev.map(e => e.id === id ? { ...e, acknowledged: true } : e))
+  }
+
+  const ackHw = async (id: number) => {
+    await acknowledgeHardwareAlarm(id)
+    setHwAlarms(hw => hw.map(a => a.id === id ? { ...a, acknowledged: true } : a))
   }
 
   const delRule = async (id: number) => {
@@ -87,10 +95,12 @@ export default function Alerts() {
     <div className="space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div className="flex gap-1 bg-surface border border-border rounded-lg p-1">
-          {(['events', 'rules'] as const).map(t => (
+          {(['events', 'hardware', 'rules'] as const).map(t => (
             <button key={t} onClick={() => setTab(t)}
               className={`px-4 py-1.5 text-sm rounded-md transition-colors ${tab === t ? 'bg-accent text-white' : 'text-ink-muted hover:text-ink'}`}>
-              {t === 'events' ? `Zdarzenia (${events.filter(e => !e.acknowledged).length})` : `Reguły (${rules.length})`}
+              {t === 'events' ? `Zdarzenia (${events.filter(e => !e.acknowledged).length})`
+                : t === 'hardware' ? `Alarmy sterowników (${hwAlarms.filter(a => a.active && !a.acknowledged).length})`
+                : `Reguły (${rules.length})`}
             </button>
           ))}
         </div>
@@ -152,6 +162,40 @@ export default function Alerts() {
                 <Badge variant={sevColor(ev.severity)}>{ev.severity}</Badge>
                 {!ev.acknowledged && canAcknowledge && (
                   <button onClick={() => ack(ev.id)} className="text-ink-muted hover:text-good transition-colors" title="Potwierdź">
+                    <CheckCircle size={16} />
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {tab === 'hardware' && (
+        <div className="bg-surface border border-border rounded-xl shadow-panel divide-y divide-border">
+          {hwAlarms.length === 0 && <EmptyState message="Brak alarmów zgłoszonych przez sterowniki" />}
+          {hwAlarms.map(a => (
+            <div key={a.id} className={`flex items-center justify-between gap-3 px-5 py-3 ${!a.active || a.acknowledged ? 'opacity-50' : ''}`}>
+              <div className="flex items-center gap-3 min-w-0">
+                <Bell size={14} className={`shrink-0 ${sevIconColor(a.severity)}`} />
+                <div className="min-w-0">
+                  <p className="text-sm text-ink truncate">
+                    {devices.find(d => d.id === a.device_id)?.name ?? `Urządzenie #${a.device_id}`}: {a.name}
+                    {a.description ? ` — ${a.description}` : ''}
+                  </p>
+                  <p className="text-xs text-ink-muted">
+                    {format(new Date(a.triggered_at), 'dd.MM.yyyy HH:mm:ss')}
+                    {' · '}
+                    {a.resolved_at ? `trwał ${formatDuration(a.triggered_at, a.resolved_at)}` : a.active ? `aktywny od ${formatDuration(a.triggered_at, null)}` : 'ustąpił'}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <Badge variant={sevColor(a.severity)}>{a.severity}</Badge>
+                {a.acknowledged ? (
+                  <Badge variant="gray">potwierdzone</Badge>
+                ) : canAcknowledge && (
+                  <button onClick={() => ackHw(a.id)} className="text-ink-muted hover:text-good transition-colors" title="Potwierdź">
                     <CheckCircle size={16} />
                   </button>
                 )}
