@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { ChevronLeft, Pencil, Check, X, Timer, Trash2, Plus } from 'lucide-react'
-import { getDevice, updateDevice, updateDeviceRegisters, type RegisterDefinitionInput } from '../api/devices'
+import { ChevronLeft, Pencil, Check, X, Timer } from 'lucide-react'
+import { getDevice, updateDevice } from '../api/devices'
 import { getDeviceReadings } from '../api/readings'
 import { getDeviceProfile, type DeviceProfileDetail } from '../api/deviceProfiles'
 import type { Device } from '../types/device'
@@ -37,6 +37,7 @@ export default function DeviceDetail() {
   const [editingInterval, setEditingInterval] = useState(false)
   const [intervalInput, setIntervalInput] = useState('')
   const [savingInterval, setSavingInterval] = useState(false)
+  const [editingVisibility, setEditingVisibility] = useState(false)
 
   const updateDeviceInStore = useDeviceStore(s => s.updateDeviceStatus)
   const canWrite = useAuthStore((s) => s.can('device:write'))
@@ -85,6 +86,23 @@ export default function DeviceDetail() {
       toast.error('Błąd zapisu interwału')
     } finally {
       setSavingInterval(false)
+    }
+  }
+
+  const toggleHiddenParameter = async (name: string) => {
+    if (!device) return
+    const hidden = device.hidden_parameters.includes(name)
+      ? device.hidden_parameters.filter((n) => n !== name)
+      : [...device.hidden_parameters, name]
+    // Optimistic - the toggle is a small display preference, not worth a
+    // loading state; revert on failure instead.
+    const previous = device
+    setDevice({ ...device, hidden_parameters: hidden })
+    try {
+      await updateDevice(device.id, { hidden_parameters: hidden })
+    } catch {
+      setDevice(previous)
+      toast.error('Błąd zapisu widoczności')
     }
   }
 
@@ -178,7 +196,7 @@ export default function DeviceDetail() {
 
       <Card title="Bieżące wartości parametrów">
         <div className="p-5">
-          <ParameterGrid deviceId={device.id} />
+          <ParameterGrid deviceId={device.id} hiddenNames={device.hidden_parameters} />
         </div>
       </Card>
 
@@ -192,146 +210,36 @@ export default function DeviceDetail() {
           ))}
         </div>
         <div className="px-3 pb-4">
-          <TimeSeriesChart data={readings} height={320} />
+          <TimeSeriesChart
+            data={readings.filter((r) => !device.hidden_parameters.includes(r.parameter_name))}
+            height={320}
+          />
         </div>
       </Card>
 
       {profile && profile.registers.length > 0 && (
-        <Card title="Zmienne sterownika">
-          <RegisterControlPanel deviceId={device.id} registers={profile.registers} profileName={profile.name} />
-        </Card>
-      )}
-
-      {canWrite && device.profile_id && (
-        <Card title="Rejestry Modbus (tylko to urządzenie)">
-          <DeviceRegisterEditor device={device} onSaved={loadDevice} />
-        </Card>
-      )}
-    </div>
-  )
-}
-
-const EMPTY_ROW: RegisterDefinitionInput = {
-  address: 0, name: '', unit: '', description: '', data_type: 'int16',
-  scale_factor: 1, writable: false, is_alarm_register: false, register_type: 'holding',
-}
-
-function DeviceRegisterEditor({ device, onSaved }: { device: Device; onSaved: () => void }) {
-  const [rows, setRows] = useState<RegisterDefinitionInput[]>(
-    device.profile?.registers.map(({ id: _id, ...r }) => r) ?? []
-  )
-  const [saving, setSaving] = useState(false)
-
-  useEffect(() => {
-    setRows(device.profile?.registers.map(({ id: _id, ...r }) => r) ?? [])
-  }, [device.profile_id, device.profile?.registers.length])
-
-  const update = (i: number, patch: Partial<RegisterDefinitionInput>) =>
-    setRows((rs) => rs.map((r, idx) => (idx === i ? { ...r, ...patch } : r)))
-  const remove = (i: number) => setRows((rs) => rs.filter((_, idx) => idx !== i))
-  const add = () => setRows((rs) => [...rs, { ...EMPTY_ROW }])
-
-  const save = async () => {
-    setSaving(true)
-    try {
-      await updateDeviceRegisters(device.id, rows)
-      toast.success('Rejestry zapisane dla tego urządzenia')
-      onSaved()
-    } catch (err: any) {
-      toast.error(err.response?.data?.detail ?? 'Błąd zapisu rejestrów')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  return (
-    <div className="p-5 space-y-3">
-      <p className="text-xs text-ink-muted">
-        Dodawaj i usuwaj adresy rejestrów wyłącznie dla tego urządzenia — pełna
-        konfiguracja profilu (Konfiguracja) i inne urządzenia z tym samym
-        profilem pozostają bez zmian.
-      </p>
-      <div className="overflow-x-auto">
-        <table className="w-full text-xs">
-          <thead>
-            <tr className="text-ink-muted text-left">
-              <th className="pb-1 pr-2">Adres</th>
-              <th className="pb-1 pr-2">Nazwa</th>
-              <th className="pb-1 pr-2">Typ rej.</th>
-              <th className="pb-1 pr-2">Typ danych</th>
-              <th className="pb-1 pr-2">Skala</th>
-              <th className="pb-1 pr-2">Jednostka</th>
-              <th className="pb-1 pr-2">Zapis</th>
-              <th className="pb-1 pr-2">Alarm</th>
-              <th className="pb-1"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r, i) => (
-              <tr key={i} className="border-t border-surface-2">
-                <td className="py-1 pr-2">
-                  <input type="number" value={r.address} onChange={(e) => update(i, { address: Number(e.target.value) })}
-                    className="w-16 bg-surface-2 rounded px-1.5 py-1 text-ink" />
-                </td>
-                <td className="py-1 pr-2">
-                  <input value={r.name} onChange={(e) => update(i, { name: e.target.value })}
-                    className="w-40 bg-surface-2 rounded px-1.5 py-1 text-ink" />
-                </td>
-                <td className="py-1 pr-2">
-                  <select value={r.register_type} onChange={(e) => update(i, { register_type: e.target.value as RegisterDefinitionInput['register_type'] })}
-                    className="bg-surface-2 rounded px-1.5 py-1 text-ink">
-                    <option value="holding">holding</option>
-                    <option value="input">input</option>
-                    <option value="coil">coil</option>
-                    <option value="discrete_input">discrete_input</option>
-                  </select>
-                </td>
-                <td className="py-1 pr-2">
-                  <select value={r.data_type} onChange={(e) => update(i, { data_type: e.target.value })}
-                    className="bg-surface-2 rounded px-1.5 py-1 text-ink">
-                    <option value="int16">int16</option>
-                    <option value="uint16">uint16</option>
-                    <option value="int32">int32</option>
-                    <option value="uint32">uint32</option>
-                    <option value="float32">float32</option>
-                  </select>
-                </td>
-                <td className="py-1 pr-2">
-                  <input type="number" step="any" value={r.scale_factor} onChange={(e) => update(i, { scale_factor: Number(e.target.value) })}
-                    className="w-16 bg-surface-2 rounded px-1.5 py-1 text-ink" />
-                </td>
-                <td className="py-1 pr-2">
-                  <input value={r.unit ?? ''} onChange={(e) => update(i, { unit: e.target.value })}
-                    className="w-14 bg-surface-2 rounded px-1.5 py-1 text-ink" />
-                </td>
-                <td className="py-1 pr-2 text-center">
-                  <input type="checkbox" checked={r.writable} onChange={(e) => update(i, { writable: e.target.checked })} />
-                </td>
-                <td className="py-1 pr-2 text-center">
-                  <input type="checkbox" checked={r.is_alarm_register} onChange={(e) => update(i, { is_alarm_register: e.target.checked })} />
-                </td>
-                <td className="py-1">
-                  <button onClick={() => remove(i)} className="text-ink-muted hover:text-crit" title="Usuń rejestr">
-                    <Trash2 size={14} />
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <div className="flex items-center gap-2 pt-1">
-        <button onClick={add} className="flex items-center gap-1 text-xs text-accent hover:text-accent-strong transition-colors">
-          <Plus size={14} /> Dodaj rejestr
-        </button>
-        <button
-          onClick={save}
-          disabled={saving}
-          className="ml-auto bg-accent hover:bg-accent-strong disabled:opacity-40 text-white text-xs px-4 py-1.5 rounded-lg transition-colors"
+        <Card
+          title="Zmienne sterownika"
+          action={canWrite && (
+            <button
+              onClick={() => setEditingVisibility((v) => !v)}
+              className={`flex items-center gap-1 text-xs transition-colors ${editingVisibility ? 'text-accent' : 'text-ink-muted hover:text-accent'}`}
+              title={editingVisibility ? 'Zakończ edycję widoczności' : 'Edytuj widoczność zmiennych'}
+            >
+              {editingVisibility ? <Check size={15} /> : <Pencil size={15} />}
+            </button>
+          )}
         >
-          {saving ? 'Zapisywanie…' : 'Zapisz rejestry'}
-        </button>
-      </div>
+          <RegisterControlPanel
+            deviceId={device.id}
+            registers={profile.registers}
+            profileName={profile.name}
+            hiddenNames={device.hidden_parameters}
+            editingVisibility={editingVisibility}
+            onToggleHidden={toggleHiddenParameter}
+          />
+        </Card>
+      )}
     </div>
   )
 }

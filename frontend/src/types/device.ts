@@ -57,6 +57,7 @@ export interface Device {
   created_at: string
   profile: DeviceProfile | null
   parameters: DeviceParameter[]
+  hidden_parameters: string[]
 }
 
 export interface DeviceCreate {

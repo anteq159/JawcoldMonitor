@@ -1,6 +1,7 @@
 from datetime import datetime
 from typing import Optional, List
 from sqlalchemy import String, Integer, Float, DateTime, ForeignKey
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.base import Base, TimestampMixin
 
@@ -26,6 +27,10 @@ class Device(Base, TimestampMixin):
     description: Mapped[Optional[str]] = mapped_column(String(256))
     first_seen: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     last_seen: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    # Parameter names hidden from "Zmienne sterownika" / "Bieżące wartości
+    # parametrów" / wykresy for this device - purely a display filter, the
+    # underlying registers/readings are untouched so hiding is reversible.
+    hidden_parameters: Mapped[List[str]] = mapped_column(JSONB, default=list)
 
     profile: Mapped[Optional["DeviceProfile"]] = relationship("DeviceProfile", lazy="selectin")
     parameters: Mapped[List["DeviceParameter"]] = relationship(

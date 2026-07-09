@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Pencil, Check, X, Lock, Star } from 'lucide-react'
+import { Pencil, Check, X, Lock, Star, Eye, EyeOff } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useDeviceStore } from '../../store/devices'
 import { useAuthStore } from '../../store/auth'
@@ -11,6 +11,9 @@ interface Props {
   deviceId: number
   registers: RegisterDefinition[]
   profileName: string
+  hiddenNames: string[]
+  editingVisibility: boolean
+  onToggleHidden: (name: string) => void
 }
 
 const REGISTER_TYPE_LABELS: Record<string, string> = {
@@ -23,13 +26,21 @@ const REGISTER_TYPE_LABELS: Record<string, string> = {
 // device.parameters subset - with inline editing for the ones marked
 // writable (setpoints, differentials). Supersedes the old static,
 // read-only "Mapa rejestrow" reference table.
-export function RegisterControlPanel({ deviceId, registers, profileName }: Props) {
+export function RegisterControlPanel({
+  deviceId, registers, profileName, hiddenNames, editingVisibility, onToggleHidden,
+}: Props) {
   const liveReadings = useDeviceStore((s) => s.liveReadings[deviceId] || {})
   const canWrite = useAuthStore((s) => s.can('device:write'))
   const [editing, setEditing] = useState<string | null>(null)
   const [inputValue, setInputValue] = useState('')
   const [saving, setSaving] = useState(false)
   const { isFavorite, toggleFavorite } = useFavoriteParameters()
+
+  // Outside edit mode, hidden registers are fully absent from the table -
+  // that's the display filter this whole feature exists for. Edit mode
+  // shows everything (dimmed for hidden ones) so a hidden register can be
+  // found again and restored.
+  const visibleRegisters = editingVisibility ? registers : registers.filter((r) => !hiddenNames.includes(r.name))
 
   const startEdit = (register: RegisterDefinition) => {
     const current = liveReadings[register.name]?.value
@@ -62,6 +73,7 @@ export function RegisterControlPanel({ deviceId, registers, profileName }: Props
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b border-border text-left">
+            {editingVisibility && <th className="px-5 py-2 text-xs font-semibold text-ink-muted uppercase tracking-wide"></th>}
             <th className="px-5 py-2 text-xs font-semibold text-ink-muted uppercase tracking-wide"></th>
             <th className="px-3 py-2 text-xs font-semibold text-ink-muted uppercase tracking-wide">Adres</th>
             <th className="px-3 py-2 text-xs font-semibold text-ink-muted uppercase tracking-wide">Nazwa</th>
@@ -71,12 +83,24 @@ export function RegisterControlPanel({ deviceId, registers, profileName }: Props
           </tr>
         </thead>
         <tbody className="divide-y divide-border">
-          {registers.map((r) => {
+          {visibleRegisters.map((r) => {
             const live = liveReadings[r.name]
             const isEditing = editing === r.name
             const favorite = isFavorite('device', deviceId, r.name)
+            const isHidden = hiddenNames.includes(r.name)
             return (
-              <tr key={r.id}>
+              <tr key={r.id} className={isHidden ? 'opacity-40' : undefined}>
+                {editingVisibility && (
+                  <td className="px-5 py-2 align-top">
+                    <button
+                      onClick={() => onToggleHidden(r.name)}
+                      className="text-ink-muted hover:text-accent transition-colors"
+                      title={isHidden ? 'Pokaż zmienną' : 'Ukryj zmienną'}
+                    >
+                      {isHidden ? <EyeOff size={14} /> : <Eye size={14} />}
+                    </button>
+                  </td>
+                )}
                 <td className="px-5 py-2 align-top">
                   <button
                     onClick={() => toggleFavorite('device', deviceId, r.name)}

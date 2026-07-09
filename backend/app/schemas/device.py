@@ -54,6 +54,7 @@ class DeviceOut(BaseModel):
     created_at: datetime
     profile: Optional[ProfileOut] = None
     parameters: List[ParameterOut] = []
+    hidden_parameters: List[str] = []
 
     model_config = {"from_attributes": True}
 
@@ -81,6 +82,7 @@ class DeviceUpdate(BaseModel):
     baudrate: Optional[int] = None
     timeout: Optional[float] = None
     poll_interval_seconds: Optional[int] = None
+    hidden_parameters: Optional[List[str]] = None
 
 
 class RegisterWriteRequest(BaseModel):
