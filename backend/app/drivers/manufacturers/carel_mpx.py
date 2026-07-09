@@ -26,20 +26,13 @@ class CarelMPXDriver(AbstractControllerDriver):
     exactly why 1.16.0/1.16.1 logged a false hardware alarm right after
     startup.
 
-    Every register below was confirmed live: distinct, physically
-    plausible values, several cross-checked against a second, independently
-    numbered Carel variable that mirrors the same live value (e.g. "St"
-    at 39 agrees with the live "working setpoint" at 19; "P3" at 61 agrees
-    with the live "working SH setpoint" at 20). At first only Sonda 1 was
-    physically wired - S2/S3 were added 2026-07-09 (site wired them in;
-    re-scanned live and their fault coils cleared to 0 with plausible
-    readings). Sd, SH and the EEV registers (Po2 returns a Modbus
-    exception) still read back as "not installed" on real hardware, so
-    they're left out rather than shown as fake sensors. St=50°C is a
-    real, triple-confirmed reading, unusually high for typical
-    refrigeration - worth confirming on-site that this unit is meant to
-    run that setpoint rather than assuming a config error, since three
-    independent registers on the real controller agree on it."""
+    Every register below was confirmed live. "St" (39) and "Sonda 1/2/3"
+    (7/8/9) were confirmed by changing the value on the controller's own
+    keypad and watching it update on the panel. "rd" (41) and "P3" (61)
+    were confirmed the same way 2026-07-09 (set to 2.0°C / 7.0K on the
+    keypad, matched exactly on re-scan). Sd, SH and the EEV registers
+    (Po2 returns a Modbus exception) read back as "not installed" on real
+    hardware, so they're left out rather than shown as fake sensors."""
 
     manufacturer = "Carel MPX"
 
