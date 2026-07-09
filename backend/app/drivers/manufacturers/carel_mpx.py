@@ -32,7 +32,19 @@ class CarelMPXDriver(AbstractControllerDriver):
     were confirmed the same way 2026-07-09 (set to 2.0°C / 7.0K on the
     keypad, matched exactly on re-scan). Sd, SH and the EEV registers
     (Po2 returns a Modbus exception) read back as "not installed" on real
-    hardware, so they're left out rather than shown as fake sensors."""
+    hardware, so they're left out rather than shown as fake sensors.
+
+    Sensor fault coils: only S1-S3's (12/13/14) were confirmed by an
+    actual connect/disconnect transition (1 -> 0). S6/S7's guessed fault
+    coils (17/18) were tested the same way on 2026-07-09 and failed -
+    they stayed 0 after S6/S7 were physically disconnected - so they were
+    removed rather than left showing a false "OK". S4/S5's fault coils
+    (15/16) were only ever observed at 0 while connected, never through a
+    real disconnect - unconfirmed, kept for now but don't fully trust
+    them. The sensor VALUE registers themselves (holding, not the fault
+    coils) reliably show the physically-impossible "-204.8°C" pattern
+    when a probe isn't wired, regardless of whether the fault coil works,
+    so that's the more dependable disconnect signal."""
 
     manufacturer = "Carel MPX"
 
@@ -53,8 +65,6 @@ class CarelMPXDriver(AbstractControllerDriver):
             RegisterMapEntry(address=14, name="Błąd czujnika S3", data_type="uint16", register_type="coil"),
             RegisterMapEntry(address=15, name="Błąd czujnika S4", data_type="uint16", register_type="coil"),
             RegisterMapEntry(address=16, name="Błąd czujnika S5", data_type="uint16", register_type="coil"),
-            RegisterMapEntry(address=17, name="Błąd czujnika S6", data_type="uint16", register_type="coil"),
-            RegisterMapEntry(address=18, name="Błąd czujnika S7", data_type="uint16", register_type="coil"),
             RegisterMapEntry(address=23, name="Alarm niskiej temperatury (LO)", data_type="uint16", register_type="coil"),
             RegisterMapEntry(address=24, name="Alarm wysokiej temperatury (HI)", data_type="uint16", register_type="coil"),
             RegisterMapEntry(address=114, name="Przekaźnik alarmowy (zbiorczy)", data_type="uint16", is_alarm_register=True, register_type="coil"),
@@ -92,8 +102,6 @@ class CarelMPXDriver(AbstractControllerDriver):
             "Błąd czujnika S3": {"value": 0, "unit": ""},
             "Błąd czujnika S4": {"value": 0, "unit": ""},
             "Błąd czujnika S5": {"value": 0, "unit": ""},
-            "Błąd czujnika S6": {"value": 0, "unit": ""},
-            "Błąd czujnika S7": {"value": 0, "unit": ""},
             "Alarm niskiej temperatury (LO)": {"value": 1 if room < 1 else 0, "unit": ""},
             "Alarm wysokiej temperatury (HI)": {"value": 0, "unit": ""},
             "Przekaźnik alarmowy (zbiorczy)": {"value": 0, "unit": ""},
