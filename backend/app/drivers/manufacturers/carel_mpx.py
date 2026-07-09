@@ -30,25 +30,30 @@ class CarelMPXDriver(AbstractControllerDriver):
     plausible values, several cross-checked against a second, independently
     numbered Carel variable that mirrors the same live value (e.g. "St"
     at 39 agrees with the live "working setpoint" at 19; "P3" at 61 agrees
-    with the live "working SH setpoint" at 20). This particular unit has
-    only Sonda 1 physically wired - S2-S6, Sd, SH and the EEV registers
-    (Po2 returns a Modbus exception) all read back as "not installed" on
-    real hardware, so they're deliberately left out rather than shown as
-    fake sensors. St=50°C is a real, triple-confirmed reading, unusually
-    high for typical refrigeration - worth confirming on-site that this
-    unit is meant to run that setpoint rather than assuming a config
-    error, since three independent registers on the real controller agree
-    on it."""
+    with the live "working SH setpoint" at 20). At first only Sonda 1 was
+    physically wired - S2/S3 were added 2026-07-09 (site wired them in;
+    re-scanned live and their fault coils cleared to 0 with plausible
+    readings). Sd, SH and the EEV registers (Po2 returns a Modbus
+    exception) still read back as "not installed" on real hardware, so
+    they're left out rather than shown as fake sensors. St=50°C is a
+    real, triple-confirmed reading, unusually high for typical
+    refrigeration - worth confirming on-site that this unit is meant to
+    run that setpoint rather than assuming a config error, since three
+    independent registers on the real controller agree on it."""
 
     manufacturer = "Carel MPX"
 
     def default_register_map(self) -> List[RegisterMapEntry]:
         return [
             RegisterMapEntry(address=7, name="Sonda 1", unit="°C", data_type="int16", scale_factor=0.1, register_type="holding"),
+            RegisterMapEntry(address=8, name="Sonda 2", unit="°C", data_type="int16", scale_factor=0.1, register_type="holding"),
+            RegisterMapEntry(address=9, name="Sonda 3", unit="°C", data_type="int16", scale_factor=0.1, register_type="holding"),
             RegisterMapEntry(address=39, name="Nastawa (St)", unit="°C", data_type="int16", scale_factor=0.1, writable=True, register_type="holding"),
             RegisterMapEntry(address=41, name="Różnica załączania (rd)", unit="°C", data_type="int16", scale_factor=0.1, writable=True, register_type="holding"),
             RegisterMapEntry(address=61, name="Nastawa przegrzania (P3)", unit="K", data_type="int16", scale_factor=0.1, writable=True, register_type="holding"),
             RegisterMapEntry(address=12, name="Błąd czujnika S1 (rE1)", data_type="uint16", register_type="coil"),
+            RegisterMapEntry(address=13, name="Błąd czujnika S2", data_type="uint16", register_type="coil"),
+            RegisterMapEntry(address=14, name="Błąd czujnika S3", data_type="uint16", register_type="coil"),
             RegisterMapEntry(address=23, name="Alarm niskiej temperatury (LO)", data_type="uint16", register_type="coil"),
             RegisterMapEntry(address=24, name="Alarm wysokiej temperatury (HI)", data_type="uint16", register_type="coil"),
             RegisterMapEntry(address=114, name="Przekaźnik alarmowy (zbiorczy)", data_type="uint16", is_alarm_register=True, register_type="coil"),
@@ -72,10 +77,14 @@ class CarelMPXDriver(AbstractControllerDriver):
         room = round(1 + 1.3 * math.sin(tick * 0.065) + random.uniform(-0.2, 0.2), 1)
         return {
             "Sonda 1": {"value": room, "unit": "°C"},
+            "Sonda 2": {"value": round(room + 3 + random.uniform(-0.3, 0.3), 1), "unit": "°C"},
+            "Sonda 3": {"value": round(room + 3.1 + random.uniform(-0.3, 0.3), 1), "unit": "°C"},
             "Nastawa (St)": {"value": 1.0, "unit": "°C"},
             "Różnica załączania (rd)": {"value": 2.0, "unit": "°C"},
             "Nastawa przegrzania (P3)": {"value": 7.0, "unit": "K"},
             "Błąd czujnika S1 (rE1)": {"value": 0, "unit": ""},
+            "Błąd czujnika S2": {"value": 0, "unit": ""},
+            "Błąd czujnika S3": {"value": 0, "unit": ""},
             "Alarm niskiej temperatury (LO)": {"value": 1 if room < 1 else 0, "unit": ""},
             "Alarm wysokiej temperatury (HI)": {"value": 0, "unit": ""},
             "Przekaźnik alarmowy (zbiorczy)": {"value": 0, "unit": ""},
