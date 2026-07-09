@@ -4,6 +4,7 @@ import type { Device, DeviceCreate } from '../types/device'
 export interface DeviceUpdate extends Partial<DeviceCreate> {
   poll_interval_seconds?: number | null
   hidden_parameters?: string[]
+  parameter_aliases?: Record<string, string>
 }
 
 export const getDevices = (): Promise<Device[]> => api.get('/devices/').then((r) => r.data)

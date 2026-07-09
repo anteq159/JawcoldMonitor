@@ -50,7 +50,10 @@ async def create_profile(
         model=body.model,
         description=body.description,
         source="local",
-        registers=[RegisterDefinition(**r.model_dump()) for r in body.registers],
+        # Position is derived server-side from submission order, not
+        # trusted from the client - the frontend just sends rows in the
+        # order the user arranged them.
+        registers=[RegisterDefinition(position=i, **r.model_dump()) for i, r in enumerate(body.registers)],
     )
     db.add(profile)
     await db.commit()
@@ -73,7 +76,7 @@ async def update_profile(
     for k, v in data.items():
         setattr(profile, k, v)
     if body.registers is not None:
-        profile.registers = [RegisterDefinition(**r.model_dump()) for r in body.registers]
+        profile.registers = [RegisterDefinition(position=i, **r.model_dump()) for i, r in enumerate(body.registers)]
     await db.commit()
     await db.refresh(profile)
     return profile

@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional, List, Dict
 from pydantic import BaseModel
 from app.schemas.device_profile import RegisterDefinitionOut
 
@@ -55,6 +55,7 @@ class DeviceOut(BaseModel):
     profile: Optional[ProfileOut] = None
     parameters: List[ParameterOut] = []
     hidden_parameters: List[str] = []
+    parameter_aliases: Dict[str, str] = {}
 
     model_config = {"from_attributes": True}
 
@@ -83,6 +84,7 @@ class DeviceUpdate(BaseModel):
     timeout: Optional[float] = None
     poll_interval_seconds: Optional[int] = None
     hidden_parameters: Optional[List[str]] = None
+    parameter_aliases: Optional[Dict[str, str]] = None
 
 
 class RegisterWriteRequest(BaseModel):

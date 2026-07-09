@@ -2,6 +2,7 @@ import api from './client'
 
 export interface RegisterDefinition {
   id: number
+  position: number
   address: number
   name: string
   unit: string | null

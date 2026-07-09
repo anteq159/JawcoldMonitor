@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Plus, Pencil, Trash2, X, Settings2, BookOpen } from 'lucide-react'
+import { Plus, Pencil, Trash2, X, Settings2, BookOpen, ArrowUp, ArrowDown } from 'lucide-react'
 import toast from 'react-hot-toast'
 import {
   getDeviceProfiles, createDeviceProfile, updateDeviceProfile, deleteDeviceProfile,
@@ -198,6 +198,14 @@ function ProfileModal({ profile, onClose, onSaved }: {
     setRows((rs) => rs.map((r) => (r.key === key ? { ...r, ...patch } : r)))
   const removeRow = (key: string) => setRows((rs) => rs.filter((r) => r.key !== key))
   const addRow = () => setRows((rs) => [...rs, newRow()])
+  const moveRow = (index: number, dir: -1 | 1) =>
+    setRows((rs) => {
+      const target = index + dir
+      if (target < 0 || target >= rs.length) return rs
+      const next = [...rs]
+      ;[next[index], next[target]] = [next[target], next[index]]
+      return next
+    })
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -246,9 +254,25 @@ function ProfileModal({ profile, onClose, onSaved }: {
             <button type="button" onClick={addRow} className="text-xs text-accent hover:text-accent-strong">+ Dodaj rejestr</button>
           </div>
           <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
-            {rows.map((r) => (
+            {rows.map((r, i) => (
               <div key={r.key} className="bg-surface-2 border border-border rounded-lg p-2 space-y-1.5">
                 <div className="flex items-center gap-1.5">
+                  <div className="flex flex-col shrink-0">
+                    <button
+                      type="button" onClick={() => moveRow(i, -1)} disabled={i === 0}
+                      className="text-ink-muted hover:text-accent disabled:opacity-25 disabled:hover:text-ink-muted"
+                      title="Przesuń wyżej"
+                    >
+                      <ArrowUp size={12} />
+                    </button>
+                    <button
+                      type="button" onClick={() => moveRow(i, 1)} disabled={i === rows.length - 1}
+                      className="text-ink-muted hover:text-accent disabled:opacity-25 disabled:hover:text-ink-muted"
+                      title="Przesuń niżej"
+                    >
+                      <ArrowDown size={12} />
+                    </button>
+                  </div>
                   <input
                     placeholder="Nazwa zmiennej" value={r.name}
                     onChange={(e) => updateRow(r.key, { name: e.target.value })}

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Pencil, Check, X, Lock, Star, Eye, EyeOff } from 'lucide-react'
+import { Pencil, Check, X, Lock, Star, Eye, EyeOff, Tag } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useDeviceStore } from '../../store/devices'
 import { useAuthStore } from '../../store/auth'
@@ -12,8 +12,10 @@ interface Props {
   registers: RegisterDefinition[]
   profileName: string
   hiddenNames: string[]
+  aliases: Record<string, string>
   editingVisibility: boolean
   onToggleHidden: (name: string) => void
+  onRename: (realName: string, alias: string) => void
 }
 
 const REGISTER_TYPE_LABELS: Record<string, string> = {
@@ -27,14 +29,27 @@ const REGISTER_TYPE_LABELS: Record<string, string> = {
 // writable (setpoints, differentials). Supersedes the old static,
 // read-only "Mapa rejestrow" reference table.
 export function RegisterControlPanel({
-  deviceId, registers, profileName, hiddenNames, editingVisibility, onToggleHidden,
+  deviceId, registers, profileName, hiddenNames, aliases, editingVisibility, onToggleHidden, onRename,
 }: Props) {
   const liveReadings = useDeviceStore((s) => s.liveReadings[deviceId] || {})
   const canWrite = useAuthStore((s) => s.can('device:write'))
   const [editing, setEditing] = useState<string | null>(null)
   const [inputValue, setInputValue] = useState('')
   const [saving, setSaving] = useState(false)
+  const [renaming, setRenaming] = useState<string | null>(null)
+  const [renameInput, setRenameInput] = useState('')
   const { isFavorite, toggleFavorite } = useFavoriteParameters()
+
+  const startRename = (register: RegisterDefinition) => {
+    setRenameInput(aliases[register.name] ?? register.name)
+    setRenaming(register.name)
+  }
+  const cancelRename = () => setRenaming(null)
+  const saveRename = (realName: string) => {
+    const trimmed = renameInput.trim()
+    onRename(realName, trimmed === realName ? '' : trimmed)
+    setRenaming(null)
+  }
 
   // Outside edit mode, hidden registers are fully absent from the table -
   // that's the display filter this whole feature exists for. Edit mode
@@ -112,7 +127,35 @@ export function RegisterControlPanel({
                 </td>
                 <td className="px-3 py-2 font-mono text-ink-muted align-top">{r.address}</td>
                 <td className="px-3 py-2 text-ink align-top">
-                  {r.name}
+                  {renaming === r.name ? (
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        value={renameInput}
+                        onChange={(e) => setRenameInput(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') saveRename(r.name); if (e.key === 'Escape') cancelRename() }}
+                        autoFocus
+                        className="w-32 bg-surface-2 border border-accent rounded-md px-2 py-1 text-ink text-sm focus:outline-none"
+                      />
+                      <button onClick={() => saveRename(r.name)} className="text-good hover:text-good/80 transition-colors" title="Zapisz nazwę">
+                        <Check size={15} />
+                      </button>
+                      <button onClick={cancelRename} className="text-ink-muted hover:text-ink transition-colors" title="Anuluj">
+                        <X size={15} />
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-1.5">
+                      <span>
+                        {aliases[r.name] ?? r.name}
+                        {aliases[r.name] && <span className="block text-[10px] text-ink-muted/70 font-normal">{r.name}</span>}
+                      </span>
+                      {editingVisibility && (
+                        <button onClick={() => startRename(r)} className="text-ink-muted hover:text-accent transition-colors shrink-0" title="Zmień nazwę (tylko to urządzenie)">
+                          <Tag size={12} />
+                        </button>
+                      )}
+                    </div>
+                  )}
                   {r.description && <p className="text-xs text-ink-muted font-normal">{r.description}</p>}
                 </td>
                 <td className="px-3 py-2 align-top">
@@ -167,6 +210,8 @@ export function RegisterControlPanel({
       <p className="px-5 py-3 text-xs text-ink-muted border-t border-border">
         Profil {profileName} — reprezentatywna mapa rejestrów producenta. Wartości edytowalne (ikona ołówka) symulują
         zapis nastawy sterownika; zweryfikuj z oficjalną dokumentacją modelu przed użyciem z rzeczywistym urządzeniem.
+        Tryb edycji (ikona ołówka w nagłówku karty) pozwala ukrywać zmienne i zmieniać ich nazwy wyłącznie dla tego
+        urządzenia — inne urządzenia z tym samym profilem i sam profil w Konfiguracji pozostają bez zmian.
       </p>
     </div>
   )

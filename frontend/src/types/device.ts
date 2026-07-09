@@ -15,6 +15,7 @@ export interface DeviceParameter {
 
 export interface DeviceProfileRegister {
   id: number
+  position: number
   address: number
   name: string
   unit: string | null
@@ -58,6 +59,7 @@ export interface Device {
   profile: DeviceProfile | null
   parameters: DeviceParameter[]
   hidden_parameters: string[]
+  parameter_aliases: Record<string, string>
 }
 
 export interface DeviceCreate {

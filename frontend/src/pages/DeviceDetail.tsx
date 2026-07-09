@@ -106,6 +106,22 @@ export default function DeviceDetail() {
     }
   }
 
+  const renameParameter = async (realName: string, alias: string) => {
+    if (!device) return
+    const aliases = { ...device.parameter_aliases }
+    if (alias) aliases[realName] = alias
+    else delete aliases[realName]
+    const previous = device
+    setDevice({ ...device, parameter_aliases: aliases })
+    try {
+      await updateDevice(device.id, { parameter_aliases: aliases })
+      toast.success(alias ? `Nazwa zmieniona na „${alias}” (tylko to urządzenie)` : 'Przywrócono oryginalną nazwę')
+    } catch {
+      setDevice(previous)
+      toast.error('Błąd zapisu nazwy')
+    }
+  }
+
   const saveName = async () => {
     if (!device || !nameInput.trim()) return
     setSavingName(true)
@@ -196,7 +212,7 @@ export default function DeviceDetail() {
 
       <Card title="Bieżące wartości parametrów">
         <div className="p-5">
-          <ParameterGrid deviceId={device.id} hiddenNames={device.hidden_parameters} />
+          <ParameterGrid deviceId={device.id} hiddenNames={device.hidden_parameters} aliases={device.parameter_aliases} />
         </div>
       </Card>
 
@@ -211,7 +227,9 @@ export default function DeviceDetail() {
         </div>
         <div className="px-3 pb-4">
           <TimeSeriesChart
-            data={readings.filter((r) => !device.hidden_parameters.includes(r.parameter_name))}
+            data={readings
+              .filter((r) => !device.hidden_parameters.includes(r.parameter_name))
+              .map((r) => ({ ...r, parameter_name: device.parameter_aliases[r.parameter_name] ?? r.parameter_name }))}
             height={320}
           />
         </div>
@@ -235,8 +253,10 @@ export default function DeviceDetail() {
             registers={profile.registers}
             profileName={profile.name}
             hiddenNames={device.hidden_parameters}
+            aliases={device.parameter_aliases}
             editingVisibility={editingVisibility}
             onToggleHidden={toggleHiddenParameter}
+            onRename={renameParameter}
           />
         </Card>
       )}

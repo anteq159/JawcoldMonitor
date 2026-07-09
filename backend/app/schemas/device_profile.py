@@ -4,6 +4,7 @@ from pydantic import BaseModel
 
 class RegisterDefinitionOut(BaseModel):
     id: int
+    position: int = 0
     address: int
     name: str
     unit: Optional[str] = None

@@ -17,7 +17,8 @@ class DeviceProfile(Base, TimestampMixin):
     source: Mapped[str] = mapped_column(String(16), default="local")
 
     registers: Mapped[List["RegisterDefinition"]] = relationship(
-        "RegisterDefinition", back_populates="profile", cascade="all, delete-orphan", lazy="selectin"
+        "RegisterDefinition", back_populates="profile", cascade="all, delete-orphan", lazy="selectin",
+        order_by="RegisterDefinition.position",
     )
 
 
@@ -26,6 +27,11 @@ class RegisterDefinition(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     profile_id: Mapped[int] = mapped_column(ForeignKey("device_profiles.id"), nullable=False)
+    # Display order within the profile's register map - the Konfiguracja
+    # editor lets a user reorder rows and this is what persists that
+    # order (without it, the relationship would fall back to insertion/id
+    # order, which isn't reorderable once rows already exist).
+    position: Mapped[int] = mapped_column(Integer, default=0)
     address: Mapped[int] = mapped_column(Integer, nullable=False)
     name: Mapped[str] = mapped_column(String(64), nullable=False)
     unit: Mapped[Optional[str]] = mapped_column(String(16))

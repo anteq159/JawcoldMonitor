@@ -134,6 +134,7 @@ async def _init_manufacturer_profiles():
             model = driver.identify()
             registers = [
                 RegisterDefinition(
+                    position=i,
                     address=r.address,
                     name=r.name,
                     unit=r.unit,
@@ -144,7 +145,7 @@ async def _init_manufacturer_profiles():
                     is_alarm_register=r.is_alarm_register,
                     register_type=r.register_type,
                 )
-                for r in driver.default_register_map()
+                for i, r in enumerate(driver.default_register_map())
             ]
             if profile:
                 if profile.source == "builtin":

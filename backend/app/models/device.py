@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional, List, Dict
 from sqlalchemy import String, Integer, Float, DateTime, ForeignKey
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -31,6 +31,12 @@ class Device(Base, TimestampMixin):
     # parametrów" / wykresy for this device - purely a display filter, the
     # underlying registers/readings are untouched so hiding is reversible.
     hidden_parameters: Mapped[List[str]] = mapped_column(JSONB, default=list)
+    # Display-name overrides for this device only, keyed by the real
+    # register/parameter name (the one readings are actually stored and
+    # matched under) - the profile and every other device using it keep
+    # the original name. {"Sonda 1": "Komora A"} shows "Komora A" here
+    # while readings/writes still address "Sonda 1".
+    parameter_aliases: Mapped[Dict[str, str]] = mapped_column(JSONB, default=dict)
 
     profile: Mapped[Optional["DeviceProfile"]] = relationship("DeviceProfile", lazy="selectin")
     parameters: Mapped[List["DeviceParameter"]] = relationship(
