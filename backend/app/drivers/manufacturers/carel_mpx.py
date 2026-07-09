@@ -44,7 +44,22 @@ class CarelMPXDriver(AbstractControllerDriver):
     them. The sensor VALUE registers themselves (holding, not the fault
     coils) reliably show the physically-impossible "-204.8°C" pattern
     when a probe isn't wired, regardless of whether the fault coil works,
-    so that's the more dependable disconnect signal."""
+    so that's the more dependable disconnect signal.
+
+    2026-07-09 second batch: dt1/A0/AL/AH/F1/Frd/F5/P3/P7 and coil A1 were
+    confirmed by reading 15 values directly off the controller's own
+    keypad and matching every single one exactly on a live re-scan (e.g.
+    F5 independently reproduced the 50.0 already seen at that address in
+    an earlier blind scan). "Sd1" was reported as 25.8°C and matched
+    closely (25.6°C) at the "Sd" address - close enough (live drift) to
+    accept now that a probe is evidently wired there (it read the
+    "not installed" -812.8 pattern before). Deliberately NOT added despite
+    being asked for: "dP1" (176), "AA" (187) and "Ad" (188) - none matched
+    the reported value at their cfvarmdl-derived address, so the address
+    is wrong and needs a real disconnect/keypad-change test like the
+    others got, not a guess. "SH" matches the known not-installed pattern
+    (-806.4) rather than a real reading. "PPU" has no corresponding
+    variable in the supplied Carel model files at all."""
 
     manufacturer = "Carel MPX"
 
@@ -57,9 +72,22 @@ class CarelMPXDriver(AbstractControllerDriver):
             RegisterMapEntry(address=11, name="Sonda 5", unit="°C", data_type="int16", scale_factor=0.1, register_type="holding"),
             RegisterMapEntry(address=12, name="Sonda 6", unit="°C", data_type="int16", scale_factor=0.1, register_type="holding"),
             RegisterMapEntry(address=13, name="Sonda 7", unit="°C", data_type="int16", scale_factor=0.1, register_type="holding"),
+            RegisterMapEntry(address=0, name="Sd1", unit="°C", data_type="int16", scale_factor=0.1, register_type="holding"),
             RegisterMapEntry(address=39, name="Nastawa (St)", unit="°C", data_type="int16", scale_factor=0.1, writable=True, register_type="holding"),
             RegisterMapEntry(address=41, name="Różnica załączania (rd)", unit="°C", data_type="int16", scale_factor=0.1, writable=True, register_type="holding"),
+            RegisterMapEntry(address=49, name="Próg końca odszraniania (dt1)", unit="°C", data_type="int16", scale_factor=0.1, writable=True, register_type="holding"),
+            RegisterMapEntry(address=53, name="Dyferencjał resetu alarmu temp. (A0)", unit="°C", data_type="int16", scale_factor=0.1, writable=True, register_type="holding"),
+            RegisterMapEntry(address=54, name="Próg alarmu niskiej temp. (AL)", unit="°C", data_type="int16", scale_factor=0.1, writable=True, register_type="holding"),
+            RegisterMapEntry(address=55, name="Próg alarmu wysokiej temp. (AH)", unit="°C", data_type="int16", scale_factor=0.1, writable=True, register_type="holding"),
+            RegisterMapEntry(address=58, name="Próg załączenia wentylatora (F1)", unit="°C", data_type="int16", scale_factor=0.1, writable=True, register_type="holding"),
+            RegisterMapEntry(address=59, name="Dyferencjał wentylatora (Frd)", unit="°C", data_type="int16", scale_factor=0.1, writable=True, register_type="holding"),
+            RegisterMapEntry(address=60, name="Próg wyłączenia wentylatora (F5)", unit="°C", data_type="int16", scale_factor=0.1, writable=True, register_type="holding"),
             RegisterMapEntry(address=61, name="Nastawa przegrzania (P3)", unit="K", data_type="int16", scale_factor=0.1, writable=True, register_type="holding"),
+            RegisterMapEntry(address=64, name="Próg niskiego przegrzania (P7)", unit="K", data_type="int16", scale_factor=0.1, writable=True, register_type="holding"),
+            RegisterMapEntry(address=168, name="Min. czas włączenia zaworu (c1)", data_type="uint16", register_type="holding"),
+            RegisterMapEntry(address=169, name="Min. czas wyłączenia zaworu (c2)", data_type="uint16", register_type="holding"),
+            RegisterMapEntry(address=170, name="Maks. czas włączenia zaworu (c3)", data_type="uint16", register_type="holding"),
+            RegisterMapEntry(address=93, name="Nastawa Abs/wzgl. (A1)", data_type="uint16", register_type="coil"),
             RegisterMapEntry(address=12, name="Błąd czujnika S1 (rE1)", data_type="uint16", register_type="coil"),
             RegisterMapEntry(address=13, name="Błąd czujnika S2", data_type="uint16", register_type="coil"),
             RegisterMapEntry(address=14, name="Błąd czujnika S3", data_type="uint16", register_type="coil"),
@@ -94,9 +122,22 @@ class CarelMPXDriver(AbstractControllerDriver):
             "Sonda 5": {"value": round(room + 3.2 + random.uniform(-0.3, 0.3), 1), "unit": "°C"},
             "Sonda 6": {"value": round(room + 3.25 + random.uniform(-0.3, 0.3), 1), "unit": "°C"},
             "Sonda 7": {"value": round(room + 3.3 + random.uniform(-0.3, 0.3), 1), "unit": "°C"},
+            "Sd1": {"value": round(room + 4 + random.uniform(-0.3, 0.3), 1), "unit": "°C"},
             "Nastawa (St)": {"value": 1.0, "unit": "°C"},
             "Różnica załączania (rd)": {"value": 2.0, "unit": "°C"},
+            "Próg końca odszraniania (dt1)": {"value": 8.0, "unit": "°C"},
+            "Dyferencjał resetu alarmu temp. (A0)": {"value": 2.0, "unit": "°C"},
+            "Próg alarmu niskiej temp. (AL)": {"value": 4.0, "unit": "°C"},
+            "Próg alarmu wysokiej temp. (AH)": {"value": 10.0, "unit": "°C"},
+            "Próg załączenia wentylatora (F1)": {"value": -5.0, "unit": "°C"},
+            "Dyferencjał wentylatora (Frd)": {"value": 2.0, "unit": "°C"},
+            "Próg wyłączenia wentylatora (F5)": {"value": 50.0, "unit": "°C"},
             "Nastawa przegrzania (P3)": {"value": 7.0, "unit": "K"},
+            "Próg niskiego przegrzania (P7)": {"value": 4.0, "unit": "K"},
+            "Min. czas włączenia zaworu (c1)": {"value": 0, "unit": ""},
+            "Min. czas wyłączenia zaworu (c2)": {"value": 0, "unit": ""},
+            "Maks. czas włączenia zaworu (c3)": {"value": 0, "unit": ""},
+            "Nastawa Abs/wzgl. (A1)": {"value": 0, "unit": ""},
             "Błąd czujnika S1 (rE1)": {"value": 0, "unit": ""},
             "Błąd czujnika S2": {"value": 0, "unit": ""},
             "Błąd czujnika S3": {"value": 0, "unit": ""},

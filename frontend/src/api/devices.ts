@@ -1,5 +1,5 @@
 import api from './client'
-import type { Device, DeviceCreate } from '../types/device'
+import type { Device, DeviceCreate, DeviceProfileRegister } from '../types/device'
 
 export interface DeviceUpdate extends Partial<DeviceCreate> {
   poll_interval_seconds?: number | null
@@ -39,3 +39,12 @@ export interface ManufacturerLookupResult {
 
 export const lookupManufacturer = (deviceId: number): Promise<ManufacturerLookupResult> =>
   api.post(`/devices/${deviceId}/lookup-manufacturer`).then((r) => r.data)
+
+export type RegisterDefinitionInput = Omit<DeviceProfileRegister, 'id'>
+
+// Adds/removes registers for this device only - the first call clones the
+// shared/builtin profile into a private one so other devices using the
+// same profile (or a future backend restart re-syncing a builtin one)
+// aren't affected. See the docstring on the backend endpoint.
+export const updateDeviceRegisters = (deviceId: number, registers: RegisterDefinitionInput[]): Promise<Device> =>
+  api.put(`/devices/${deviceId}/registers`, registers).then((r) => r.data)

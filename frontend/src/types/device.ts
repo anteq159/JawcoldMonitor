@@ -13,11 +13,26 @@ export interface DeviceParameter {
   enabled: boolean
 }
 
+export interface DeviceProfileRegister {
+  id: number
+  address: number
+  name: string
+  unit: string | null
+  description: string | null
+  data_type: string
+  scale_factor: number
+  writable: boolean
+  is_alarm_register: boolean
+  register_type: 'holding' | 'input' | 'coil' | 'discrete_input'
+}
+
 export interface DeviceProfile {
   id: number
   name: string
   manufacturer: string | null
   model: string | null
+  source: string
+  registers: DeviceProfileRegister[]
 }
 
 export interface Device {

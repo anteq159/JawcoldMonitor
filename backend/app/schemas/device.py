@@ -1,6 +1,7 @@
 from datetime import datetime
 from typing import Optional, List
 from pydantic import BaseModel
+from app.schemas.device_profile import RegisterDefinitionOut
 
 
 class ParameterOut(BaseModel):
@@ -25,6 +26,8 @@ class ProfileOut(BaseModel):
     name: str
     manufacturer: Optional[str] = None
     model: Optional[str] = None
+    source: str = "local"
+    registers: List[RegisterDefinitionOut] = []
 
     model_config = {"from_attributes": True}
 

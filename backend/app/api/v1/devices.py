@@ -7,7 +7,7 @@ from sqlalchemy import select, delete
 from app.core.config import settings
 from app.core.database import get_db
 from app.models.device import Device
-from app.models.device_profile import DeviceProfile
+from app.models.device_profile import DeviceProfile, RegisterDefinition
 from app.models.log import EventLog
 from app.models.alert import AlertRule, AlertEvent
 from app.models.reading import Reading
@@ -20,6 +20,7 @@ from app.schemas.device import (
     RegisterWriteRequest, RegisterWriteResult, ManufacturerLookupResult,
     DiscoveredDeviceOut,
 )
+from app.schemas.device_profile import RegisterDefinitionIn
 from app.api.deps import get_current_user, require_permission
 from app.services import scanner
 from app.websocket.manager import ws_manager
@@ -132,6 +133,76 @@ async def update_device(
         # (via manual creation in Konfiguracja, matched by detected
         # manufacturer) is how a technician resolves the flag today.
         device.recognition_status = "recognized"
+    await db.commit()
+    await db.refresh(device)
+    return device
+
+
+@router.put("/{device_id}/registers", response_model=DeviceOut)
+async def update_device_registers(
+    device_id: int,
+    body: List[RegisterDefinitionIn],
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_permission("device:write")),
+):
+    """Add/remove Modbus registers for one specific device, independent of
+    every other device sharing the same profile - Konfiguracja still
+    defines the full profile for a controller type, this is where a
+    technician trims/extends it per physical unit (e.g. this MPXPRO has
+    Sonda 6/7 wired, that one doesn't).
+
+    A profile is never edited in place here: builtin profiles are
+    re-synced from the driver code on every backend startup (see
+    _init_manufacturer_profiles in main.py), so any direct edit would be
+    silently wiped on the next restart; a shared "local" profile would
+    otherwise mutate every other device using it. Instead this clones the
+    device's current profile into a private one (source="device") the
+    first time it's customized, then edits that clone in place on every
+    later call."""
+    result = await db.execute(select(Device).where(Device.id == device_id))
+    device = result.scalar_one_or_none()
+    if not device:
+        raise HTTPException(status_code=404, detail="Urządzenie nie znalezione")
+    if not device.profile_id:
+        raise HTTPException(status_code=400, detail="Urządzenie nie ma przypisanego profilu")
+
+    profile_result = await db.execute(select(DeviceProfile).where(DeviceProfile.id == device.profile_id))
+    profile = profile_result.scalar_one_or_none()
+    if not profile:
+        raise HTTPException(status_code=404, detail="Profil nie znaleziony")
+
+    if profile.source != "device":
+        other_users = await db.execute(
+            select(Device.id).where(Device.profile_id == profile.id, Device.id != device.id).limit(1)
+        )
+        needs_clone = profile.source == "builtin" or other_users.scalar_one_or_none() is not None
+        if needs_clone:
+            base_name = f"{profile.name} ({device.name})"
+            name = base_name
+            suffix = 2
+            while (await db.execute(select(DeviceProfile.id).where(DeviceProfile.name == name))).scalar_one_or_none():
+                name = f"{base_name} #{suffix}"
+                suffix += 1
+            profile = DeviceProfile(
+                name=name,
+                manufacturer=profile.manufacturer,
+                model=profile.model,
+                description=profile.description,
+                source="device",
+                registers=[RegisterDefinition(
+                    address=r.address, name=r.name, unit=r.unit, description=r.description,
+                    data_type=r.data_type, scale_factor=r.scale_factor, writable=r.writable,
+                    is_alarm_register=r.is_alarm_register, register_type=r.register_type,
+                ) for r in profile.registers],
+            )
+            db.add(profile)
+            await db.flush()
+            device.profile_id = profile.id
+        else:
+            # Local profile only used by this device already - edit in place.
+            pass
+
+    profile.registers = [RegisterDefinition(**r.model_dump()) for r in body]
     await db.commit()
     await db.refresh(device)
     return device
