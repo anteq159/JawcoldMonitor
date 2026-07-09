@@ -120,8 +120,16 @@ async def _init_manufacturer_profiles():
 
     async with AsyncSessionLocal() as db:
         for manufacturer, driver_cls in all_drivers().items():
-            result = await db.execute(select(DeviceProfile).where(DeviceProfile.manufacturer == manufacturer))
-            profile = result.scalar_one_or_none()
+            # Scoped to source="builtin": a manufacturer can have other
+            # profiles sharing the same manufacturer string (user-created
+            # local ones, or now-removed device-specific clones from an
+            # earlier release) - matching on manufacturer alone crashed
+            # startup with MultipleResultsFound the moment more than one
+            # existed for the same manufacturer.
+            result = await db.execute(select(DeviceProfile).where(
+                DeviceProfile.manufacturer == manufacturer, DeviceProfile.source == "builtin",
+            ))
+            profile = result.scalars().first()
             driver = driver_cls()
             model = driver.identify()
             registers = [
