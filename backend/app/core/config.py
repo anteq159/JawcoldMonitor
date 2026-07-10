@@ -15,6 +15,13 @@ class Settings(BaseSettings):
     # bez 2 bitów stopu sterownik nie odpowie mimo poprawnego okablowania.
     RS485_STOPBITS: int = 1
     MODBUS_TIMEOUT: float = 0.15
+    # Merge register reads separated by up to N unmapped addresses into a
+    # single Modbus request (the extra words in the gap are read and
+    # discarded - one transaction's ~50-150ms round trip costs far more
+    # than a few extra bytes on the wire). 0 = only strictly contiguous
+    # registers are grouped. When a controller rejects a merged span the
+    # driver automatically falls back to per-contiguous-block reads.
+    MODBUS_BATCH_MAX_GAP: int = 8
     DISCOVERY_MAX_ADDRESS: int = 32
     KNOWN_SCAN_INTERVAL: int = 10
     DISCOVERY_SCAN_INTERVAL: int = 60

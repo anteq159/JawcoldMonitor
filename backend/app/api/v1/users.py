@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from app.core.database import get_db
+from app.core.limiter import client_ip
 from app.core.security import hash_password
 from app.models.user import User, Role
 from app.schemas.user import UserOut, UserCreate, UserUpdate
@@ -53,7 +54,7 @@ async def create_user(
     await record_audit(
         db, current_user.id, "user.create", "user", user.id,
         new_value={"username": user.username, "role_ids": body.role_ids},
-        ip_address=request.client.host if request.client else None,
+        ip_address=client_ip(request),
     )
     await db.commit()
     result = await db.execute(
@@ -92,7 +93,7 @@ async def update_user(
         db, current_user.id, "user.update", "user", user_id,
         old_value=old_value,
         new_value={"email": body.email, "is_active": body.is_active, "role_ids": body.role_ids},
-        ip_address=request.client.host if request.client else None,
+        ip_address=client_ip(request),
     )
     await db.commit()
     result = await db.execute(
@@ -117,7 +118,7 @@ async def delete_user(
     await record_audit(
         db, current_user.id, "user.delete", "user", user_id,
         old_value={"username": user.username},
-        ip_address=request.client.host if request.client else None,
+        ip_address=client_ip(request),
     )
     await db.delete(user)
     await db.commit()

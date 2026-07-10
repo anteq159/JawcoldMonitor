@@ -80,6 +80,15 @@ def _validate_and_stage(zip_bytes: bytes, staging_dir: Path) -> tuple[Path, Opti
     if "app/VERSION" not in names:
         raise UpdateError("Archiwum musi zawierać plik 'app/VERSION' z numerem nowej wersji")
 
+    # Zip-bomb guard: a tiny archive can declare gigabytes of decompressed
+    # content and fill the SD card / RAM during extraction. Real update
+    # packages are ~1 MB with a few hundred files.
+    total_uncompressed = sum(m.file_size for m in zf.infolist())
+    if total_uncompressed > 500 * 1024 * 1024:
+        raise UpdateError("Archiwum deklaruje ponad 500 MB po rozpakowaniu - odrzucono")
+    if len(names) > 20000:
+        raise UpdateError("Archiwum zawiera podejrzanie dużo plików - odrzucono")
+
     extract_root = staging_dir / "extracted"
     extract_root.mkdir(parents=True, exist_ok=True)
 

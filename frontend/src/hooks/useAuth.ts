@@ -26,7 +26,13 @@ export function useAuth() {
   }
 
   const changePassword = async (current: string, next: string) => {
-    await apiChangePassword(current, next)
+    const data = await apiChangePassword(current, next)
+    // Zmiana hasła unieważnia wszystkie wcześniejsze tokeny (także ten,
+    // którym wysłano to żądanie) - backend zwraca świeżą parę, bez niej
+    // następne zapytanie skończyłoby się wylogowaniem.
+    if (data?.access_token && data?.refresh_token) {
+      store.setTokens(data.access_token, data.refresh_token)
+    }
     if (store.user) {
       store.setUser({ ...store.user, must_change_password: false })
     }

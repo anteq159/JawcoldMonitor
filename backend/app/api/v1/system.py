@@ -91,9 +91,14 @@ async def services_status(
 
 @router.get("/ports")
 async def list_serial_ports(_: User = Depends(get_current_user)):
-    ports = sorted(glob.glob("/dev/ttyUSB*") + glob.glob("/dev/ttyS[0-9]*") + glob.glob("/dev/ttyAMA*"))
+    # ttyACM included: CDC-ACM USB-RS485 adapters (like the one on the
+    # production Pi) enumerate there, not under ttyUSB.
+    ports = sorted(
+        glob.glob("/dev/ttyUSB*") + glob.glob("/dev/ttyACM*")
+        + glob.glob("/dev/ttyS[0-9]*") + glob.glob("/dev/ttyAMA*")
+    )
     if not ports:
-        ports = ["/dev/ttyUSB0", "/dev/ttyUSB1", "/dev/ttyAMA0"]
+        ports = ["/dev/ttyUSB0", "/dev/ttyUSB1", "/dev/ttyACM0", "/dev/ttyAMA0"]
     return {"ports": ports}
 
 

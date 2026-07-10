@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Optional, List
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.schemas.role import RoleWithPermissionsOut
 
@@ -22,9 +22,11 @@ class UserOut(BaseModel):
 
 
 class UserCreate(BaseModel):
-    username: str
+    # Same minimum the change-password endpoint enforces - without it an
+    # admin could create accounts with a 1-character password.
+    username: str = Field(min_length=3, max_length=64, pattern=r"^[a-zA-Z0-9_.\-]+$")
     email: Optional[str] = None
-    password: str
+    password: str = Field(min_length=6, max_length=128)
     role_ids: List[int] = []
 
 

@@ -10,6 +10,7 @@ from typing import List as TList
 from pydantic import BaseModel, field_validator
 
 from app.core.database import get_db
+from app.core.uploads import read_upload_limited
 from app.models.map import FloorMap, DevicePosition
 from app.models.user import User
 from app.api.deps import get_current_user, require_permission
@@ -19,8 +20,32 @@ router = APIRouter(prefix="/maps", tags=["maps"])
 MAPS_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "..", "uploads", "maps")
 os.makedirs(MAPS_DIR, exist_ok=True)
 
-ALLOWED_TYPES = {"image/jpeg", "image/png", "image/svg+xml", "image/webp"}
+# Extension comes from the VALIDATED content type, never from the
+# client-supplied filename - otherwise "map.html" would be written to disk
+# with whatever bytes the client sent and served back to other users.
+ALLOWED_TYPES = {
+    "image/jpeg": ".jpg",
+    "image/png": ".png",
+    "image/svg+xml": ".svg",
+    "image/webp": ".webp",
+}
 MAX_SELECTED_PARAMS = 3
+
+
+def _content_matches_type(content: bytes, content_type: str) -> bool:
+    """Magic-byte check: the multipart Content-Type header is entirely
+    client-controlled, so verify the bytes actually are the declared image
+    format before storing and re-serving them to every user."""
+    if content_type == "image/png":
+        return content.startswith(b"\x89PNG\r\n\x1a\n")
+    if content_type == "image/jpeg":
+        return content.startswith(b"\xff\xd8\xff")
+    if content_type == "image/webp":
+        return len(content) >= 12 and content[:4] == b"RIFF" and content[8:12] == b"WEBP"
+    if content_type == "image/svg+xml":
+        head = content[:2048].lstrip().lower()
+        return head.startswith(b"<?xml") or head.startswith(b"<svg") or b"<svg" in head
+    return False
 
 
 class PositionIn(BaseModel):
@@ -156,13 +181,12 @@ async def upload_map(
     if file.content_type not in ALLOWED_TYPES:
         raise HTTPException(status_code=400, detail="Niedozwolony typ pliku (PNG/JPG/SVG/WEBP)")
 
-    ext = os.path.splitext(file.filename or "map.png")[1] or ".png"
-    filename = f"{uuid.uuid4().hex}{ext}"
-    path = os.path.join(MAPS_DIR, filename)
+    content = await read_upload_limited(file, 20 * 1024 * 1024)
+    if not _content_matches_type(content, file.content_type):
+        raise HTTPException(status_code=400, detail="Zawartość pliku nie zgadza się z deklarowanym typem obrazu")
 
-    content = await file.read()
-    if len(content) > 20 * 1024 * 1024:
-        raise HTTPException(status_code=400, detail="Plik za duży (max 20 MB)")
+    filename = f"{uuid.uuid4().hex}{ALLOWED_TYPES[file.content_type]}"
+    path = os.path.join(MAPS_DIR, filename)
 
     with open(path, "wb") as f:
         f.write(content)
@@ -214,10 +238,16 @@ async def save_drawing(
 
 @router.get("/file/{filename}")
 async def get_map_file(filename: str, _: User = Depends(get_current_user)):
-    path = os.path.join(MAPS_DIR, filename)
-    if not os.path.exists(path) or ".." in filename:
+    # basename + realpath containment instead of a ".." substring check:
+    # belt-and-braces against any path the router lets through (encoded
+    # separators, absolute paths).
+    safe_name = os.path.basename(filename)
+    maps_root = os.path.realpath(MAPS_DIR)
+    path = os.path.realpath(os.path.join(maps_root, safe_name))
+    if not path.startswith(maps_root + os.sep) or not os.path.isfile(path):
         raise HTTPException(status_code=404, detail="Plik nie znaleziony")
-    return FileResponse(path)
+    # nosniff so a browser never reinterprets a stored file as HTML/JS.
+    return FileResponse(path, headers={"X-Content-Type-Options": "nosniff"})
 
 
 @router.put("/{map_id}/positions")

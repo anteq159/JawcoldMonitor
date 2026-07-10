@@ -1,9 +1,10 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class LoginRequest(BaseModel):
-    username: str
-    password: str
+    # Caps keep a hostile client from feeding megabytes into bcrypt.
+    username: str = Field(max_length=64)
+    password: str = Field(max_length=128)
 
 
 class TokenResponse(BaseModel):
@@ -18,5 +19,5 @@ class RefreshRequest(BaseModel):
 
 
 class ChangePasswordRequest(BaseModel):
-    current_password: str
-    new_password: str
+    current_password: str = Field(max_length=128)
+    new_password: str = Field(min_length=6, max_length=128)

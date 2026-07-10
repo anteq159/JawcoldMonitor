@@ -2,6 +2,7 @@ import asyncio
 import logging
 import struct
 from typing import Dict, List
+from app.core.config import settings
 from app.drivers.base import AbstractRS485Driver
 
 logger = logging.getLogger(__name__)
@@ -52,37 +53,86 @@ def _encode(value: float, data_type: str) -> List[int]:
     raise ValueError(f"Nieobsługiwany typ danych: {data_type}")
 
 
-def _batch_contiguous(registers) -> List[list]:
-    """Group registers whose Modbus addresses are back-to-back into single
-    read requests, in address order, never mixing register_type within a
-    batch (each type is a separate Modbus function code / address space -
-    e.g. holding register 1 and input register 1 are unrelated addresses
-    that happen to share a number, not neighbors). Matters on real RS485:
-    each request is a real round trip (~100-150ms at typical baud rates,
-    not the mock driver's near-zero latency), so reading e.g. four
-    consecutive registers as one request instead of four cuts real scan
-    time substantially."""
+def _is_bit_type(reg_type: str) -> bool:
+    return reg_type in ("coil", "discrete_input")
+
+
+def _span(batch: list, reg_type: str) -> tuple:
+    """(start, count) covering a contiguous batch, in that type's units
+    (bits for coil/discrete_input, 16-bit words otherwise)."""
+    first, last = batch[0], batch[-1]
+    last_width = 1 if _is_bit_type(reg_type) else _register_count(last.data_type)
+    return first.address, last.address + last_width - first.address
+
+
+def _plan_reads(registers, max_gap: int) -> List[dict]:
+    """Turn a register map into as few Modbus requests as possible.
+
+    Two levels of grouping, never mixing register_type (each type is a
+    separate Modbus function code / address space - e.g. holding register
+    1 and input register 1 are unrelated addresses that happen to share a
+    number, not neighbors):
+
+    1. Strictly contiguous registers form sub-batches (as before).
+    2. Sub-batches of the same type separated by at most `max_gap` unused
+       addresses are merged into one request - the words in the gap are
+       read and thrown away. On real RS485 every request is a full round
+       trip (~50-150ms with timeouts and turnaround), so one 26-word read
+       beats six 2-4-word reads by a wide margin.
+
+    Each plan entry keeps its `subbatches` so the caller can fall back to
+    per-contiguous-block reads when a controller rejects a merged span
+    (some devices answer IllegalDataAddress if any address in the span is
+    unmapped)."""
     by_type: Dict[str, list] = {}
     for reg in registers:
         by_type.setdefault(reg.register_type, []).append(reg)
 
-    batches: List[list] = []
+    plan: List[dict] = []
     for reg_type, group in by_type.items():
+        is_bit = _is_bit_type(reg_type)
+        # Stay well under protocol frame limits (125 words / 2000 bits).
+        span_cap = 256 if is_bit else 100
         ordered = sorted(group, key=lambda r: r.address)
+
+        subbatches: List[list] = []
         current: list = []
         next_expected = None
         for reg in ordered:
-            width = 1 if reg_type in ("coil", "discrete_input") else _register_count(reg.data_type)
+            width = 1 if is_bit else _register_count(reg.data_type)
             if current and reg.address == next_expected:
                 current.append(reg)
             else:
                 if current:
-                    batches.append(current)
+                    subbatches.append(current)
                 current = [reg]
             next_expected = reg.address + width
         if current:
-            batches.append(current)
-    return batches
+            subbatches.append(current)
+
+        merged: List[List[list]] = []
+        for batch in subbatches:
+            b_start, b_count = _span(batch, reg_type)
+            if merged and max_gap > 0:
+                group_start = merged[-1][0][0].address
+                last_start, last_count = _span(merged[-1][-1], reg_type)
+                gap = b_start - (last_start + last_count)
+                if 0 <= gap <= max_gap and (b_start + b_count - group_start) <= span_cap:
+                    merged[-1].append(batch)
+                    continue
+            merged.append([batch])
+
+        for grp in merged:
+            start = grp[0][0].address
+            last_start, last_count = _span(grp[-1], reg_type)
+            plan.append({
+                "type": reg_type,
+                "start": start,
+                "count": last_start + last_count - start,
+                "regs": [r for b in grp for r in b],
+                "subbatches": grp,
+            })
+    return plan
 
 
 # pymodbus method name + response attribute per register_type. Coils and
@@ -143,42 +193,57 @@ class ModbusRTUDriver(AbstractRS485Driver):
             except Exception:
                 return False
 
+    async def _read_span(self, unit: int, reg_type: str, start: int, count: int, regs: list, result: Dict[str, dict]) -> bool:
+        """One Modbus request covering [start, start+count); decodes every
+        register in `regs` by its address offset from `start` (gaps in a
+        merged span simply aren't decoded). Returns False on any transport
+        or protocol error so the caller can fall back to smaller reads.
+        Must be called while holding self._lock."""
+        is_bit = _is_bit_type(reg_type)
+        method = getattr(self._client, _READ_METHOD[reg_type])
+        try:
+            r = await method(start, count=count, device_id=unit)
+        except Exception as e:
+            logger.debug("Read error addr=%d start=%d type=%s: %s", unit, start, reg_type, e)
+            return False
+        if r.isError():
+            logger.debug("Read error addr=%d start=%d type=%s: %s", unit, start, reg_type, r)
+            return False
+        for reg in regs:
+            offset = reg.address - start
+            try:
+                if is_bit:
+                    result[reg.name] = {"value": 1.0 if r.bits[offset] else 0.0, "unit": reg.unit or ""}
+                else:
+                    width = _register_count(reg.data_type)
+                    value = _decode(r.registers[offset:offset + width], reg.data_type) * reg.scale_factor
+                    result[reg.name] = {"value": round(value, 3), "unit": reg.unit or ""}
+            except (ValueError, IndexError) as e:
+                logger.debug("Decode error addr=%d register=%s: %s", unit, reg.name, e)
+        return True
+
     async def read_parameters(self, device) -> Dict[str, dict]:
         result: Dict[str, dict] = {}
         profile = getattr(device, "profile", None)
         if not profile or not profile.registers:
             return result
 
+        # Read live so the Ustawienia edit applies on the next scan cycle.
+        max_gap = max(0, int(getattr(settings, "MODBUS_BATCH_MAX_GAP", 8)))
+
         async with self._lock:
             if not await self._ensure_connected():
                 return result
-            for batch in _batch_contiguous(profile.registers):
-                reg_type = batch[0].register_type
-                is_bit_type = reg_type in ("coil", "discrete_input")
-                start = batch[0].address
-                count = len(batch) if is_bit_type else sum(_register_count(r.data_type) for r in batch)
-                method = getattr(self._client, _READ_METHOD[reg_type])
-                try:
-                    r = await method(start, count=count, device_id=device.modbus_address)
-                    if r.isError():
-                        logger.debug("Read error addr=%d start=%d type=%s: %s", device.modbus_address, start, reg_type, r)
-                        continue
-                    if is_bit_type:
-                        for i, reg in enumerate(batch):
-                            result[reg.name] = {"value": 1.0 if r.bits[i] else 0.0, "unit": reg.unit or ""}
-                        continue
-                    offset = 0
-                    for reg in batch:
-                        width = _register_count(reg.data_type)
-                        raw = r.registers[offset:offset + width]
-                        try:
-                            value = _decode(raw, reg.data_type) * reg.scale_factor
-                            result[reg.name] = {"value": round(value, 3), "unit": reg.unit or ""}
-                        except (ValueError, IndexError) as e:
-                            logger.debug("Decode error addr=%d register=%s: %s", device.modbus_address, reg.name, e)
-                        offset += width
-                except Exception as e:
-                    logger.debug("Read error addr=%d start=%d: %s", device.modbus_address, start, e)
+            for group in _plan_reads(profile.registers, max_gap):
+                ok = await self._read_span(
+                    device.modbus_address, group["type"], group["start"], group["count"], group["regs"], result,
+                )
+                if not ok and len(group["subbatches"]) > 1:
+                    # The controller may reject a span crossing unmapped
+                    # addresses - retry as the strictly contiguous blocks.
+                    for sub in group["subbatches"]:
+                        start, count = _span(sub, group["type"])
+                        await self._read_span(device.modbus_address, group["type"], start, count, sub, result)
         return result
 
     async def scan_range(self, start: int, end: int, known_addresses: set) -> List[int]:

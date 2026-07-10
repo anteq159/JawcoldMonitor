@@ -52,6 +52,8 @@ EDITABLE_SETTINGS: Dict[str, SettingMeta] = {
     "RS485_BAUDRATE": SettingMeta("Prędkość transmisji (baud)", "RS485", "int", restart_required=True),
     "RS485_STOPBITS": SettingMeta("Bity stopu (1 lub 2)", "RS485", "int", restart_required=True),
     "MODBUS_TIMEOUT": SettingMeta("Timeout Modbus (s)", "RS485", "float", restart_required=True),
+    # Read dynamically on every scan cycle - no restart needed.
+    "MODBUS_BATCH_MAX_GAP": SettingMeta("Scalanie odczytów: maks. przerwa adresów (0 = wył.)", "RS485", "int"),
     # Alarmy systemowe
     "OFFLINE_ALARM_MINUTES": SettingMeta("Alarm offline po (min, 0 = wył.)", "Alarmy systemowe", "int"),
     "DISK_ALARM_PERCENT": SettingMeta("Alarm zapełnienia dysku (%, 0 = wył.)", "Alarmy systemowe", "int"),

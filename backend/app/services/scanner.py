@@ -31,6 +31,11 @@ _rs485_driver = None
 _dallas_driver = None
 _last_known_scan: Dict[int, datetime] = {}  # per-device, not global (Etap 3.4)
 _last_discovery: Optional[datetime] = None
+_discovery_task: Optional[asyncio.Task] = None
+# Concurrency cap for per-device scan tasks: the RS485 bus itself is
+# serialized by the driver's lock, so this only bounds how many devices
+# can be mid-pipeline (DB writes, alert checks, notifications) at once.
+_scan_semaphore = asyncio.Semaphore(8)
 _last_dallas_scan: Optional[datetime] = None
 _last_stats_broadcast: Optional[datetime] = None
 _last_prune: Optional[datetime] = None
@@ -103,6 +108,8 @@ async def scanner_loop():
             await _maybe_check_disk()
             await _maybe_auto_backup()
         except asyncio.CancelledError:
+            if _discovery_task and not _discovery_task.done():
+                _discovery_task.cancel()
             raise
         except Exception as e:
             logger.error("Scanner error: %s", e)
@@ -127,15 +134,52 @@ async def _scan_known_devices():
     if not _rs485_driver:
         return
     async with AsyncSessionLocal() as db:
-        result = await db.execute(select(Device))
-        devices = result.scalars().all()
-        for device in devices:
-            interval = device.poll_interval_seconds or settings.KNOWN_SCAN_INTERVAL
-            if not _due(_last_known_scan.get(device.id), interval):
-                continue
-            _last_known_scan[device.id] = datetime.now(timezone.utc)
-            try:
-                is_online = await _rs485_driver.ping(device.modbus_address)
+        result = await db.execute(select(Device.id, Device.poll_interval_seconds))
+        rows = result.all()
+
+    due_ids = []
+    for device_id, poll_interval in rows:
+        interval = poll_interval or settings.KNOWN_SCAN_INTERVAL
+        if _due(_last_known_scan.get(device_id), interval):
+            _last_known_scan[device_id] = datetime.now(timezone.utc)
+            due_ids.append(device_id)
+    if not due_ids:
+        return
+
+    # One task per due device instead of a strictly sequential loop. The
+    # serial bus stays serialized by the driver's internal lock (RS485 is
+    # half-duplex, two transactions physically cannot overlap), but
+    # everything AFTER a device's Modbus I/O - reading inserts, commits,
+    # WebSocket broadcasts, alert evaluation, e-mail/Telegram calls - now
+    # overlaps with the NEXT device's bus time instead of keeping the bus
+    # idle. With several controllers this pipelining is worth more than
+    # any single-device optimization; each task gets its own DB session
+    # because AsyncSession is not safe for concurrent use.
+    await asyncio.gather(*(_scan_one_device(device_id) for device_id in due_ids))
+
+
+async def _scan_one_device(device_id: int):
+    async with _scan_semaphore:
+        try:
+            async with AsyncSessionLocal() as db:
+                result = await db.execute(select(Device).where(Device.id == device_id))
+                device = result.scalar_one_or_none()
+                if not device:
+                    return
+
+                # Read parameters FIRST and treat any successful decode as
+                # proof of life - the old ping-then-read spent one extra
+                # bus transaction per device per cycle just to learn what
+                # the read itself would prove. ping() remains the fallback
+                # for devices with no profile/registers and the arbiter
+                # when every read failed (a device that answers with
+                # Modbus exceptions is online but misconfigured).
+                readings_data: dict = {}
+                profile = getattr(device, "profile", None)
+                if profile and profile.registers:
+                    readings_data = await _rs485_driver.read_parameters(device)
+                is_online = bool(readings_data) or await _rs485_driver.ping(device.modbus_address)
+
                 old_status = device.status
                 new_status = "online" if is_online else "offline"
                 if old_status != new_status:
@@ -157,7 +201,6 @@ async def _scan_known_devices():
                 await _track_offline_alarm(db, device, is_online)
 
                 if is_online:
-                    readings_data = await _rs485_driver.read_parameters(device)
                     readings_out = []
                     for param_name, data in readings_data.items():
                         r = Reading(
@@ -173,19 +216,32 @@ async def _scan_known_devices():
                     await db.commit()
                     if readings_out:
                         await ws_manager.broadcast(ws_events.new_reading(device.id, readings_out))
-                    await _check_alerts(db, device.id, None, readings_data)
-                    await _check_hardware_alarms(db, device, readings_data)
-            except Exception as e:
-                logger.warning("Device %d scan error: %s", device.modbus_address, e)
+                    if readings_data:
+                        await _check_alerts(db, device.id, None, readings_data)
+                        await _check_hardware_alarms(db, device, readings_data)
+        except Exception as e:
+            logger.warning("Device id=%d scan error: %s", device_id, e)
 
 
 async def _maybe_discovery():
-    global _last_discovery
+    # Runs as a background task rather than inline: sweeping addresses
+    # 1..DISCOVERY_MAX_ADDRESS means paying a full MODBUS_TIMEOUT for
+    # every silent address, which used to stall the whole scanner loop
+    # for seconds. As a task, each discovery ping acquires the bus lock
+    # individually, so due known-device polls interleave with the sweep
+    # instead of queueing behind all of it.
+    global _last_discovery, _discovery_task
     if not _due(_last_discovery, settings.DISCOVERY_SCAN_INTERVAL):
         return
+    if _discovery_task and not _discovery_task.done():
+        return  # previous sweep still in progress
     _last_discovery = datetime.now(timezone.utc)
     if not _rs485_driver:
         return
+    _discovery_task = asyncio.create_task(_run_discovery())
+
+
+async def _run_discovery():
     async with AsyncSessionLocal() as db:
         result = await db.execute(select(Device.modbus_address))
         known = set(result.scalars().all())

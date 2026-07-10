@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.core.uploads import read_upload_limited
 from app.models.user import User
 from app.models.log import EventLog
 from app.api.deps import require_role
@@ -36,7 +37,7 @@ async def upload_update(
     if not file.filename or not file.filename.lower().endswith(".zip"):
         raise HTTPException(status_code=400, detail="Plik musi być archiwum .zip")
 
-    content = await file.read()
+    content = await read_upload_limited(file, 100 * 1024 * 1024)
     try:
         meta = apply_update(content)
     except UpdateError as e:

@@ -1,3 +1,4 @@
+import hashlib
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 import bcrypt as _bcrypt
@@ -9,6 +10,16 @@ ALGORITHM = "HS256"
 
 def hash_password(password: str) -> str:
     return _bcrypt.hashpw(password.encode(), _bcrypt.gensalt(rounds=12)).decode()
+
+
+def password_fingerprint(password_hash: str) -> str:
+    """Short, non-reversible fingerprint of the CURRENT password hash,
+    embedded in every issued token ("pwd" claim). Changing the password -
+    by the user or by an admin reset - changes the fingerprint, which
+    instantly invalidates every token issued before the change. This is
+    the revocation mechanism: without it a stolen refresh token stays
+    valid for its full 7 days even after the password is rotated."""
+    return hashlib.sha256(password_hash.encode()).hexdigest()[:16]
 
 
 def verify_password(plain: str, hashed: str) -> bool:

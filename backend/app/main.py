@@ -13,7 +13,7 @@ from slowapi.errors import RateLimitExceeded
 from app.core.config import settings
 from app.core.database import init_db, AsyncSessionLocal
 from app.core.redis import init_redis, close_redis, get_redis
-from app.core.security import hash_password, decode_token
+from app.core.security import hash_password, decode_token, password_fingerprint
 from app.core.limiter import limiter
 from app.core.diagnostics import install_handler as install_diagnostics_handler
 from app.models.user import User, Role, Permission, role_permissions, user_roles
@@ -296,12 +296,15 @@ async def lifespan(app: FastAPI):
     logger.info("JawcoldMonitor stopped")
 
 
+# Swagger/ReDoc/openapi.json only in preview/dev: on a production
+# appliance they enumerate the entire API surface to anyone on the LAN
+# with no login. The frontend never uses them.
 app = FastAPI(
     title="JawcoldMonitor API",
     version="1.0.0",
-    docs_url="/api/v1/docs",
-    redoc_url="/api/v1/redoc",
-    openapi_url="/api/v1/openapi.json",
+    docs_url="/api/v1/docs" if settings.PREVIEW_MODE else None,
+    redoc_url="/api/v1/redoc" if settings.PREVIEW_MODE else None,
+    openapi_url="/api/v1/openapi.json" if settings.PREVIEW_MODE else None,
     lifespan=lifespan,
 )
 
@@ -336,6 +339,11 @@ async def websocket_endpoint(ws: WebSocket, token: str = Query(None)):
         result = await db.execute(select(User).where(User.id == int(payload.get("sub", 0))))
         user = result.scalar_one_or_none()
         if not user or not user.is_active:
+            await ws.close(code=4401)
+            return
+        if payload.get("pwd") != password_fingerprint(user.password_hash):
+            # Same revocation rule as the REST API: tokens issued before
+            # the last password change don't open a live data stream.
             await ws.close(code=4401)
             return
 
