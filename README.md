@@ -100,12 +100,19 @@ demonstracyjny bez sprzętu: `PREVIEW_MODE=true` i sam `docker compose up -d`.
 Panel domyślnie działa na porcie **80** (`http://<adres-pi>`). Port można
 zmienić na dwa sposoby:
 
-- w pliku `.env` — wpis `PANEL_PORT=8080`, potem `docker compose up -d`,
+- w pliku `.env` — wpis `PANEL_PORT=8080`, potem
+  `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d`,
 - z panelu — **Ustawienia → Konfiguracja systemu → Sieć → Port panelu WWW**;
   zapis trafia do `.env` na hoście, a nowy port zaczyna działać po wykonaniu
-  na Raspberry `cd ~/JawcoldMonitor && docker compose up -d` (albo po
-  ponownym uruchomieniu `install.sh`). Aplikacja nie może sama przełączyć
-  portu, bo mapowanie portów wykonuje Docker przy tworzeniu kontenera.
+  na Raspberry `cd ~/JawcoldMonitor && docker compose -f docker-compose.yml
+  -f docker-compose.prod.yml up -d` (albo po ponownym uruchomieniu
+  `install.sh`). Aplikacja nie może sama przełączyć portu, bo mapowanie
+  portów wykonuje Docker przy tworzeniu kontenera.
+
+> **Uwaga:** na instalacji produkcyjnej zawsze podawaj oba pliki `-f`.
+> Samo `docker compose up -d` odtworzy backend **bez** zmapowanego portu
+> RS485 (`devices:` jest tylko w `docker-compose.prod.yml`) i wszystkie
+> sterowniki będą pokazywać się jako offline.
 
 ---
 

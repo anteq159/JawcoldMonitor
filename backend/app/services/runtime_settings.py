@@ -91,8 +91,11 @@ ENV_FILE_SETTINGS: Dict[str, SettingMeta] = {
 ENV_FILE_HINTS: Dict[str, str] = {
     "PANEL_PORT": (
         "Zmiana zadziała po wykonaniu na Raspberry: "
-        "cd ~/JawcoldMonitor && docker compose up -d "
-        "(albo po ponownym uruchomieniu install.sh)."
+        "cd ~/JawcoldMonitor && docker compose -f docker-compose.yml "
+        "-f docker-compose.prod.yml up -d "
+        "(albo po ponownym uruchomieniu install.sh). Uwaga: samo "
+        "`docker compose up -d` bez plików -f odtworzy backend BEZ "
+        "dostępu do portu RS485 i wszystkie urządzenia będą offline."
     ),
 }
 
