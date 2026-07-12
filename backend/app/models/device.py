@@ -37,6 +37,14 @@ class Device(Base, TimestampMixin):
     # the original name. {"Sonda 1": "Komora A"} shows "Komora A" here
     # while readings/writes still address "Sonda 1".
     parameter_aliases: Mapped[Dict[str, str]] = mapped_column(JSONB, default=dict)
+    # Display-unit overrides for this device only, keyed by the real
+    # register name - for probe inputs whose meaning depends on the
+    # controller's own configuration (MPXPRO S6/S7 can carry an NTC
+    # temperature probe OR a 0-5V pressure probe; same Modbus register,
+    # different physical unit). Applied by the scanner when storing
+    # readings, so history, exports, live view and dashboard all agree.
+    # {"Sonda 6": "bar"} - empty/missing means the profile's unit.
+    parameter_units: Mapped[Dict[str, str]] = mapped_column(JSONB, default=dict)
 
     profile: Mapped[Optional["DeviceProfile"]] = relationship("DeviceProfile", lazy="selectin")
     parameters: Mapped[List["DeviceParameter"]] = relationship(

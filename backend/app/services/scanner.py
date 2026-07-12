@@ -178,6 +178,14 @@ async def _scan_one_device(device_id: int):
                 profile = getattr(device, "profile", None)
                 if profile and profile.registers:
                     readings_data = await _rs485_driver.read_parameters(device)
+                    # Per-device unit overrides (e.g. MPXPRO S6/S7 carrying a
+                    # pressure probe instead of NTC): applied at the source so
+                    # stored history, WS broadcast, alerts and exports all
+                    # carry the same unit.
+                    unit_overrides = device.parameter_units or {}
+                    for param_name, unit in unit_overrides.items():
+                        if unit and param_name in readings_data:
+                            readings_data[param_name]["unit"] = unit
                 is_online = bool(readings_data) or await _rs485_driver.ping(device.modbus_address)
 
                 old_status = device.status

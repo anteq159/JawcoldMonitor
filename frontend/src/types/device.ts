@@ -60,6 +60,7 @@ export interface Device {
   parameters: DeviceParameter[]
   hidden_parameters: string[]
   parameter_aliases: Record<string, string>
+  parameter_units: Record<string, string>
 }
 
 export interface DeviceCreate {

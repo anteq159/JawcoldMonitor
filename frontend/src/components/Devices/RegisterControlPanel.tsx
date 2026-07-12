@@ -13,9 +13,11 @@ interface Props {
   profileName: string
   hiddenNames: string[]
   aliases: Record<string, string>
+  units: Record<string, string>
   editingVisibility: boolean
   onToggleHidden: (name: string) => void
   onRename: (realName: string, alias: string) => void
+  onSetUnit: (realName: string, unit: string) => void
 }
 
 const REGISTER_TYPE_LABELS: Record<string, string> = {
@@ -28,8 +30,13 @@ const REGISTER_TYPE_LABELS: Record<string, string> = {
 // device.parameters subset - with inline editing for the ones marked
 // writable (setpoints, differentials). Supersedes the old static,
 // read-only "Mapa rejestrow" reference table.
+// Quick unit choices for probe inputs whose physical meaning depends on the
+// controller's own configuration (MPXPRO S6/S7: NTC temperature probe or
+// 0-5V pressure probe on the same register). "(profil)" restores the default.
+const UNIT_CHOICES = ['bar', '\u00b0C', 'K', 'kPa', '%']
+
 export function RegisterControlPanel({
-  deviceId, registers, profileName, hiddenNames, aliases, editingVisibility, onToggleHidden, onRename,
+  deviceId, registers, profileName, hiddenNames, aliases, units, editingVisibility, onToggleHidden, onRename, onSetUnit,
 }: Props) {
   const liveReadings = useDeviceStore((s) => s.liveReadings[deviceId] || {})
   const canWrite = useAuthStore((s) => s.can('device:write'))
@@ -179,7 +186,23 @@ export function RegisterControlPanel({
                     </div>
                   ) : (
                     <span className="text-ink font-medium">
-                      {live ? live.value.toFixed(2) : '—'} {r.unit ?? live?.unit ?? ''}
+                      {live ? live.value.toFixed(2) : '—'} {units[r.name] ?? r.unit ?? live?.unit ?? ''}
+                      {editingVisibility && (r.unit || units[r.name]) && (
+                        <select
+                          value={units[r.name] ?? ''}
+                          onChange={(e) => onSetUnit(r.name, e.target.value)}
+                          className="ml-2 bg-surface-2 border border-border rounded-md px-1 py-0.5 text-xs text-ink focus:outline-none focus:border-accent"
+                          title="Jednostka dla tego urządzenia (np. sonda ciśnieniowa na S6/S7: bar)"
+                        >
+                          <option value="">{r.unit ? `${r.unit} (profil)` : '(profil)'}</option>
+                          {UNIT_CHOICES.filter((u) => u !== r.unit).map((u) => (
+                            <option key={u} value={u}>{u}</option>
+                          ))}
+                          {units[r.name] && !UNIT_CHOICES.includes(units[r.name]) && (
+                            <option value={units[r.name]}>{units[r.name]}</option>
+                          )}
+                        </select>
+                      )}
                     </span>
                   )}
                 </td>
@@ -210,8 +233,10 @@ export function RegisterControlPanel({
       <p className="px-5 py-3 text-xs text-ink-muted border-t border-border">
         Profil {profileName} — reprezentatywna mapa rejestrów producenta. Wartości edytowalne (ikona ołówka) symulują
         zapis nastawy sterownika; zweryfikuj z oficjalną dokumentacją modelu przed użyciem z rzeczywistym urządzeniem.
-        Tryb edycji (ikona ołówka w nagłówku karty) pozwala ukrywać zmienne i zmieniać ich nazwy wyłącznie dla tego
-        urządzenia — inne urządzenia z tym samym profilem i sam profil w Konfiguracji pozostają bez zmian.
+        Tryb edycji (ikona ołówka w nagłówku karty) pozwala ukrywać zmienne oraz zmieniać ich nazwy i jednostki
+        wyłącznie dla tego urządzenia — inne urządzenia z tym samym profilem i sam profil w Konfiguracji pozostają
+        bez zmian. Zmiana jednostki (np. °C → bar dla sondy ciśnieniowej na wejściu S6/S7 MPXPRO) obowiązuje od
+        następnego cyklu skanowania i obejmuje nowe odczyty, wykresy i dashboard.
       </p>
     </div>
   )

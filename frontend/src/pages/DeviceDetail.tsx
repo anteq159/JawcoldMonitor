@@ -122,6 +122,25 @@ export default function DeviceDetail() {
     }
   }
 
+  // Unit override per variable (e.g. MPXPRO S6/S7 as pressure probe: °C→bar).
+  // Empty unit = back to the profile's default. The scanner applies it at
+  // the source, so history/exports/dashboard follow on the next cycle.
+  const setParameterUnit = async (realName: string, unit: string) => {
+    if (!device) return
+    const units = { ...device.parameter_units }
+    if (unit) units[realName] = unit
+    else delete units[realName]
+    const previous = device
+    setDevice({ ...device, parameter_units: units })
+    try {
+      await updateDevice(device.id, { parameter_units: units })
+      toast.success(unit ? `Jednostka zmieniona na „${unit}” (tylko to urządzenie)` : 'Przywrócono jednostkę z profilu')
+    } catch {
+      setDevice(previous)
+      toast.error('Błąd zapisu jednostki')
+    }
+  }
+
   const saveName = async () => {
     if (!device || !nameInput.trim()) return
     setSavingName(true)
@@ -254,9 +273,11 @@ export default function DeviceDetail() {
             profileName={profile.name}
             hiddenNames={device.hidden_parameters}
             aliases={device.parameter_aliases}
+            units={device.parameter_units}
             editingVisibility={editingVisibility}
             onToggleHidden={toggleHiddenParameter}
             onRename={renameParameter}
+            onSetUnit={setParameterUnit}
           />
         </Card>
       )}

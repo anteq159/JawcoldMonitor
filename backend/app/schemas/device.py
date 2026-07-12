@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Optional, List, Dict
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from app.schemas.device_profile import RegisterDefinitionOut
 
 
@@ -56,6 +56,7 @@ class DeviceOut(BaseModel):
     parameters: List[ParameterOut] = []
     hidden_parameters: List[str] = []
     parameter_aliases: Dict[str, str] = {}
+    parameter_units: Dict[str, str] = {}
 
     model_config = {"from_attributes": True}
 
@@ -85,6 +86,19 @@ class DeviceUpdate(BaseModel):
     poll_interval_seconds: Optional[int] = None
     hidden_parameters: Optional[List[str]] = None
     parameter_aliases: Optional[Dict[str, str]] = None
+    parameter_units: Optional[Dict[str, str]] = None
+
+    @field_validator("parameter_units")
+    @classmethod
+    def _units_sane(cls, v):
+        if v is None:
+            return v
+        if len(v) > 200:
+            raise ValueError("Za dużo nadpisań jednostek")
+        for key, unit in v.items():
+            if len(key) > 128 or len(unit) > 16:
+                raise ValueError("Jednostka może mieć maks. 16 znaków")
+        return v
 
 
 class RegisterWriteRequest(BaseModel):
