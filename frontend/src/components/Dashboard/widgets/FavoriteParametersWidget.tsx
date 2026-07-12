@@ -34,11 +34,16 @@ export function FavoriteParametersWidget() {
             const unit = f.type === 'device' ? reading?.unit : '°C'
             const linkTo = f.type === 'device' ? `/devices/${f.sourceId}` : '/sensors'
             const name = device?.name ?? sensor?.name ?? 'Usunięte źródło'
+            // Per-device display alias - favorites store the real register
+            // name, so readings still match; only the label changes.
+            const paramLabel = f.paramName
+              ? device?.parameter_aliases?.[f.paramName] ?? f.paramName
+              : undefined
 
             return (
               <div key={f.id} className="flex items-center justify-between px-4 py-2 gap-2">
                 <Link to={linkTo} className="min-w-0 flex-1 hover:text-accent transition-colors">
-                  <p className="text-sm text-ink truncate">{name}{f.paramName ? ` · ${f.paramName}` : ''}</p>
+                  <p className="text-sm text-ink truncate">{name}{paramLabel ? ` · ${paramLabel}` : ''}</p>
                 </Link>
                 <div className="flex items-center gap-2 shrink-0">
                   <span className="text-sm font-semibold text-accent">
