@@ -46,9 +46,12 @@ async def get_device_readings(
         grouped.setdefault(r.parameter_name, []).append(ReadingPoint(timestamp=r.timestamp, value=r.value))
         units[r.parameter_name] = r.unit
 
+    # Sorted by name, not by which parameter happened to be written first:
+    # the chart assigns colours by series index, so an unstable order made
+    # a series change colour between time ranges.
     return [
-        ParameterReadings(parameter_name=name, unit=units.get(name), readings=pts)
-        for name, pts in grouped.items()
+        ParameterReadings(parameter_name=name, unit=units.get(name), readings=grouped[name])
+        for name in sorted(grouped)
     ]
 
 
@@ -77,15 +80,17 @@ async def get_latest_device_readings(
     db: AsyncSession = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
+    # DISTINCT ON, not LIMIT: the scanner writes every parameter of one cycle
+    # with an identical timestamp, so "newest 20 rows" picked an arbitrary
+    # subset - a Carel MPXPRO alone has 31 registers, and which ones came back
+    # changed between calls.
     result = await db.execute(
         select(Reading)
         .where(Reading.device_id == device_id)
-        .order_by(Reading.timestamp.desc())
-        .limit(20)
+        .distinct(Reading.parameter_name)
+        .order_by(Reading.parameter_name, Reading.timestamp.desc())
     )
-    rows = result.scalars().all()
-    latest = {}
-    for r in rows:
-        if r.parameter_name not in latest:
-            latest[r.parameter_name] = {"value": r.value, "unit": r.unit, "timestamp": r.timestamp.isoformat()}
-    return latest
+    return {
+        r.parameter_name: {"value": r.value, "unit": r.unit, "timestamp": r.timestamp.isoformat()}
+        for r in result.scalars().all()
+    }

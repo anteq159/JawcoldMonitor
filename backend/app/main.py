@@ -19,6 +19,7 @@ from app.core.diagnostics import install_handler as install_diagnostics_handler
 from app.models.user import User, Role, Permission, role_permissions, user_roles
 from app.websocket.manager import ws_manager
 from app.services.scanner import scanner_loop
+from app.services.update_apply import get_current_version
 from app.api.router import api_router
 
 logging.basicConfig(level=logging.INFO)
@@ -325,7 +326,7 @@ async def lifespan(app: FastAPI):
 # with no login. The frontend never uses them.
 app = FastAPI(
     title="JawcoldMonitor API",
-    version="1.0.0",
+    version=get_current_version(),
     docs_url="/api/v1/docs" if settings.PREVIEW_MODE else None,
     redoc_url="/api/v1/redoc" if settings.PREVIEW_MODE else None,
     openapi_url="/api/v1/openapi.json" if settings.PREVIEW_MODE else None,

@@ -4,7 +4,7 @@ import json
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from typing import Optional
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -28,6 +28,30 @@ RANGE_MAP = {
 
 FORMAT_PATTERN = "^(csv|json|xlsx|pdf)$"
 
+# An unfiltered 30d export can cover millions of readings; materializing that
+# on a 2 GB Raspberry Pi kills the container. These caps refuse the export
+# with an actionable message instead of dying halfway through - never a
+# silent truncation, which would look like a complete report but isn't.
+# xlsx/pdf are lower because both build the whole document in memory on top
+# of the rows themselves.
+MAX_EXPORT_ROWS = 500_000
+MAX_DOCUMENT_ROWS = 100_000
+
+
+def _row_cap(format: str) -> int:
+    return MAX_DOCUMENT_ROWS if format in ("xlsx", "pdf") else MAX_EXPORT_ROWS
+
+
+def _too_many(count: int, cap: int, format: str) -> HTTPException:
+    return HTTPException(
+        status_code=400,
+        detail=(
+            f"Eksport obejmuje ponad {cap:,} wierszy (format {format}). "
+            "Zawęź zakres czasu lub wybierz konkretne urządzenie; "
+            "dla dużych zbiorów użyj formatu CSV."
+        ).replace(",", " "),
+    )
+
 
 def _file_response(content: bytes, media_type: str, filename: str) -> StreamingResponse:
     return StreamingResponse(
@@ -47,31 +71,47 @@ async def export_readings(
     _: User = Depends(require_permission("export:any")),
 ):
     since = datetime.now(timezone.utc) - RANGE_MAP[range]
-    q = select(Reading).where(Reading.timestamp >= since).order_by(Reading.timestamp)
+    cap = _row_cap(format)
+    # Columns, not entities: a Row tuple is a fraction of the size of a
+    # hydrated Reading, and nothing here needs the ORM object.
+    q = (
+        select(
+            Reading.timestamp, Reading.device_id, Reading.sensor_id,
+            Reading.parameter_name, Reading.value, Reading.unit,
+        )
+        .where(Reading.timestamp >= since)
+        .order_by(Reading.timestamp)
+        .limit(cap + 1)  # one over the cap tells us it was exceeded
+    )
     if device_id:
         q = q.where(Reading.device_id == device_id)
     elif sensor_id:
         q = q.where(Reading.sensor_id == sensor_id)
     result = await db.execute(q)
-    rows = result.scalars().all()
+    rows = result.all()
+    if len(rows) > cap:
+        raise _too_many(len(rows), cap, format)
 
     if format == "json":
         data = [
             {
-                "timestamp": r.timestamp.isoformat(),
-                "device_id": r.device_id,
-                "sensor_id": r.sensor_id,
-                "parameter": r.parameter_name,
-                "value": r.value,
-                "unit": r.unit,
+                "timestamp": ts.isoformat(),
+                "device_id": dev_id,
+                "sensor_id": sens_id,
+                "parameter": param,
+                "value": value,
+                "unit": unit,
             }
-            for r in rows
+            for ts, dev_id, sens_id, param, value, unit in rows
         ]
         content = json.dumps(data, ensure_ascii=False, indent=2).encode()
         return _file_response(content, "application/json", f"readings_{range}.json")
 
     headers = ["timestamp", "device_id", "sensor_id", "parameter", "value", "unit"]
-    table_rows = [[r.timestamp.isoformat(), r.device_id, r.sensor_id, r.parameter_name, r.value, r.unit] for r in rows]
+    table_rows = [
+        [ts.isoformat(), dev_id, sens_id, param, value, unit]
+        for ts, dev_id, sens_id, param, value, unit in rows
+    ]
 
     if format == "xlsx":
         content = build_xlsx(headers, table_rows, sheet_title="Odczyty")
@@ -83,8 +123,8 @@ async def export_readings(
 
     if format == "pdf":
         by_param: dict = defaultdict(list)
-        for r in rows:
-            by_param[r.parameter_name].append(r.value)
+        for _ts, _dev, _sens, param, value, _unit in rows:
+            by_param[param].append(value)
         summary = [("Liczba odczytów", str(len(rows))), ("Zakres czasowy", range)]
         for name, values in by_param.items():
             summary.append((f"{name} (min / śr. / max)", f"{min(values):.2f} / {sum(values)/len(values):.2f} / {max(values):.2f}"))
@@ -114,13 +154,21 @@ async def export_alerts(
     _: User = Depends(require_permission("export:any")),
 ):
     since = datetime.now(timezone.utc) - RANGE_MAP[range]
-    q = select(AlertEvent).where(AlertEvent.timestamp >= since).order_by(AlertEvent.timestamp.desc())
+    cap = _row_cap(format)
+    q = (
+        select(AlertEvent)
+        .where(AlertEvent.timestamp >= since)
+        .order_by(AlertEvent.timestamp.desc())
+        .limit(cap + 1)
+    )
     if device_id:
         q = q.where(AlertEvent.device_id == device_id)
     if unacknowledged_only:
         q = q.where(AlertEvent.acknowledged == False)
     result = await db.execute(q)
     rows = result.scalars().all()
+    if len(rows) > cap:
+        raise _too_many(len(rows), cap, format)
 
     if format == "json":
         data = [

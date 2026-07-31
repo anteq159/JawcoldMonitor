@@ -61,6 +61,8 @@ export interface Device {
   hidden_parameters: string[]
   parameter_aliases: Record<string, string>
   parameter_units: Record<string, string>
+  card_parameters: string[]
+  chart_hidden_parameters: string[]
 }
 
 export interface DeviceCreate {

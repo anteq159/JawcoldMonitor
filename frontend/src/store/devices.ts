@@ -37,6 +37,7 @@ interface DeviceState {
   setDevices: (devices: Device[]) => void
   setSensors: (sensors: Sensor[]) => void
   updateDeviceStatus: (deviceId: number, status: Device['status']) => void
+  patchDevice: (deviceId: number, patch: Partial<Device>) => void
   addDevice: (device: Device) => void
   updateLiveReadings: (deviceId: number, readings: Array<{ parameter_name: string; value: number; unit: string | null }>) => void
   updateSensorTemp: (sensorId: number, temp: number) => void
@@ -75,6 +76,13 @@ export const useDeviceStore = create<DeviceState>()((set) => ({
   updateDeviceStatus: (deviceId, status) =>
     set((s) => ({
       devices: s.devices.map((d) => (d.id === deviceId ? { ...d, status } : d)),
+    })),
+  // Merge one device's fields in place - used for display settings saved
+  // from the list (e.g. which values a tile shows), so the grid updates
+  // without refetching every device.
+  patchDevice: (deviceId, patch) =>
+    set((s) => ({
+      devices: s.devices.map((d) => (d.id === deviceId ? { ...d, ...patch } : d)),
     })),
   addDevice: (device) =>
     set((s) => ({

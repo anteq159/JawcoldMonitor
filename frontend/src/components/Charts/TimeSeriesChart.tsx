@@ -5,6 +5,11 @@ interface Props {
   data: ParameterReadings[]
   height?: number
   title?: string
+  // Series switched off, keyed by ParameterReadings.id when present and by
+  // parameter_name otherwise. Hidden series stay in the chart's series list
+  // and are dimmed via legend.selected rather than filtered out of `data` -
+  // dropping them would shift every later series onto a different colour.
+  hiddenSeries?: string[]
 }
 
 // Categorical theme: slots 1-2 are the app's own brand hues (accent blue, teal),
@@ -12,7 +17,7 @@ interface Props {
 // (see dataviz skill: color-formula.md six checks). Never cycle/reorder per-chart.
 const COLORS = ['#2B6CB0', '#0D9488', '#eda100', '#008300', '#4a3aa7', '#e34948', '#e87ba4', '#eb6834']
 
-export function TimeSeriesChart({ data, height = 300, title }: Props) {
+export function TimeSeriesChart({ data, height = 300, title, hiddenSeries = [] }: Props) {
   if (!data.length || data.every((d) => !d.readings.length)) {
     return (
       <div className="flex items-center justify-center text-ink-muted text-sm" style={{ height }}>
@@ -21,8 +26,18 @@ export function TimeSeriesChart({ data, height = 300, title }: Props) {
     )
   }
 
+  const seriesName = (d: ParameterReadings) => d.parameter_name + (d.unit ? ` (${d.unit})` : '')
+  // Controlled selection, so a toggle survives the option being rebuilt -
+  // with `notMerge` an uncontrolled legend forgot what was switched off
+  // every time the time range changed.
+  const selected: Record<string, boolean> = {}
+  data.forEach((d) => {
+    selected[seriesName(d)] = !hiddenSeries.includes(d.id ?? d.parameter_name)
+  })
+  const anyHidden = Object.values(selected).some((v) => !v)
+
   const series = data.map((d, i) => ({
-    name: d.parameter_name + (d.unit ? ` (${d.unit})` : ''),
+    name: seriesName(d),
     type: 'line',
     smooth: true,
     symbol: 'none',
@@ -47,7 +62,10 @@ export function TimeSeriesChart({ data, height = 300, title }: Props) {
       },
     },
     legend: {
-      show: series.length > 1,
+      // Also shown for a lone series when it is switched off - otherwise
+      // there would be no way to bring it back.
+      show: series.length > 1 || anyHidden,
+      selected,
       textStyle: { color: '#7D8E8A', fontSize: 11 },
       top: 0,
     },
@@ -64,7 +82,7 @@ export function TimeSeriesChart({ data, height = 300, title }: Props) {
         textStyle: { color: '#7D8E8A' },
       },
     ],
-    grid: { left: 60, right: 20, top: series.length > 1 ? 40 : 16, bottom: 55 },
+    grid: { left: 60, right: 20, top: series.length > 1 || anyHidden ? 40 : 16, bottom: 55 },
     xAxis: {
       type: 'time',
       axisLine: { lineStyle: { color: '#DCE6E4' } },

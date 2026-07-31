@@ -3,19 +3,25 @@ import toast from 'react-hot-toast'
 import { MAX_MAP_PIN_PARAMS } from '../../api/maps'
 import type { Device } from '../../types/device'
 
-// Moved out of pages/Map.tsx unchanged - shared by MapEditor (image maps)
-// and SchematicEditor (drawn circuit schematics).
-export function ParamPickerPanel({ device, availableParams, initialSelected, onConfirm, onCancel }: {
+// Moved out of pages/Map.tsx - shared by MapEditor (image maps),
+// SchematicEditor (drawn circuit schematics) and the device tiles in the
+// Sterowniki list. `max` and `labels` were added for that third caller;
+// the map editors pass MAX_MAP_PIN_PARAMS and no labels, as before.
+export function ParamPickerPanel({
+  device, availableParams, initialSelected, onConfirm, onCancel,
+  max = MAX_MAP_PIN_PARAMS, labels, title,
+}: {
   device: Device; availableParams: string[]; initialSelected: string[]
   onConfirm: (selected: string[]) => void; onCancel: () => void
+  max?: number; labels?: Record<string, string>; title?: string
 }) {
   const [selected, setSelected] = useState<string[]>(initialSelected.filter(p => availableParams.includes(p)))
 
   const toggle = (name: string) => {
     setSelected(prev => {
       if (prev.includes(name)) return prev.filter(p => p !== name)
-      if (prev.length >= MAX_MAP_PIN_PARAMS) {
-        toast.error(`Można wybrać maksymalnie ${MAX_MAP_PIN_PARAMS} parametry`)
+      if (prev.length >= max) {
+        toast.error(`Można wybrać maksymalnie ${max} ${max === 3 ? 'wartości' : 'parametry'}`)
         return prev
       }
       return [...prev, name]
@@ -25,7 +31,7 @@ export function ParamPickerPanel({ device, availableParams, initialSelected, onC
   return (
     <div className="px-5 py-3 border-t border-border">
       <p className="text-xs text-ink-muted mb-2">
-        Parametry do wyświetlenia dla „{device.name}” ({selected.length}/{MAX_MAP_PIN_PARAMS}):
+        {title ?? `Parametry do wyświetlenia dla „${device.name}”`} ({selected.length}/{max}):
       </p>
       {availableParams.length === 0 ? (
         <p className="text-xs text-ink-muted">Brak dostępnych odczytów dla tego urządzenia.</p>
@@ -35,8 +41,9 @@ export function ParamPickerPanel({ device, availableParams, initialSelected, onC
             const active = selected.includes(name)
             return (
               <button key={name} onClick={() => toggle(name)}
+                title={labels?.[name] ? name : undefined}
                 className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${active ? 'bg-accent border-accent text-white' : 'bg-surface-2 border-border text-ink hover:border-border-strong'}`}>
-                {name}
+                {labels?.[name] ?? name}
               </button>
             )
           })}

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { ChevronLeft, Pencil, Check, X, Timer } from 'lucide-react'
+import { ChevronLeft, Pencil, Check, X, Timer, SlidersHorizontal } from 'lucide-react'
 import { getDevice, updateDevice } from '../api/devices'
 import { getDeviceReadings } from '../api/readings'
 import { getDeviceProfile, type DeviceProfileDetail } from '../api/deviceProfiles'
@@ -38,6 +38,7 @@ export default function DeviceDetail() {
   const [intervalInput, setIntervalInput] = useState('')
   const [savingInterval, setSavingInterval] = useState(false)
   const [editingVisibility, setEditingVisibility] = useState(false)
+  const [pickingSeries, setPickingSeries] = useState(false)
 
   const updateDeviceInStore = useDeviceStore(s => s.updateDeviceStatus)
   const canWrite = useAuthStore((s) => s.can('device:write'))
@@ -141,6 +142,23 @@ export default function DeviceDetail() {
     }
   }
 
+  // Chart-only visibility, kept apart from hidden_parameters: a value can be
+  // uninteresting on the chart while still mattering in the live grid.
+  const toggleChartSeries = async (realName: string) => {
+    if (!device) return
+    const hidden = device.chart_hidden_parameters.includes(realName)
+      ? device.chart_hidden_parameters.filter((n) => n !== realName)
+      : [...device.chart_hidden_parameters, realName]
+    const previous = device
+    setDevice({ ...device, chart_hidden_parameters: hidden })
+    try {
+      await updateDevice(device.id, { chart_hidden_parameters: hidden })
+    } catch {
+      setDevice(previous)
+      toast.error('Błąd zapisu widoczności serii')
+    }
+  }
+
   const saveName = async () => {
     if (!device || !nameInput.trim()) return
     setSavingName(true)
@@ -158,6 +176,14 @@ export default function DeviceDetail() {
 
   if (loading) return <PageSpinner />
   if (!device) return <p className="text-ink-muted">Urządzenie nie znalezione</p>
+
+  // Real register names offered as chart series. Already-hidden ones are
+  // unioned in so a series switched off before the range changed can still
+  // be switched back on, even with no points in the current window.
+  const chartSeries = Array.from(new Set([
+    ...readings.map((r) => r.parameter_name),
+    ...device.chart_hidden_parameters,
+  ])).filter((name) => !device.hidden_parameters.includes(name)).sort()
 
   return (
     <div className="space-y-5">
@@ -235,7 +261,18 @@ export default function DeviceDetail() {
         </div>
       </Card>
 
-      <Card title="Wykresy historyczne">
+      <Card
+        title="Wykresy historyczne"
+        action={canWrite && chartSeries.length > 0 && (
+          <button
+            onClick={() => setPickingSeries((v) => !v)}
+            className={`flex items-center gap-1 text-xs transition-colors ${pickingSeries ? 'text-accent' : 'text-ink-muted hover:text-accent'}`}
+            title={pickingSeries ? 'Zakończ wybór serii' : 'Wybierz dane pokazywane na wykresie'}
+          >
+            {pickingSeries ? <Check size={15} /> : <SlidersHorizontal size={15} />}
+          </button>
+        )}
+      >
         <div className="px-5 pt-3 pb-1 flex gap-2">
           {RANGES.map((r) => (
             <button key={r} onClick={() => setRange(r)}
@@ -244,11 +281,35 @@ export default function DeviceDetail() {
             </button>
           ))}
         </div>
+        {pickingSeries && (
+          <div className="px-5 pt-3">
+            <p className="text-xs text-ink-muted mb-2">
+              Kliknij, aby wyłączyć lub włączyć dane na wykresie. Wybór jest zapamiętany dla tego sterownika;
+              wartości pozostają widoczne w „Bieżących wartościach parametrów”.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {chartSeries.map((name) => {
+                const on = !device.chart_hidden_parameters.includes(name)
+                return (
+                  <button key={name} onClick={() => toggleChartSeries(name)} title={name}
+                    className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${on ? 'bg-accent border-accent text-white' : 'bg-surface-2 border-border text-ink-muted hover:border-border-strong'}`}>
+                    {device.parameter_aliases[name] ?? name}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        )}
         <div className="px-3 pb-4">
           <TimeSeriesChart
             data={readings
               .filter((r) => !device.hidden_parameters.includes(r.parameter_name))
-              .map((r) => ({ ...r, parameter_name: device.parameter_aliases[r.parameter_name] ?? r.parameter_name }))}
+              .map((r) => ({
+                ...r,
+                id: r.parameter_name,
+                parameter_name: device.parameter_aliases[r.parameter_name] ?? r.parameter_name,
+              }))}
+            hiddenSeries={device.chart_hidden_parameters}
             height={320}
           />
         </div>

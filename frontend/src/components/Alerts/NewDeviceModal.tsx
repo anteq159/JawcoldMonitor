@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { X, Cpu } from 'lucide-react'
 
 export function NewDeviceModal() {
-  const { newDeviceCandidate, setNewDeviceCandidate } = useDeviceStore()
+  const newDeviceCandidate = useDeviceStore((s) => s.newDeviceCandidate)
+  const setNewDeviceCandidate = useDeviceStore((s) => s.setNewDeviceCandidate)
   const navigate = useNavigate()
 
   if (!newDeviceCandidate) return null

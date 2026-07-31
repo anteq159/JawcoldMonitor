@@ -45,6 +45,15 @@ class Device(Base, TimestampMixin):
     # readings, so history, exports, live view and dashboard all agree.
     # {"Sonda 6": "bar"} - empty/missing means the profile's unit.
     parameter_units: Mapped[Dict[str, str]] = mapped_column(JSONB, default=dict)
+    # Up to 3 parameter names shown on this device's tile in the Sterowniki
+    # list, before anyone opens the device. Empty = fall back to whatever
+    # reading arrives first, which is what the list did before this existed.
+    card_parameters: Mapped[List[str]] = mapped_column(JSONB, default=list)
+    # Series switched off on the device's historical chart. Separate from
+    # hidden_parameters on purpose: that one hides a parameter everywhere,
+    # this only declutters the chart while the value stays visible in the
+    # live grid and the register table.
+    chart_hidden_parameters: Mapped[List[str]] = mapped_column(JSONB, default=list)
 
     profile: Mapped[Optional["DeviceProfile"]] = relationship("DeviceProfile", lazy="selectin")
     parameters: Mapped[List["DeviceParameter"]] = relationship(

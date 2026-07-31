@@ -1,11 +1,16 @@
 import api from './client'
 import type { Device, DeviceCreate } from '../types/device'
 
+// Mirrors MAX_CARD_PARAMETERS in backend/app/schemas/device.py.
+export const MAX_CARD_PARAMS = 3
+
 export interface DeviceUpdate extends Partial<DeviceCreate> {
   poll_interval_seconds?: number | null
   hidden_parameters?: string[]
   parameter_aliases?: Record<string, string>
   parameter_units?: Record<string, string>
+  card_parameters?: string[]
+  chart_hidden_parameters?: string[]
 }
 
 export const getDevices = (): Promise<Device[]> => api.get('/devices/').then((r) => r.data)

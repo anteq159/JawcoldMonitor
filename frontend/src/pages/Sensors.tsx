@@ -16,7 +16,9 @@ import type { Sensor } from '../types/sensor'
 import type { ParameterReadings } from '../types/reading'
 
 export default function Sensors() {
-  const { sensors, setSensors, liveSensorTemps } = useDeviceStore()
+  const sensors = useDeviceStore((s) => s.sensors)
+  const setSensors = useDeviceStore((s) => s.setSensors)
+  const liveSensorTemps = useDeviceStore((s) => s.liveSensorTemps)
   const [loading, setLoading] = useState(sensors.length === 0)
   const [selected, setSelected] = useState<Sensor | null>(null)
   const [chart, setChart] = useState<ParameterReadings[]>([])

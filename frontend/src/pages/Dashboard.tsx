@@ -28,7 +28,10 @@ const RANGES: { label: string; value: TimeRange }[] = [
 // chart, then the controller list. On narrow screens the columns stack,
 // left column first.
 export default function Dashboard() {
-  const { setDevices, setSensors } = useDeviceStore()
+  // Per-field selectors: destructuring the store subscribes to every change,
+  // so each incoming reading re-rendered the dashboard and its charts.
+  const setDevices = useDeviceStore((s) => s.setDevices)
+  const setSensors = useDeviceStore((s) => s.setSensors)
   const devices = useDeviceStore((s) => s.devices)
   const sensors = useDeviceStore((s) => s.sensors)
   const [dashboard, setDashboard] = useState<any>(null)

@@ -3,6 +3,10 @@ from typing import Optional, List, Dict
 from pydantic import BaseModel, field_validator
 from app.schemas.device_profile import RegisterDefinitionOut
 
+# Mirrored by MAX_CARD_PARAMS in frontend/src/api/devices.ts - the tile only
+# has room for three values before it stops being scannable at a glance.
+MAX_CARD_PARAMETERS = 3
+
 
 class ParameterOut(BaseModel):
     id: int
@@ -57,6 +61,8 @@ class DeviceOut(BaseModel):
     hidden_parameters: List[str] = []
     parameter_aliases: Dict[str, str] = {}
     parameter_units: Dict[str, str] = {}
+    card_parameters: List[str] = []
+    chart_hidden_parameters: List[str] = []
 
     model_config = {"from_attributes": True}
 
@@ -87,6 +93,34 @@ class DeviceUpdate(BaseModel):
     hidden_parameters: Optional[List[str]] = None
     parameter_aliases: Optional[Dict[str, str]] = None
     parameter_units: Optional[Dict[str, str]] = None
+    card_parameters: Optional[List[str]] = None
+    chart_hidden_parameters: Optional[List[str]] = None
+
+    @field_validator("card_parameters")
+    @classmethod
+    def _card_params_sane(cls, v):
+        if v is None:
+            return v
+        if len(v) > MAX_CARD_PARAMETERS:
+            raise ValueError(f"Na kafelku można pokazać maksymalnie {MAX_CARD_PARAMETERS} wartości")
+        if len(set(v)) != len(v):
+            raise ValueError("Powtórzona nazwa parametru")
+        for name in v:
+            if len(name) > 128:
+                raise ValueError("Nazwa parametru jest za długa")
+        return v
+
+    @field_validator("chart_hidden_parameters")
+    @classmethod
+    def _chart_hidden_sane(cls, v):
+        if v is None:
+            return v
+        if len(v) > 200:
+            raise ValueError("Za dużo ukrytych serii")
+        for name in v:
+            if len(name) > 128:
+                raise ValueError("Nazwa parametru jest za długa")
+        return v
 
     @field_validator("parameter_units")
     @classmethod

@@ -137,6 +137,16 @@ async def _scan_known_devices():
         result = await db.execute(select(Device.id, Device.poll_interval_seconds))
         rows = result.all()
 
+    # Drop per-device state for devices that no longer exist. Besides the
+    # slow leak, a device re-added under a recycled id would otherwise
+    # inherit the previous one's offline/hardware-alarm state and either
+    # miss an alarm or fire a spurious "back online".
+    live_ids = {device_id for device_id, _ in rows}
+    for state in (_last_known_scan, _active_hw_alarms, _offline_since):
+        for stale_id in [k for k in state if k not in live_ids]:
+            del state[stale_id]
+    _offline_alarmed.intersection_update(live_ids)
+
     due_ids = []
     for device_id, poll_interval in rows:
         interval = poll_interval or settings.KNOWN_SCAN_INTERVAL
@@ -383,18 +393,28 @@ async def _check_alerts(db: AsyncSession, device_id, sensor_id, readings: dict):
             q = q.where(AlertRule.sensor_id == sensor_id)
         result = await db.execute(q)
         rules = result.scalars().all()
+
+        # One query for every rule's open event instead of one per rule per
+        # scan cycle - at a 1s interval that was tens of round-trips a second
+        # just to learn that nothing had changed. Index: ix_alert_events_rule_open.
+        relevant = [r.id for r in rules if r.parameter_name in readings]
+        if not relevant:
+            return
+        active_result = await db.execute(
+            select(AlertEvent)
+            .where(AlertEvent.rule_id.in_(relevant), AlertEvent.resolved_at.is_(None))
+            .order_by(AlertEvent.timestamp.desc())
+        )
+        active_by_rule: dict = {}
+        for event in active_result.scalars().all():
+            active_by_rule.setdefault(event.rule_id, event)
+
         for rule in rules:
             if rule.parameter_name not in readings:
                 continue
             value = readings[rule.parameter_name]["value"]
             triggered = _evaluate_condition(rule, value)
-
-            active_result = await db.execute(
-                select(AlertEvent)
-                .where(AlertEvent.rule_id == rule.id, AlertEvent.resolved_at.is_(None))
-                .order_by(AlertEvent.timestamp.desc())
-            )
-            active_event = active_result.scalars().first()
+            active_event = active_by_rule.get(rule.id)
 
             if triggered and not active_event:
                 event = AlertEvent(
@@ -604,9 +624,13 @@ async def _maybe_auto_backup():
             data = payload.model_dump_json(indent=2)
             await asyncio.to_thread(filename.write_text, data, "utf-8")
 
-            # Retention: newest N by name (timestamped names sort correctly)
+            # Retention: newest N by name (timestamped names sort correctly).
+            # max(1, ...) because a configured 0 makes the slice existing[:0],
+            # i.e. deletes nothing and keeps every backup forever - the exact
+            # opposite of what "keep 0" reads like.
+            keep = max(1, settings.BACKUP_RETENTION_COUNT)
             existing = sorted(backup_dir.glob("jawcold_backup_*.json"))
-            for old in existing[:-settings.BACKUP_RETENTION_COUNT]:
+            for old in existing[:-keep]:
                 await asyncio.to_thread(os.remove, old)
 
             db.add(EventLog(

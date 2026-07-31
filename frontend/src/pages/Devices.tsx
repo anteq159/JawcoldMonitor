@@ -1,8 +1,12 @@
-import { useEffect, useState } from 'react'
+import { memo, useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { RefreshCw, Plus, WifiOff, AlertTriangle, Trash2, Search, Cpu } from 'lucide-react'
+import { RefreshCw, Plus, WifiOff, AlertTriangle, Trash2, Search, Cpu, Pencil, Check } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { getDevices, createDevice, deleteDevice, discoverDevices, type DiscoveredDevice } from '../api/devices'
+import {
+  getDevices, createDevice, updateDevice, deleteDevice, discoverDevices,
+  MAX_CARD_PARAMS, type DiscoveredDevice,
+} from '../api/devices'
+import { ParamPickerPanel } from '../components/Map/ParamPickerPanel'
 import { getSerialPorts } from '../api/system'
 import { getDeviceProfiles, type DeviceProfileDetail } from '../api/deviceProfiles'
 import { useDeviceStore } from '../store/devices'
@@ -25,12 +29,17 @@ interface Prefill {
 }
 
 export default function Devices() {
-  const { devices, setDevices } = useDeviceStore()
+  // Field selectors, not the whole store: this page is mounted while
+  // readings stream in, and subscribing to everything re-rendered the
+  // entire device grid on every WebSocket message.
+  const devices = useDeviceStore((s) => s.devices)
+  const setDevices = useDeviceStore((s) => s.setDevices)
   const canWrite = useAuthStore((s) => s.can('device:write'))
   const [loading, setLoading] = useState(devices.length === 0)
   const [searchParams] = useSearchParams()
   const [tab, setTab] = useState<Tab>(searchParams.get('tab') === 'add' && canWrite ? 'add' : 'list')
   const [prefill, setPrefill] = useState<Prefill | null>(null)
+  const [editing, setEditing] = useState(false)
 
   const refresh = async () => {
     setLoading(true)
@@ -56,15 +65,35 @@ export default function Devices() {
           )}
         </div>
         {tab === 'list' && (
-          <button onClick={refresh} className="p-2 text-ink-muted hover:text-ink hover:bg-surface-2 rounded-lg transition-colors" title="Odśwież">
-            <RefreshCw size={16} />
-          </button>
+          <div className="flex items-center gap-1">
+            {canWrite && (
+              <button
+                onClick={() => setEditing((v) => !v)}
+                className={`p-2 rounded-lg transition-colors ${editing ? 'text-accent bg-surface-2' : 'text-ink-muted hover:text-ink hover:bg-surface-2'}`}
+                title={editing ? 'Zakończ wybór wartości na kafelkach' : 'Wybierz wartości pokazywane na kafelkach'}
+              >
+                {editing ? <Check size={16} /> : <Pencil size={16} />}
+              </button>
+            )}
+            <button onClick={refresh} className="p-2 text-ink-muted hover:text-ink hover:bg-surface-2 rounded-lg transition-colors" title="Odśwież">
+              <RefreshCw size={16} />
+            </button>
+          </div>
         )}
       </div>
 
+      {tab === 'list' && editing && (
+        <p className="text-xs text-ink-muted">
+          Wybierz do {MAX_CARD_PARAMS} wartości pokazywanych na kafelku każdego sterownika.
+          Ustawienie dotyczy tego sterownika i widzą je wszyscy użytkownicy.
+        </p>
+      )}
+
       {tab === 'list' && (
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {devices.map((d) => <DeviceCard key={d.id} device={d} onDeleted={refresh} />)}
+          {devices.map((d) => (
+            <DeviceCard key={d.id} device={d} onDeleted={refresh} editing={editing} />
+          ))}
           {devices.length === 0 && (
             <div className="col-span-full bg-surface border border-border rounded-xl shadow-panel">
               <EmptyState
@@ -104,12 +133,49 @@ function TabBtn({ active, onClick, children }: { active: boolean; onClick: () =>
   )
 }
 
-function DeviceCard({ device, onDeleted }: { device: Device; onDeleted: () => void }) {
+const DeviceCard = memo(function DeviceCard(
+  { device, onDeleted, editing }: { device: Device; onDeleted: () => void; editing: boolean },
+) {
   const liveReadings = useDeviceStore((s) => s.liveReadings[device.id] || {})
+  const patchDevice = useDeviceStore((s) => s.patchDevice)
   const canWrite = useAuthStore((s) => s.can('device:write'))
-  const firstReading = Object.entries(liveReadings)[0]
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  // Bumped on "Anuluj" to remount the picker with the saved selection.
+  const [resetKey, setResetKey] = useState(0)
+
+  // What the tile shows: the parameters picked for this device, minus any
+  // hidden in its details, labelled with the same aliases used everywhere
+  // else. With nothing picked, fall back to the first reading that arrived -
+  // the behaviour every install had before this setting existed.
+  const shown = device.card_parameters.length > 0
+    ? device.card_parameters
+        .filter((name) => !device.hidden_parameters.includes(name))
+        .map((name) => [name, liveReadings[name]] as const)
+        .filter(([, r]) => r)
+    : Object.entries(liveReadings)
+        .filter(([name]) => !device.hidden_parameters.includes(name))
+        .slice(0, 1)
+
+  // Registers the device could report, even if that value has not arrived
+  // over the WebSocket yet - otherwise a freshly loaded page offers nothing
+  // to pick from.
+  const availableParams = Array.from(new Set([
+    ...Object.keys(liveReadings),
+    ...(device.profile?.registers?.map((r) => r.name) ?? []),
+  ])).filter((name) => !device.hidden_parameters.includes(name))
+
+  const saveCardParams = async (selected: string[]) => {
+    const previous = device.card_parameters
+    patchDevice(device.id, { card_parameters: selected })
+    try {
+      await updateDevice(device.id, { card_parameters: selected })
+      toast.success(selected.length ? 'Zapisano wartości na kafelku' : 'Przywrócono domyślny odczyt')
+    } catch (err: any) {
+      patchDevice(device.id, { card_parameters: previous })
+      toast.error(err.response?.data?.detail ?? 'Błąd zapisu wyboru wartości')
+    }
+  }
 
   const remove = async () => {
     setDeleting(true)
@@ -124,34 +190,73 @@ function DeviceCard({ device, onDeleted }: { device: Device; onDeleted: () => vo
     }
   }
 
-  return (
-    <div className="relative group">
-      <Link to={`/devices/${device.id}`} className="bg-surface border border-border rounded-xl shadow-panel p-5 hover:border-border-strong transition-colors block">
-        <div className="flex items-start justify-between mb-3">
-          <div className="min-w-0">
-            <h3 className="font-medium text-ink truncate">{device.name}</h3>
-            <p className="text-xs text-ink-muted mt-0.5">Adres {device.modbus_address} · {device.port}</p>
-            <div className="mt-1.5 flex items-center gap-1.5">
-              <ManufacturerBadge profile={device.profile} />
-              {device.recognition_status === 'unrecognized' && (
-                <Badge variant="yellow"><AlertTriangle size={10} className="inline -mt-0.5 mr-0.5" />nierozpoznany</Badge>
-              )}
-            </div>
-          </div>
-          <div className="flex items-center gap-2 shrink-0">
-            <FavoriteToggle deviceId={device.id} />
-            <DeviceStatusBadge status={device.status} />
+  const body = (
+    <>
+      <div className="flex items-start justify-between mb-3">
+        <div className="min-w-0">
+          <h3 className="font-medium text-ink truncate">{device.name}</h3>
+          <p className="text-xs text-ink-muted mt-0.5">Adres {device.modbus_address} · {device.port}</p>
+          <div className="mt-1.5 flex items-center gap-1.5">
+            <ManufacturerBadge profile={device.profile} />
+            {device.recognition_status === 'unrecognized' && (
+              <Badge variant="yellow"><AlertTriangle size={10} className="inline -mt-0.5 mr-0.5" />nierozpoznany</Badge>
+            )}
           </div>
         </div>
-        {firstReading ? (
-          <div className="mt-2">
-            <span className="text-lg font-bold text-accent">{firstReading[1].value.toFixed(2)}</span>
-            <span className="text-sm text-ink-muted ml-1">{firstReading[1].unit}</span>
-            <p className="text-xs text-ink-muted mt-0.5">{firstReading[0]}</p>
-          </div>
-        ) : (
-          <p className="text-xs text-ink-muted mt-2">Brak odczytów</p>
-        )}
+        <div className="flex items-center gap-2 shrink-0">
+          <FavoriteToggle deviceId={device.id} />
+          <DeviceStatusBadge status={device.status} />
+        </div>
+      </div>
+      {shown.length > 0 ? (
+        <div className={`mt-2 ${shown.length > 1 ? 'grid grid-cols-3 gap-2' : ''}`}>
+          {shown.map(([name, r]) => (
+            <div key={name} className="min-w-0">
+              <div className="flex items-baseline gap-1">
+                <span className={`font-bold text-accent ${shown.length > 1 ? 'text-base' : 'text-lg'}`}>
+                  {r!.value.toFixed(2)}
+                </span>
+                <span className="text-xs text-ink-muted">{device.parameter_units[name] ?? r!.unit}</span>
+              </div>
+              <p className="text-xs text-ink-muted mt-0.5 truncate" title={name}>
+                {device.parameter_aliases[name] ?? name}
+              </p>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="text-xs text-ink-muted mt-2">Brak odczytów</p>
+      )}
+    </>
+  )
+
+  const cardClass = 'bg-surface border border-border rounded-xl shadow-panel p-5 block'
+
+  if (editing) {
+    return (
+      <div className={`${cardClass} border-accent/40`}>
+        {body}
+        <div className="-mx-5 mt-3">
+          <ParamPickerPanel
+            key={resetKey}
+            device={device}
+            availableParams={availableParams}
+            initialSelected={device.card_parameters}
+            labels={device.parameter_aliases}
+            title="Wartości na kafelku"
+            max={MAX_CARD_PARAMS}
+            onConfirm={saveCardParams}
+            onCancel={() => setResetKey((k) => k + 1)}
+          />
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="relative group">
+      <Link to={`/devices/${device.id}`} className={`${cardClass} hover:border-border-strong transition-colors`}>
+        {body}
       </Link>
       {canWrite && (
         <button
@@ -174,7 +279,7 @@ function DeviceCard({ device, onDeleted }: { device: Device; onDeleted: () => vo
       />
     </div>
   )
-}
+})
 
 function AddDeviceForm({ prefill, onAdded }: { prefill: Prefill | null; onAdded: () => void }) {
   const [name, setName] = useState('')
