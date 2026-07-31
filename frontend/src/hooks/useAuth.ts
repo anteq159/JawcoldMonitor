@@ -25,7 +25,7 @@ export function useAuth() {
     navigate('/login')
   }
 
-  const changePassword = async (current: string, next: string) => {
+  const changePassword = async (current: string | null, next: string) => {
     const data = await apiChangePassword(current, next)
     // Zmiana hasła unieważnia wszystkie wcześniejsze tokeny (także ten,
     // którym wysłano to żądanie) - backend zwraca świeżą parę, bez niej

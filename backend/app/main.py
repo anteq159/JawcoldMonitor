@@ -96,12 +96,36 @@ async def _init_defaults():
             )
             db.add(admin)
             await db.flush()
-            # Set role via association table
+            # warning, not info: uvicorn's log config filters INFO from app
+            # loggers, and this is exactly the line someone needs to find in
+            # `docker logs` when asking "why can't I log in".
+            logger.warning("Utworzono domyslne konto admin (haslo: admin)")
+        elif admin.last_login is None and admin.must_change_password:
+            # Factory account nobody has ever logged into - re-assert
+            # admin/admin. A half-finished first install (interrupted seed,
+            # DB restored from a backup taken before the first login, a
+            # password set straight in the DB) otherwise leaves a fresh
+            # deployment with no usable credentials and no way in. Once
+            # anyone logs in successfully last_login is set, and once the
+            # password is changed must_change_password clears - from then on
+            # this branch never touches the account again.
+            admin.password_hash = hash_password("admin")
+            admin.is_active = True
+            logger.warning("Przywrocono fabryczne konto admin (haslo: admin)")
+
+        # Idempotent - a partially seeded install can leave the admin row
+        # without its role, which logs in but can't do anything.
+        has_admin_role = await db.execute(
+            select(user_roles.c.user_id).where(
+                user_roles.c.user_id == admin.id,
+                user_roles.c.role_id == role_map["Admin"].id,
+            )
+        )
+        if has_admin_role.first() is None:
             await db.execute(
                 user_roles.insert(),
                 [{"user_id": admin.id, "role_id": role_map["Admin"].id}],
             )
-            logger.info("Created default admin user (password: admin)")
 
         await db.commit()
 

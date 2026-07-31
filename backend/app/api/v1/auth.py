@@ -86,8 +86,16 @@ async def change_password(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    if not verify_password(body.current_password, current_user.password_hash):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Nieprawidłowe bieżące hasło")
+    # The forced first change skips the current-password check: the caller
+    # already proved they hold it by logging in, and the token this request
+    # carries is only good for this one endpoint (see _MUST_CHANGE_ALLOWED_PATHS).
+    # A voluntary change still needs it - that check is what stops someone at
+    # an unlocked browser from taking the account over.
+    if not current_user.must_change_password:
+        if not body.current_password or not verify_password(
+            body.current_password, current_user.password_hash
+        ):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Nieprawidłowe bieżące hasło")
     if len(body.new_password) < 6:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Hasło musi mieć co najmniej 6 znaków")
     current_user.password_hash = hash_password(body.new_password)

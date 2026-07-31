@@ -4,7 +4,11 @@ import { Spinner } from '../components/UI/Spinner'
 import { ShieldCheck } from 'lucide-react'
 
 export default function ChangePassword() {
-  const { changePassword } = useAuth()
+  const { user, changePassword } = useAuth()
+  // Forced first change: the factory password was just used to log in, so
+  // asking for it again here is pure friction. A voluntary change still
+  // asks - the backend enforces the same rule.
+  const forced = user?.must_change_password ?? false
   const [current, setCurrent] = useState('')
   const [next, setNext] = useState('')
   const [confirm, setConfirm] = useState('')
@@ -24,7 +28,7 @@ export default function ChangePassword() {
     }
     setLoading(true)
     try {
-      await changePassword(current, next)
+      await changePassword(forced ? null : current, next)
     } catch (err: any) {
       setError(err.response?.data?.detail ?? 'Błąd zmiany hasła')
     } finally {
@@ -40,27 +44,51 @@ export default function ChangePassword() {
             <ShieldCheck size={24} className="text-accent" />
           </div>
           <h1 className="text-xl font-bold text-ink">Zmień hasło</h1>
-          <p className="text-ink-muted text-sm mt-1">Wymagana zmiana hasła przy pierwszym logowaniu</p>
+          <p className="text-ink-muted text-sm mt-1">
+            {forced ? 'Ustaw własne hasło zamiast fabrycznego' : 'Zmiana hasła konta'}
+          </p>
         </div>
 
         <form onSubmit={handleSubmit} className="bg-surface border border-border rounded-xl shadow-panel p-6 space-y-4">
-          {(['Bieżące hasło', 'Nowe hasło', 'Potwierdź nowe hasło'] as const).map((label, i) => {
-            const values = [current, next, confirm]
-            const setters = [setCurrent, setNext, setConfirm]
-            return (
-              <div key={label}>
-                <label className="block text-xs text-ink-muted mb-1.5">{label}</label>
-                <input
-                  type="password"
-                  value={values[i]}
-                  onChange={(e) => setters[i](e.target.value)}
-                  required
-                  className="input"
-                  placeholder="••••••••"
-                />
-              </div>
-            )
-          })}
+          {!forced && (
+            <div>
+              <label className="block text-xs text-ink-muted mb-1.5">Bieżące hasło</label>
+              <input
+                type="password"
+                value={current}
+                onChange={(e) => setCurrent(e.target.value)}
+                required
+                autoComplete="current-password"
+                className="input"
+                placeholder="••••••••"
+              />
+            </div>
+          )}
+          <div>
+            <label className="block text-xs text-ink-muted mb-1.5">Nowe hasło</label>
+            <input
+              type="password"
+              value={next}
+              onChange={(e) => setNext(e.target.value)}
+              required
+              autoFocus
+              autoComplete="new-password"
+              className="input"
+              placeholder="••••••••"
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-ink-muted mb-1.5">Potwierdź nowe hasło</label>
+            <input
+              type="password"
+              value={confirm}
+              onChange={(e) => setConfirm(e.target.value)}
+              required
+              autoComplete="new-password"
+              className="input"
+              placeholder="••••••••"
+            />
+          </div>
           {error && <p className="text-sm text-crit">{error}</p>}
           <button
             type="submit"
