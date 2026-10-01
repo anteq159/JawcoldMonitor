@@ -43,6 +43,7 @@ class SettingMeta:
 EDITABLE_SETTINGS: Dict[str, SettingMeta] = {
     # Skanowanie
     "KNOWN_SCAN_INTERVAL": SettingMeta("Interwał odpytywania urządzeń (s)", "Skanowanie", "int"),
+    "OFFLINE_POLL_INTERVAL": SettingMeta("Odpytywanie urządzeń offline co (s)", "Skanowanie", "int"),
     "DISCOVERY_SCAN_INTERVAL": SettingMeta("Interwał wykrywania nowych urządzeń (s)", "Skanowanie", "int"),
     "DISCOVERY_MAX_ADDRESS": SettingMeta("Najwyższy skanowany adres Modbus", "Skanowanie", "int"),
     "DALLAS_SCAN_INTERVAL": SettingMeta("Interwał odczytu czujników Dallas (s)", "Skanowanie", "int"),

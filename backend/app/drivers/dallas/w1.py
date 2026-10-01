@@ -29,6 +29,11 @@ class W1DallasDriver(AbstractDallasDriver):
                 return None
             idx = content.index("t=")
             raw = int(content[idx + 2:].strip())
+            # 85.000 °C is the DS18B20 power-on reset value: the probe lost
+            # power or the conversion never ran. It passes the CRC check,
+            # so without this a flaky probe reports a valid-looking 85 °C.
+            if raw == 85000:
+                return None
             return round(raw / 1000.0, 2)
         except Exception:
             return None

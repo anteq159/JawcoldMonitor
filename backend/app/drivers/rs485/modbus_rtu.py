@@ -7,6 +7,16 @@ from app.drivers.base import AbstractRS485Driver
 
 logger = logging.getLogger(__name__)
 
+# pymodbus logs every unanswered request at ERROR together with a dump of
+# its recent frames - an offline controller polled every few seconds plus
+# the discovery sweep over silent addresses produced thousands of
+# multi-line entries a day in `docker logs` (on the SD card, unrotated).
+# Device availability is already tracked and logged by the scanner
+# (EventLog online/offline transitions, offline alarm), and connection
+# failures are logged below by _ensure_connected, so the library's own
+# per-request chatter adds nothing but disk writes.
+logging.getLogger("pymodbus").setLevel(logging.CRITICAL)
+
 # Word order for 32-bit register pairs (uint32/int32/float32): high word
 # first. Modbus itself does not standardize this - some devices send the
 # low word first instead - so this is a real thing to verify per controller
@@ -51,6 +61,16 @@ def _encode(value: float, data_type: str) -> List[int]:
         hi, lo = (packed >> 16) & 0xFFFF, packed & 0xFFFF
         return [hi, lo] if WORD_ORDER_HIGH_FIRST else [lo, hi]
     raise ValueError(f"Nieobsługiwany typ danych: {data_type}")
+
+
+# _read_span outcomes. A Modbus exception response ("illegal data
+# address") proves the controller is alive and only rejected that span; no
+# response at all means nobody answered, and asking again for the next span
+# just burns another full timeout on a half-duplex bus that every other
+# controller is waiting for.
+READ_OK = "ok"
+READ_REJECTED = "rejected"
+READ_NO_RESPONSE = "no_response"
 
 
 def _is_bit_type(reg_type: str) -> bool:
@@ -154,6 +174,7 @@ class ModbusRTUDriver(AbstractRS485Driver):
         self._stopbits = stopbits
         self._client = None
         self._lock = asyncio.Lock()
+        self._port_ok = True  # for logging connect failures once, not per request
         self._connect()
 
     def _connect(self):
@@ -166,6 +187,16 @@ class ModbusRTUDriver(AbstractRS485Driver):
                 parity="N",
                 stopbits=self._stopbits,
                 bytesize=8,
+                # One retry instead of pymodbus' default 3: every silent
+                # address (offline controller, discovery sweep) otherwise
+                # costs 4 full timeouts of exclusive bus time per request.
+                retries=1,
+                # No background auto-reconnect: _ensure_connected() reopens
+                # the port itself under self._lock. With pymodbus' own
+                # reconnect task running too (it fires after a few
+                # unanswered requests), both opened the port at once and
+                # one failed with "Could not exclusively lock port".
+                reconnect_delay=0,
             )
         except ImportError:
             logger.warning("pymodbus not installed — RS485 unavailable")
@@ -181,23 +212,36 @@ class ModbusRTUDriver(AbstractRS485Driver):
             return False
         if not self._client.connected:
             await self._client.connect()
-        return self._client.connected
+        ok = self._client.connected
+        if ok != self._port_ok:
+            self._port_ok = ok
+            if ok:
+                logger.warning("Port RS485 %s ponownie otwarty", self._port)
+            else:
+                logger.warning("Nie można otworzyć portu RS485 %s", self._port)
+        return ok
 
     async def ping(self, address: int) -> bool:
         async with self._lock:
             if not await self._ensure_connected():
                 return False
             try:
-                r = await self._client.read_holding_registers(0, count=1, device_id=address)
-                return not r.isError()
+                await self._client.read_holding_registers(0, count=1, device_id=address)
             except Exception:
                 return False
+            # Any reply addressed from this unit proves it is there - an
+            # exception response included. Plenty of controllers have no
+            # holding register 0 and answer "illegal data address", which
+            # used to make them invisible to discovery and to the online
+            # check of a device whose register reads all failed.
+            return True
 
-    async def _read_span(self, unit: int, reg_type: str, start: int, count: int, regs: list, result: Dict[str, dict]) -> bool:
+    async def _read_span(self, unit: int, reg_type: str, start: int, count: int, regs: list, result: Dict[str, dict]) -> str:
         """One Modbus request covering [start, start+count); decodes every
         register in `regs` by its address offset from `start` (gaps in a
-        merged span simply aren't decoded). Returns False on any transport
-        or protocol error so the caller can fall back to smaller reads.
+        merged span simply aren't decoded). Returns READ_OK, READ_REJECTED
+        (exception response - caller may fall back to smaller reads) or
+        READ_NO_RESPONSE (timeout/transport error).
         Must be called while holding self._lock."""
         is_bit = _is_bit_type(reg_type)
         method = getattr(self._client, _READ_METHOD[reg_type])
@@ -205,10 +249,10 @@ class ModbusRTUDriver(AbstractRS485Driver):
             r = await method(start, count=count, device_id=unit)
         except Exception as e:
             logger.debug("Read error addr=%d start=%d type=%s: %s", unit, start, reg_type, e)
-            return False
+            return READ_NO_RESPONSE
         if r.isError():
             logger.debug("Read error addr=%d start=%d type=%s: %s", unit, start, reg_type, r)
-            return False
+            return READ_REJECTED
         for reg in regs:
             offset = reg.address - start
             try:
@@ -220,7 +264,7 @@ class ModbusRTUDriver(AbstractRS485Driver):
                     result[reg.name] = {"value": round(value, 3), "unit": reg.unit or ""}
             except (ValueError, IndexError) as e:
                 logger.debug("Decode error addr=%d register=%s: %s", unit, reg.name, e)
-        return True
+        return READ_OK
 
     async def read_parameters(self, device) -> Dict[str, dict]:
         result: Dict[str, dict] = {}
@@ -234,11 +278,22 @@ class ModbusRTUDriver(AbstractRS485Driver):
         async with self._lock:
             if not await self._ensure_connected():
                 return result
+            answered = False
             for group in _plan_reads(profile.registers, max_gap):
-                ok = await self._read_span(
+                outcome = await self._read_span(
                     device.modbus_address, group["type"], group["start"], group["count"], group["regs"], result,
                 )
-                if not ok and len(group["subbatches"]) > 1:
+                if outcome == READ_NO_RESPONSE:
+                    if not answered:
+                        # Silent on the very first request: the controller
+                        # is offline/unpowered. Reading the remaining spans
+                        # (and their sub-batch fallbacks) would cost a full
+                        # timeout each - ~5 s of bus time per cycle for one
+                        # dead MPXPRO, delaying every live device.
+                        break
+                    continue
+                answered = True
+                if outcome == READ_REJECTED and len(group["subbatches"]) > 1:
                     # The controller may reject a span crossing unmapped
                     # addresses - retry as the strictly contiguous blocks.
                     for sub in group["subbatches"]:

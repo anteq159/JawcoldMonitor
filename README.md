@@ -175,6 +175,9 @@ pozostają nietknięte.
 ### Wykres historyczny
 
 W szczegółach sterownika wykres obejmuje zakresy 1h / 6h / 24h / 7d / 30d.
+Dłuższe zakresy są uśredniane po stronie serwera (np. 7d — średnie
+15-minutowe, 30d — godzinowe), więc wykres ładuje się szybko niezależnie od
+liczby zapisanych odczytów.
 Ikona suwaków nad wykresem pozwala **wyłączyć i włączyć poszczególne dane** —
 wybór jest zapamiętany dla tego sterownika i nie ukrywa wartości w pozostałych
 miejscach panelu. Serie można też przełączać doraźnie, klikając w legendę.
@@ -343,6 +346,7 @@ o których najłatwiej zapomnieć:
 |---|---|---|
 | `READINGS_RETENTION_DAYS` | `90` | ile dni historii odczytów trzymać. **Decyduje o zapełnieniu karty SD** — przy krótkim interwale skanowania i wielu sterownikach historia rośnie szybko |
 | `KNOWN_SCAN_INTERVAL` | `10` | co ile sekund odpytywane są znane urządzenia. Pojedynczy sterownik może mieć własny interwał (ikona zegara w jego szczegółach) |
+| `OFFLINE_POLL_INTERVAL` | `60` | sterownik ze statusem offline jest odpytywany najwyżej co tyle sekund (każde zapytanie do milczącego adresu blokuje magistralę na pełny timeout) |
 | `RS485_STOPBITS` | `1` | liczba bitów stopu; **Carel MPXPRO wymaga `2`** |
 | `RS485_PORTS` | `/dev/ttyUSB0` | port adaptera RS485; niektóre przejściówki zgłaszają się jako `/dev/ttyACM0` |
 | `DISCOVERY_MAX_ADDRESS` | `32` | do jakiego adresu Modbus sięga automatyczne wykrywanie |

@@ -24,6 +24,10 @@ class Settings(BaseSettings):
     MODBUS_BATCH_MAX_GAP: int = 8
     DISCOVERY_MAX_ADDRESS: int = 32
     KNOWN_SCAN_INTERVAL: int = 10
+    # Devices currently offline are probed at most this often (seconds)
+    # instead of at their normal interval - each probe of a silent address
+    # holds the RS485 bus for a full timeout.
+    OFFLINE_POLL_INTERVAL: int = 60
     DISCOVERY_SCAN_INTERVAL: int = 60
     DALLAS_SCAN_INTERVAL: int = 30
     PROFILE_REMOTE_URL: str = ""

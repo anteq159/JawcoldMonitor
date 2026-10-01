@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import re
 import uuid
 from contextlib import asynccontextmanager
 
@@ -25,6 +26,27 @@ from app.api.router import api_router
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 install_diagnostics_handler()
+
+
+class _RedactTokenFilter(logging.Filter):
+    """The browser WebSocket carries its JWT as ?token=..., and uvicorn's
+    access log wrote every one of them in clear text to `docker logs` - a
+    still-valid access token for anyone who can read the host's logs."""
+
+    _pattern = re.compile(r"(token=)[^&\s\"']+")
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if record.args and isinstance(record.args, tuple):
+            record.args = tuple(
+                self._pattern.sub(r"\1***", a) if isinstance(a, str) else a for a in record.args
+            )
+        elif isinstance(record.msg, str):
+            record.msg = self._pattern.sub(r"\1***", record.msg)
+        return True
+
+
+for _name in ("uvicorn.access", "uvicorn.error"):
+    logging.getLogger(_name).addFilter(_RedactTokenFilter())
 
 DEFAULT_PERMISSIONS = [
     ("device:read", "Odczyt urządzeń"),

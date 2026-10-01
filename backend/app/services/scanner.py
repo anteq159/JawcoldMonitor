@@ -51,6 +51,10 @@ _offline_alarmed: Set[int] = set()
 _last_disk_check: Optional[datetime] = None
 _disk_alarmed = False
 _last_auto_backup: Optional[datetime] = None
+# Consecutive unreadable DS18B20 reads per sensor - one CRC error on a long
+# cable is routine and must not flap the sensor offline/online.
+_sensor_read_failures: Dict[int, int] = {}
+SENSOR_FAILURES_BEFORE_OFFLINE = 3
 
 
 def get_last_tick() -> Optional[datetime]:
@@ -134,22 +138,28 @@ async def _scan_known_devices():
     if not _rs485_driver:
         return
     async with AsyncSessionLocal() as db:
-        result = await db.execute(select(Device.id, Device.poll_interval_seconds))
+        result = await db.execute(select(Device.id, Device.poll_interval_seconds, Device.status))
         rows = result.all()
 
     # Drop per-device state for devices that no longer exist. Besides the
     # slow leak, a device re-added under a recycled id would otherwise
     # inherit the previous one's offline/hardware-alarm state and either
     # miss an alarm or fire a spurious "back online".
-    live_ids = {device_id for device_id, _ in rows}
+    live_ids = {device_id for device_id, _, _ in rows}
     for state in (_last_known_scan, _active_hw_alarms, _offline_since):
         for stale_id in [k for k in state if k not in live_ids]:
             del state[stale_id]
     _offline_alarmed.intersection_update(live_ids)
 
     due_ids = []
-    for device_id, poll_interval in rows:
+    for device_id, poll_interval, status in rows:
         interval = poll_interval or settings.KNOWN_SCAN_INTERVAL
+        if status == "offline":
+            # A controller that is switched off or disconnected answers
+            # nothing, and every poll of it holds the half-duplex bus for a
+            # full timeout while live devices wait. Probe it less often; it
+            # is picked up again within OFFLINE_POLL_INTERVAL of returning.
+            interval = max(interval, settings.OFFLINE_POLL_INTERVAL)
         if _due(_last_known_scan.get(device_id), interval):
             _last_known_scan[device_id] = datetime.now(timezone.utc)
             due_ids.append(device_id)
@@ -327,6 +337,17 @@ async def _scan_dallas():
             logger.warning("Dallas scan error: %s", e)
             return
 
+        # A probe that dropped off the 1-Wire bus (cut cable, failed
+        # sensor) simply stops being listed - without this it stayed
+        # "online" forever with its last temperature frozen in the panel.
+        present = set(rom_ids)
+        missing_q = select(Sensor).where(Sensor.status == "online")
+        if present:
+            missing_q = missing_q.where(Sensor.rom_id.not_in(present))
+        missing_result = await db.execute(missing_q)
+        for sensor in missing_result.scalars():
+            _mark_sensor_offline(db, sensor)
+
         for rom_id in rom_ids:
             result = await db.execute(select(Sensor).where(Sensor.rom_id == rom_id))
             sensor = result.scalar_one_or_none()
@@ -358,15 +379,39 @@ async def _scan_dallas():
                         timestamp=datetime.now(timezone.utc),
                     )
                     db.add(r)
+                    _sensor_read_failures.pop(sensor.id, None)
+                    if sensor.status == "offline":
+                        db.add(EventLog(
+                            event_type="sensor_online", sensor_id=sensor.id,
+                            message=f"{sensor.name}: czujnik ponownie odczytywany",
+                        ))
                     sensor.status = "online"
                     sensor.last_seen = datetime.now(timezone.utc)
                     await db.commit()
                     await ws_manager.broadcast(ws_events.sensor_reading(sensor.id, temp, rom_id))
                     await _check_alerts(db, None, sensor.id, {"Temperatura": {"value": temp, "unit": "°C"}})
+                else:
+                    # Listed but unreadable: CRC failure or the 85 °C
+                    # power-on value (see W1DallasDriver._read_sync).
+                    failures = _sensor_read_failures.get(sensor.id, 0) + 1
+                    _sensor_read_failures[sensor.id] = failures
+                    if failures >= SENSOR_FAILURES_BEFORE_OFFLINE:
+                        _mark_sensor_offline(db, sensor)
             except Exception as e:
                 logger.warning("Dallas read error %s: %s", rom_id, e)
 
         await db.commit()
+
+
+def _mark_sensor_offline(db: AsyncSession, sensor: Sensor):
+    if sensor.status == "offline":
+        return
+    sensor.status = "offline"
+    db.add(EventLog(
+        event_type="sensor_offline", sensor_id=sensor.id,
+        message=f"{sensor.name}: brak odczytu z czujnika {sensor.rom_id}",
+    ))
+    logger.warning("Dallas sensor %s offline", sensor.rom_id)
 
 
 def _evaluate_condition(rule: AlertRule, value: float) -> bool:

@@ -2,7 +2,7 @@ from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 
 from app.core.database import get_db
 from app.models.reading import Reading
@@ -21,6 +21,47 @@ RANGE_MAP = {
 }
 
 
+# Server-side downsampling bucket per range - at most ~720 points per series.
+# One MPXPRO polled every 5 s writes ~535k rows a day; returning them raw
+# meant loading millions of ORM objects for a 7d/30d chart (minutes and
+# gigabytes on a Raspberry Pi) only for ECharts to draw a few hundred pixels.
+# Averages per bucket; the 1h bucket matches the fastest sensible poll rate
+# so that range stays effectively raw.
+BUCKET_MAP = {
+    "1h": timedelta(seconds=5),
+    "6h": timedelta(seconds=30),
+    "24h": timedelta(minutes=2),
+    "7d": timedelta(minutes=15),
+    "30d": timedelta(hours=1),
+}
+_BIN_ORIGIN = datetime(2000, 1, 1, tzinfo=timezone.utc)
+
+
+async def _bucketed_series(db: AsyncSession, owner_filter, range: str, params: Optional[List[str]] = None):
+    """{parameter_name: (unit, [ReadingPoint])} averaged into BUCKET_MAP[range]
+    buckets, in time order. Selects plain columns aggregated in Postgres -
+    never ORM objects."""
+    since = datetime.now(timezone.utc) - RANGE_MAP[range]
+    bucket = func.date_bin(BUCKET_MAP[range], Reading.timestamp, _BIN_ORIGIN).label("bucket")
+    q = (
+        select(Reading.parameter_name, bucket, func.avg(Reading.value), func.max(Reading.unit))
+        .where(owner_filter, Reading.timestamp >= since)
+        .group_by(Reading.parameter_name, bucket)
+        .order_by(Reading.parameter_name, bucket)
+    )
+    if params:
+        q = q.where(Reading.parameter_name.in_(params))
+    result = await db.execute(q)
+
+    series: dict = {}
+    for name, ts, value, unit in result.all():
+        entry = series.setdefault(name, [unit, []])
+        if unit:
+            entry[0] = unit
+        entry[1].append(ReadingPoint(timestamp=ts, value=round(value, 3)))
+    return series
+
+
 @router.get("/device/{device_id}", response_model=List[ParameterReadings])
 async def get_device_readings(
     device_id: int,
@@ -29,29 +70,14 @@ async def get_device_readings(
     db: AsyncSession = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
-    since = datetime.now(timezone.utc) - RANGE_MAP[range]
-    q = select(Reading).where(
-        Reading.device_id == device_id,
-        Reading.timestamp >= since,
-    ).order_by(Reading.timestamp)
-    if params:
-        param_list = [p.strip() for p in params.split(",")]
-        q = q.where(Reading.parameter_name.in_(param_list))
-    result = await db.execute(q)
-    rows = result.scalars().all()
-
-    grouped: dict = {}
-    units: dict = {}
-    for r in rows:
-        grouped.setdefault(r.parameter_name, []).append(ReadingPoint(timestamp=r.timestamp, value=r.value))
-        units[r.parameter_name] = r.unit
-
+    param_list = [p.strip() for p in params.split(",")] if params else None
+    series = await _bucketed_series(db, Reading.device_id == device_id, range, param_list)
     # Sorted by name, not by which parameter happened to be written first:
     # the chart assigns colours by series index, so an unstable order made
     # a series change colour between time ranges.
     return [
-        ParameterReadings(parameter_name=name, unit=units.get(name), readings=grouped[name])
-        for name in sorted(grouped)
+        ParameterReadings(parameter_name=name, unit=series[name][0], readings=series[name][1])
+        for name in sorted(series)
     ]
 
 
@@ -62,16 +88,9 @@ async def get_sensor_readings(
     db: AsyncSession = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
-    since = datetime.now(timezone.utc) - RANGE_MAP[range]
-    result = await db.execute(
-        select(Reading)
-        .where(Reading.sensor_id == sensor_id, Reading.timestamp >= since)
-        .order_by(Reading.timestamp)
-    )
-    rows = result.scalars().all()
-    pts = [ReadingPoint(timestamp=r.timestamp, value=r.value) for r in rows]
-    unit = rows[0].unit if rows else "°C"
-    return [ParameterReadings(parameter_name="Temperatura", unit=unit, readings=pts)]
+    series = await _bucketed_series(db, Reading.sensor_id == sensor_id, range)
+    unit, pts = series.get("Temperatura", ["°C", []])
+    return [ParameterReadings(parameter_name="Temperatura", unit=unit or "°C", readings=pts)]
 
 
 @router.get("/latest/device/{device_id}")
@@ -80,17 +99,23 @@ async def get_latest_device_readings(
     db: AsyncSession = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
-    # DISTINCT ON, not LIMIT: the scanner writes every parameter of one cycle
-    # with an identical timestamp, so "newest 20 rows" picked an arbitrary
-    # subset - a Carel MPXPRO alone has 31 registers, and which ones came back
-    # changed between calls.
+    # DISTINCT ON, not LIMIT: a Carel MPXPRO alone has 31 registers, and
+    # "newest 20 rows" returned an arbitrary, changing subset. But DISTINCT ON
+    # over the device's whole history sorted every row it ever wrote - 33 s
+    # and ~1 GB of temp files on the SD card at 15M rows. Every successful
+    # scan cycle writes all its parameters together, so the newest hour
+    # before the device's last reading holds the latest value of each one;
+    # both steps are range scans on ix_readings_device_ts (~0.2 s).
+    newest = await db.scalar(select(func.max(Reading.timestamp)).where(Reading.device_id == device_id))
+    if newest is None:
+        return {}
     result = await db.execute(
-        select(Reading)
-        .where(Reading.device_id == device_id)
+        select(Reading.parameter_name, Reading.value, Reading.unit, Reading.timestamp)
+        .where(Reading.device_id == device_id, Reading.timestamp >= newest - timedelta(hours=1))
         .distinct(Reading.parameter_name)
         .order_by(Reading.parameter_name, Reading.timestamp.desc())
     )
     return {
-        r.parameter_name: {"value": r.value, "unit": r.unit, "timestamp": r.timestamp.isoformat()}
-        for r in result.scalars().all()
+        name: {"value": value, "unit": unit, "timestamp": ts.isoformat()}
+        for name, value, unit, ts in result.all()
     }

@@ -1,5 +1,16 @@
+# Docker's default json-file driver never rotates: on a Pi running for
+# months the container logs grow without bound on the SD card (and
+# `docker logs` becomes unusably slow). 3 x 10 MB per container is plenty
+# for troubleshooting; application events live in the database anyway.
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   postgres:
+    logging: *default-logging
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
@@ -16,6 +27,7 @@ services:
       retries: 10
 
   redis:
+    logging: *default-logging
     image: redis:7-alpine
     restart: unless-stopped
     command: redis-server --appendonly yes
@@ -28,6 +40,7 @@ services:
       retries: 10
 
   backend:
+    logging: *default-logging
     build: ./backend
     restart: unless-stopped
     environment:
@@ -40,6 +53,7 @@ services:
       RS485_STOPBITS: ${RS485_STOPBITS:-1}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost}
       OFFLINE_ALARM_MINUTES: ${OFFLINE_ALARM_MINUTES:-5}
+      OFFLINE_POLL_INTERVAL: ${OFFLINE_POLL_INTERVAL:-60}
       DISK_ALARM_PERCENT: ${DISK_ALARM_PERCENT:-90}
       SMTP_HOST: ${SMTP_HOST:-}
       SMTP_PORT: ${SMTP_PORT:-587}
@@ -85,6 +99,7 @@ services:
         condition: service_healthy
 
   frontend:
+    logging: *default-logging
     build: ./frontend
     restart: unless-stopped
     ports:
