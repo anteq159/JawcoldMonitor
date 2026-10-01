@@ -180,10 +180,11 @@ pozostają nietknięte.
 - **Zmienne sterownika** — pełna tabela pogrupowana na Pomiary, Nastawy,
   Parametry, Stany i Alarmy; nastawy zapisuje się ikoną ołówka.
 
-O tym, gdzie trafia zmienna, decyduje jej **kategoria** w profilu
-(Konfiguracja → Edytuj → kolumna kategorii). Domyślnie wyznaczana
-automatycznie: rejestry bitowe (coil) to stany, zapisywalne to nastawy,
-pozostałe to pomiary.
+O tym, gdzie trafia zmienna, decyduje jej **kategoria** w profilu.
+Edytor profilu (Konfiguracja → Edytuj) jest podzielony na zakładki:
+**Ogólne** (nazwa, producent, model, opis) oraz **Pomiary**, **Nastawy**,
+**Parametry**, **Stany** i **Alarmy** — zmienną dodaje się w zakładce
+odpowiadającej jej znaczeniu, a kolumna „Przenieś do” zmienia grupę.
 
 Zmiany w profilach wbudowanych (np. Carel MPX MPXPRO) są zachowywane po
 restarcie — profil dostaje plakietkę „zmieniony”, a fabryczną mapę
@@ -191,12 +192,19 @@ rejestrów przywraca przycisk **Przywróć domyślne**.
 
 ### Wykres historyczny
 
-W szczegółach sterownika wykres obejmuje zakresy 1h / 6h / 24h / 7d / 30d.
-Domyślnie pokazuje tylko pomiary; nastawy można dołączyć ikoną suwaków,
-a flagi stanu nie są rysowane wcale.
-Dłuższe zakresy są uśredniane po stronie serwera (np. 7d — średnie
-15-minutowe, 30d — godzinowe), więc wykres ładuje się szybko niezależnie od
-liczby zapisanych odczytów.
+W szczegółach sterownika wykres obejmuje zakresy 1h / 6h / 24h / 7d / 30d /
+90d / 1 rok. Domyślnie pokazuje tylko pomiary; nastawy można dołączyć ikoną
+suwaków, a flagi stanu nie są rysowane wcale. Dłuższe zakresy są uśredniane
+po stronie serwera (7d — średnie 15-minutowe, 30d — godzinowe, 90d —
+6-godzinne, rok — dobowe), więc wykres ładuje się szybko niezależnie od
+liczby odczytów. 90 dni i rok korzystają z zapisanych średnich, które
+zostają także po usunięciu surowych odczytów.
+
+**Linie progowe**: nastawa i rzeczywiste progi alarmowe sterownika rysowane
+są jako poziome linie przerywane (nastawa szara, alarmy czerwone). Dla
+Carel MPXPRO uwzględniany jest parametr A1 — przy A1 = 0 (domyślnie) AL/AH
+są odchyłkami od St, więc np. St = 2, AL = 4, AH = 10 daje alarmy przy −2
+i 12 °C.
 Ikona suwaków nad wykresem pozwala **wyłączyć i włączyć poszczególne dane** —
 wybór jest zapamiętany dla tego sterownika i nie ukrywa wartości w pozostałych
 miejscach panelu. Serie można też przełączać doraźnie, klikając w legendę.
@@ -315,8 +323,10 @@ Od wersji 1.22 aktualizacja obejmuje naraz interfejs i backend — na Raspberry:
 ~/JawcoldMonitor/scripts/jawcold update
 ```
 
-Polecenie pobiera nowy kod, buduje/pobiera obrazy, restartuje kontenery
-i zapamiętuje poprzednią wersję. Powrót do niej: `jawcold rollback`.
+Polecenie pobiera nowy kod i gotowe obrazy (budowane automatycznie przez
+GitHub Actions dla arm64 i amd64 i publikowane w GHCR), restartuje kontenery
+i zapamiętuje poprzednią wersję. Bez dostępu do rejestru (albo z
+`JAWCOLD_BUILD=local` w `.env`) obrazy budowane są lokalnie. Powrót do niej: `jawcold rollback`.
 Inne: `jawcold status`, `jawcold logs`, `jawcold restart`. Panel
 (**Ustawienia → Aktualizacje**) pokazuje bieżącą i najnowszą dostępną wersję.
 
