@@ -1,14 +1,9 @@
 # JawcoldMonitor - jedyny plik potrzebny do uruchomienia:
 #
-#   docker compose up -d
+#   docker compose up -d --build
 #
-# Obrazy backendu i frontendu są pobierane gotowe z GHCR (budowane przez
-# GitHub Actions dla arm64 i amd64), więc instalacja na Raspberry trwa
-# minuty, nie kilkanaście minut kompilacji. `build:` zostaje jako
-# zapasowe źródło: bez dostępu do rejestru (lub z JAWCOLD_BUILD=local)
-# `jawcold update` buduje obrazy lokalnie z tego repozytorium.
-#
-# Wersję wybiera JAWCOLD_VERSION w .env (domyślnie "latest").
+# Obrazy backendu i frontendu budowane są lokalnie z tego repozytorium
+# (install.sh, scripts/jawcold update).
 name: jawcoldmonitor
 
 # Docker's default json-file driver never rotates: on a Pi running for
@@ -53,7 +48,7 @@ services:
       retries: 20
 
   backend:
-    image: ghcr.io/anteq159/jawcoldmonitor-backend:${JAWCOLD_VERSION:-latest}
+    image: jawcoldmonitor-backend
     build: ./backend
     restart: unless-stopped
     logging: *default-logging
@@ -93,7 +88,7 @@ services:
         condition: service_healthy
 
   frontend:
-    image: ghcr.io/anteq159/jawcoldmonitor-frontend:${JAWCOLD_VERSION:-latest}
+    image: jawcoldmonitor-frontend
     build: ./frontend
     restart: unless-stopped
     logging: *default-logging

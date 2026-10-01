@@ -2,7 +2,7 @@
 # jawcold - obsługa instalacji JawcoldMonitor na hoście (Raspberry Pi).
 #
 #   jawcold status      stan kontenerów i wersja
-#   jawcold update      pobiera nową wersję (obrazy z GHCR) i restartuje
+#   jawcold update      pobiera nowy kod, buduje obrazy i restartuje
 #   jawcold rollback    wraca do wersji sprzed ostatniego `update`
 #   jawcold restart     restart aplikacji (bez zmiany wersji)
 #   jawcold apply       stosuje zmiany z .env (np. PANEL_PORT) - compose up -d
@@ -36,26 +36,13 @@ save_rollback_point() {
     done
 }
 
-pull_or_build() {
-    if [ "${JAWCOLD_BUILD:-}" = "local" ] || grep -qE '^JAWCOLD_BUILD=local' .env 2>/dev/null; then
-        log "Budowanie obrazów lokalnie (JAWCOLD_BUILD=local)..."
-        $COMPOSE build $APP_SERVICES || return 1
-        $COMPOSE pull postgres || true
-        return 0
-    fi
-    if $COMPOSE pull; then
-        return 0
-    fi
-    warn "Nie udało się pobrać gotowych obrazów - buduję lokalnie (kilka-kilkanaście minut)..."
-    $COMPOSE build $APP_SERVICES
-}
-
 cmd_update() {
     if [ -d .git ]; then
         git pull --ff-only || warn "git pull nie powiódł się - kontynuuję z obecnymi plikami"
     fi
     save_rollback_point
-    pull_or_build || return 1
+    $COMPOSE build $APP_SERVICES || return 1
+    $COMPOSE pull postgres || warn "Nie udało się pobrać obrazu bazy - zostaje obecny"
     $COMPOSE up -d --remove-orphans postgres || return 1
     # Forced: after a local `compose build` compose does not always notice
     # that the image behind an unchanged tag is new, and kept running the

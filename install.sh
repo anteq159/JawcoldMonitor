@@ -5,7 +5,7 @@
 #
 # Co robi: instaluje Dockera (jeśli brak), pobiera repozytorium do
 # ~/JawcoldMonitor, generuje .env z losowym SECRET_KEY i hasłem bazy,
-# wykrywa adapter RS485, pobiera gotowe obrazy i uruchamia aplikację.
+# wykrywa adapter RS485, buduje obrazy i uruchamia aplikację.
 # Ponowne uruchomienie jest bezpieczne i działa jak aktualizacja -
 # istniejący .env i dane nie są nadpisywane.
 set -euo pipefail
@@ -80,11 +80,9 @@ fi
 mkdir -p backend/uploads backend/backups
 
 # --- Start ---
-log "Pobieram obrazy aplikacji..."
-if ! $DOCKER compose pull; then
-    warn "Gotowe obrazy niedostępne - buduję lokalnie (pierwszy raz na Pi kilkanaście minut)..."
-    $DOCKER compose build
-fi
+log "Buduję obrazy (pierwszy raz na Pi kilka-kilkanaście minut)..."
+$DOCKER compose pull postgres
+$DOCKER compose build
 $DOCKER compose up -d --remove-orphans
 
 IP="$(hostname -I 2>/dev/null | awk '{print $1}')"

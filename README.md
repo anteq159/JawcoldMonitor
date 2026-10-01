@@ -323,10 +323,8 @@ Od wersji 1.22 aktualizacja obejmuje naraz interfejs i backend — na Raspberry:
 ~/JawcoldMonitor/scripts/jawcold update
 ```
 
-Polecenie pobiera nowy kod i gotowe obrazy (budowane automatycznie przez
-GitHub Actions dla arm64 i amd64 i publikowane w GHCR), restartuje kontenery
-i zapamiętuje poprzednią wersję. Bez dostępu do rejestru (albo z
-`JAWCOLD_BUILD=local` w `.env`) obrazy budowane są lokalnie. Powrót do niej: `jawcold rollback`.
+Polecenie pobiera nowy kod, buduje obrazy na Raspberry, restartuje
+kontenery i zapamiętuje poprzednią wersję. Powrót do niej: `jawcold rollback`.
 Inne: `jawcold status`, `jawcold logs`, `jawcold restart`. Panel
 (**Ustawienia → Aktualizacje**) pokazuje bieżącą i najnowszą dostępną wersję.
 
