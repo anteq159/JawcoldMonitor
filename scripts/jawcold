@@ -56,7 +56,11 @@ cmd_update() {
     fi
     save_rollback_point
     pull_or_build || return 1
-    $COMPOSE up -d --remove-orphans || return 1
+    $COMPOSE up -d --remove-orphans postgres || return 1
+    # Forced: after a local `compose build` compose does not always notice
+    # that the image behind an unchanged tag is new, and kept running the
+    # old frontend.
+    $COMPOSE up -d --force-recreate --no-deps $APP_SERVICES || return 1
     $DOCKER image prune -f >/dev/null 2>&1 || true
     log "Zaktualizowano."
 }
