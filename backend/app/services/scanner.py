@@ -273,14 +273,19 @@ async def _maybe_discovery():
 
 
 async def _run_discovery():
+    # The bus sweep takes seconds; don't hold a DB transaction open
+    # ("idle in transaction") for all of it.
     async with AsyncSessionLocal() as db:
         result = await db.execute(select(Device.modbus_address))
         known = set(result.scalars().all())
-        try:
-            new_addresses = await _rs485_driver.scan_range(1, settings.DISCOVERY_MAX_ADDRESS, known)
-        except Exception as e:
-            logger.warning("Discovery error: %s", e)
-            return
+    try:
+        new_addresses = await _rs485_driver.scan_range(1, settings.DISCOVERY_MAX_ADDRESS, known)
+    except Exception as e:
+        logger.warning("Discovery error: %s", e)
+        return
+    if not new_addresses:
+        return
+    async with AsyncSessionLocal() as db:
         for addr in new_addresses:
             mock_info = {}
             if hasattr(_rs485_driver, "get_mock_device_info"):
