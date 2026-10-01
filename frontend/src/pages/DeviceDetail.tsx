@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { ChevronLeft, Pencil, Check, X, Timer, SlidersHorizontal } from 'lucide-react'
 import { getDevice, updateDevice } from '../api/devices'
-import { getDeviceReadings } from '../api/readings'
+import { getDeviceReadings, getDeviceThresholds, type ChartThreshold, type TimeRange } from '../api/readings'
 import { getDeviceProfile, type DeviceProfileDetail } from '../api/deviceProfiles'
 import type { Device } from '../types/device'
 import type { ParameterReadings } from '../types/reading'
@@ -20,8 +20,9 @@ import { useDeviceStore } from '../store/devices'
 import { useAuthStore } from '../store/auth'
 import toast from 'react-hot-toast'
 
-type Range = '1h' | '6h' | '24h' | '7d' | '30d'
-const RANGES: Range[] = ['1h', '6h', '24h', '7d', '30d']
+type Range = TimeRange
+const RANGES: Range[] = ['1h', '6h', '24h', '7d', '30d', '90d', '1y']
+const RANGE_LABELS: Partial<Record<Range, string>> = { '1y': '1 rok' }
 
 export default function DeviceDetail() {
   const { id } = useParams<{ id: string }>()
@@ -30,6 +31,7 @@ export default function DeviceDetail() {
   const [readings, setReadings] = useState<ParameterReadings[]>([])
   const [profile, setProfile] = useState<DeviceProfileDetail | null>(null)
   const [range, setRange] = useState<Range>('1h')
+  const [thresholds, setThresholds] = useState<ChartThreshold[]>([])
   const [loading, setLoading] = useState(true)
 
   const [editingName, setEditingName] = useState(false)
@@ -60,6 +62,7 @@ export default function DeviceDetail() {
   useEffect(() => {
     if (!deviceId) return
     getDeviceReadings(deviceId, range).then(setReadings)
+    getDeviceThresholds(deviceId).then(setThresholds).catch(() => setThresholds([]))
   }, [deviceId, range])
 
   const startEdit = () => { setNameInput(device?.name ?? ''); setEditingName(true) }
@@ -151,7 +154,8 @@ export default function DeviceDetail() {
   // which keep meaning "hidden".
   const toggleChartSeries = async (realName: string) => {
     if (!device) return
-    const key = isChartedByDefault(categoryOf(realName)) ? realName : `+${realName}`
+    // "line:KEY" = a threshold line switched off (lines start shown).
+    const key = realName.startsWith('line:') || isChartedByDefault(categoryOf(realName)) ? realName : `+${realName}`
     const hidden = device.chart_hidden_parameters.includes(key)
       ? device.chart_hidden_parameters.filter((n) => n !== key)
       : [...device.chart_hidden_parameters, key]
@@ -200,7 +204,7 @@ export default function DeviceDetail() {
   // reads as noise on a temperature axis; they live in "Stan i alarmy".
   const chartSeries = Array.from(new Set([
     ...readings.map((r) => r.parameter_name),
-    ...device.chart_hidden_parameters.map((n) => n.replace(/^\+/, '')),
+    ...device.chart_hidden_parameters.filter((n) => !n.startsWith('line:')).map((n) => n.replace(/^\+/, '')),
   ]))
     .filter((name) => !device.hidden_parameters.includes(name) && !isBinaryCategory(categoryOf(name)))
     .sort()
@@ -209,6 +213,8 @@ export default function DeviceDetail() {
     ['Nastawy i parametry', chartSeries.filter((n) => !isChartedByDefault(categoryOf(n)))],
   ]
   const lastSeen = device.last_seen ? new Date(device.last_seen) : null
+  const isLineShown = (key: string) => !device.chart_hidden_parameters.includes(`line:${key}`)
+  const shownThresholds = thresholds.filter((t) => isLineShown(t.key))
 
   return (
     <div className="space-y-5">
@@ -309,7 +315,7 @@ export default function DeviceDetail() {
           {RANGES.map((r) => (
             <button key={r} onClick={() => setRange(r)}
               className={`px-3 py-1 text-xs rounded-lg transition-colors ${range === r ? 'bg-accent text-white' : 'text-ink-muted hover:text-ink hover:bg-surface-2'}`}>
-              {r}
+              {RANGE_LABELS[r] ?? r}
             </button>
           ))}
         </div>
@@ -319,6 +325,22 @@ export default function DeviceDetail() {
               Kliknij, aby wyłączyć lub włączyć dane na wykresie. Wybór jest zapamiętany dla tego sterownika;
               wartości pozostają widoczne w „Pomiarach” i „Zmiennych sterownika”.
             </p>
+            {thresholds.length > 0 && (
+              <div className="mb-2">
+                <p className="text-[11px] uppercase tracking-wide text-ink-muted mb-1">Linie progowe</p>
+                <div className="flex flex-wrap gap-2">
+                  {thresholds.map((t) => {
+                    const on = isLineShown(t.key)
+                    return (
+                      <button key={t.key} onClick={() => toggleChartSeries(`line:${t.key}`)}
+                        className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${on ? 'bg-accent border-accent text-white' : 'bg-surface-2 border-border text-ink-muted hover:border-border-strong'}`}>
+                        {t.label} ({t.value} {t.unit ?? ''})
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
             {chartGroups.filter(([, names]) => names.length).map(([label, names]) => (
               <div key={label} className="mb-2">
                 <p className="text-[11px] uppercase tracking-wide text-ink-muted mb-1">{label}</p>
@@ -347,6 +369,7 @@ export default function DeviceDetail() {
                 parameter_name: device.parameter_aliases[r.parameter_name] ?? r.parameter_name,
               }))}
             hiddenSeries={chartSeries.filter((n) => !isSeriesShown(n))}
+            thresholds={shownThresholds}
             height={320}
           />
         </div>

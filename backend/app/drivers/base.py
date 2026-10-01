@@ -45,6 +45,17 @@ class AlarmDescription:
     severity: str = "warning"  # info | warning | critical
 
 
+@dataclass
+class ChartThreshold:
+    """A horizontal reference line on the device chart (setpoint, alarm
+    limit), in the same unit as the probe it applies to."""
+    key: str
+    label: str
+    value: float
+    kind: str = "setpoint"  # setpoint | alarm_low | alarm_high
+    unit: Optional[str] = None
+
+
 class AbstractControllerDriver(ABC):
     """Manufacturer-specific layer sitting above the transport (RS485/Modbus RTU
     today, Modbus TCP later). Each manufacturer implements this once; the
@@ -73,6 +84,16 @@ class AbstractControllerDriver(ABC):
     def decode_alarm(self, code: int) -> AlarmDescription:
         """Translate a manufacturer-specific alarm code into a description."""
         ...
+
+    # (register_type, address) -> role, for chart_thresholds(). Matched by
+    # address rather than name so a register renamed in a customized
+    # profile still resolves.
+    threshold_registers: Dict[str, tuple] = {}
+
+    def chart_thresholds(self, values: Dict[str, float]) -> List[ChartThreshold]:
+        """Reference lines for the chart from the controller's current
+        setpoints, keyed by role from threshold_registers. Default: none."""
+        return []
 
     @abstractmethod
     def known_alarm_codes(self) -> List[AlarmDescription]:

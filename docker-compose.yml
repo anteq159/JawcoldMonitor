@@ -35,11 +35,19 @@ services:
       POSTGRES_DB: jawcold
       POSTGRES_USER: jawcold
       POSTGRES_PASSWORD: ${DB_PASSWORD:-jawcold_dev_pass}
+      # The image's first-start timescaledb-tune reads the container memory
+      # limit as 0 under cgroup v2 on Raspberry Pi OS and panics, aborting
+      # initdb - fresh installs never came up. Postgres defaults are fine
+      # for this workload.
+      NO_TS_TUNE: "true"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U jawcold"]
+      # Over TCP: during first-start initdb the image runs a temporary
+      # socket-only server, which a plain pg_isready reported as ready -
+      # the backend then connected too early and failed.
+      test: ["CMD-SHELL", "pg_isready -U jawcold -h 127.0.0.1"]
       interval: 5s
       timeout: 5s
       retries: 20

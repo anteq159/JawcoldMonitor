@@ -1,5 +1,6 @@
 import ReactECharts from 'echarts-for-react'
 import type { ParameterReadings } from '../../types/reading'
+import type { ChartThreshold } from '../../api/readings'
 
 interface Props {
   data: ParameterReadings[]
@@ -10,6 +11,16 @@ interface Props {
   // and are dimmed via legend.selected rather than filtered out of `data` -
   // dropping them would shift every later series onto a different colour.
   hiddenSeries?: string[]
+  // Horizontal reference lines (setpoint, alarm limits) - drawn as dashed
+  // markLines rather than as flat series, so they never compete with the
+  // probe curves for colours or legend space.
+  thresholds?: ChartThreshold[]
+}
+
+const THRESHOLD_COLORS: Record<ChartThreshold['kind'], string> = {
+  setpoint: '#3E4B48',
+  alarm_low: '#C53030',
+  alarm_high: '#C53030',
 }
 
 // Categorical theme: slots 1-2 are the app's own brand hues (accent blue, teal),
@@ -17,7 +28,7 @@ interface Props {
 // (see dataviz skill: color-formula.md six checks). Never cycle/reorder per-chart.
 const COLORS = ['#2B6CB0', '#0D9488', '#eda100', '#008300', '#4a3aa7', '#e34948', '#e87ba4', '#eb6834']
 
-export function TimeSeriesChart({ data, height = 300, title, hiddenSeries = [] }: Props) {
+export function TimeSeriesChart({ data, height = 300, title, hiddenSeries = [], thresholds = [] }: Props) {
   if (!data.length || data.every((d) => !d.readings.length)) {
     return (
       <div className="flex items-center justify-center text-ink-muted text-sm" style={{ height }}>
@@ -44,7 +55,34 @@ export function TimeSeriesChart({ data, height = 300, title, hiddenSeries = [] }
     data: d.readings.map((r) => [new Date(r.timestamp).getTime(), r.value]),
     lineStyle: { color: COLORS[i % COLORS.length], width: 2, cap: 'round', join: 'round' },
     itemStyle: { color: COLORS[i % COLORS.length] },
-  }))
+  })) as any[]
+
+  if (thresholds.length) {
+    // Carrier series with no data of its own: markLines hang off a series,
+    // and a probe series could be switched off in the legend.
+    series.push({
+      name: '__thresholds',
+      type: 'line',
+      data: [],
+      markLine: {
+        silent: true,
+        symbol: 'none',
+        animation: false,
+        data: thresholds.map((t) => ({
+          name: t.label,
+          yAxis: t.value,
+          lineStyle: { color: THRESHOLD_COLORS[t.kind], type: 'dashed', width: 1.5 },
+          label: {
+            formatter: `${t.label}: ${t.value}${t.unit ? ' ' + t.unit : ''}`,
+            position: 'insideEndTop',
+            color: THRESHOLD_COLORS[t.kind],
+            fontSize: 10,
+          },
+        })),
+      },
+    })
+  }
+  const thresholdValues = thresholds.map((t) => t.value)
 
   const option = {
     backgroundColor: 'transparent',
@@ -58,7 +96,7 @@ export function TimeSeriesChart({ data, height = 300, title, hiddenSeries = [] }
       formatter: (params: any[]) => {
         const time = new Date(params[0].axisValue).toLocaleString('pl-PL')
         return `<div style="font-size:11px;color:#7D8E8A;margin-bottom:4px">${time}</div>` +
-          params.map((p: any) => `<div>${p.marker}${p.seriesName}: <b>${Number(Number(p.value[1]).toFixed(2))}</b></div>`).join('')
+          params.filter((p: any) => p.seriesName !== '__thresholds').map((p: any) => `<div>${p.marker}${p.seriesName}: <b>${Number(Number(p.value[1]).toFixed(2))}</b></div>`).join('')
       },
     },
     legend: {
@@ -73,7 +111,7 @@ export function TimeSeriesChart({ data, height = 300, title, hiddenSeries = [] }
       // colours) but listing them greyed-out turned an 8-probe chart's
       // legend into five pages of switched-off setpoints. They are switched
       // back on from the series picker instead.
-      data: hiddenSeries.length ? data.filter((d) => selected[seriesName(d)]).map(seriesName) : undefined,
+      data: hiddenSeries.length || thresholds.length ? data.filter((d) => selected[seriesName(d)]).map(seriesName) : undefined,
       textStyle: { color: '#7D8E8A', fontSize: 11 },
       top: 0,
     },
@@ -99,6 +137,9 @@ export function TimeSeriesChart({ data, height = 300, title, hiddenSeries = [] }
     },
     yAxis: {
       type: 'value',
+      // Lines outside the data range would otherwise be drawn off-chart.
+      min: thresholdValues.length ? (v: { min: number }) => Math.floor(Math.min(v.min, ...thresholdValues) - 1) : undefined,
+      max: thresholdValues.length ? (v: { max: number }) => Math.ceil(Math.max(v.max, ...thresholdValues) + 1) : undefined,
       axisLine: { lineStyle: { color: '#DCE6E4' } },
       axisLabel: { color: '#7D8E8A', fontSize: 10 },
       splitLine: { lineStyle: { color: '#EEF3F2' } },

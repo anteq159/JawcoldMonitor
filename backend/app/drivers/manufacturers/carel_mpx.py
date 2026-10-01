@@ -2,7 +2,7 @@ import math
 import random
 from typing import Dict, List, Optional
 
-from app.drivers.base import AbstractControllerDriver, RegisterMapEntry, ControllerModel, AlarmDescription
+from app.drivers.base import AbstractControllerDriver, RegisterMapEntry, ControllerModel, AlarmDescription, ChartThreshold
 from app.drivers.registry import register_driver
 
 
@@ -97,6 +97,35 @@ class CarelMPXDriver(AbstractControllerDriver):
             RegisterMapEntry(address=24, name="Alarm wysokiej temperatury (HI)", data_type="uint16", register_type="coil", category="alarm"),
             RegisterMapEntry(address=114, name="Przekaźnik alarmowy (zbiorczy)", data_type="uint16", is_alarm_register=True, register_type="coil"),
         ]
+
+    threshold_registers = {
+        "St": ("holding", 39),
+        "AL": ("holding", 54),
+        "AH": ("holding", 55),
+        "A1": ("coil", 93),
+    }
+
+    def chart_thresholds(self, values: Dict[str, float]) -> List[ChartThreshold]:
+        """St plus the effective alarm limits. MPXPRO's A1 decides how AL/AH
+        are read: 0 (factory default) = offsets from St, 1 = absolute
+        temperatures - so with A1=0 and St=2, AL=4, AH=10 the alarms are at
+        -2 and 12 degC, not at 4 and 10."""
+        lines: List[ChartThreshold] = []
+        st = values.get("St")
+        if st is not None:
+            lines.append(ChartThreshold("St", "Nastawa St", st, "setpoint", "°C"))
+        relative = not values.get("A1")
+        for key, kind, sign in (("AL", "alarm_low", -1), ("AH", "alarm_high", 1)):
+            limit = values.get(key)
+            if limit is None:
+                continue
+            if relative:
+                if st is None:
+                    continue
+                limit = st + sign * limit
+            label = "Alarm niskiej temp." if kind == "alarm_low" else "Alarm wysokiej temp."
+            lines.append(ChartThreshold(key, label, round(limit, 2), kind, "°C"))
+        return lines
 
     def identify(self, model_hint: Optional[str] = None) -> ControllerModel:
         return ControllerModel(model=model_hint or "MPXPRO", description="Sterownik Carel MPXPRO (Sonda 1, nastawy, alarmy - zweryfikowane na sprzęcie)")

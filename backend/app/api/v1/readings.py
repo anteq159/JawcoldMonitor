@@ -1,3 +1,4 @@
+from dataclasses import asdict
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 from fastapi import APIRouter, Depends, Query
@@ -19,7 +20,10 @@ RANGE_MAP = {
     "24h": timedelta(hours=24),
     "7d": timedelta(days=7),
     "30d": timedelta(days=30),
+    "90d": timedelta(days=90),
+    "1y": timedelta(days=365),
 }
+RANGE_PATTERN = "^(1h|6h|24h|7d|30d|90d|1y)$"
 
 
 # Server-side downsampling bucket per range - at most ~720 points per series.
@@ -34,6 +38,8 @@ BUCKET_MAP = {
     "24h": timedelta(minutes=2),
     "7d": timedelta(minutes=15),
     "30d": timedelta(hours=1),
+    "90d": timedelta(hours=6),
+    "1y": timedelta(days=1),
 }
 _BIN_ORIGIN = datetime(2000, 1, 1, tzinfo=timezone.utc)
 
@@ -41,7 +47,11 @@ _BIN_ORIGIN = datetime(2000, 1, 1, tzinfo=timezone.utc)
 # Ranges served from the TimescaleDB 15-minute continuous aggregate when it
 # exists (app.core.timescale) - a few thousand pre-aggregated rows instead
 # of millions of raw ones.
-CAGG_RANGES = {"7d", "30d"}
+# 90d/1y outlive READINGS_RETENTION_DAYS: the aggregate keeps its rows when
+# raw day-chunks are dropped, so on TimescaleDB a year of 15-min averages
+# stays available (on plain Postgres those ranges just show what raw rows
+# are left).
+CAGG_RANGES = {"7d", "30d", "90d", "1y"}
 
 
 async def _cagg_series(db: AsyncSession, owner_col: str, owner_id: int, range: str, params: Optional[List[str]]):
@@ -97,7 +107,7 @@ async def _bucketed_series(db: AsyncSession, owner_filter, range: str, params: O
 @router.get("/device/{device_id}", response_model=List[ParameterReadings])
 async def get_device_readings(
     device_id: int,
-    range: str = Query("1h", pattern="^(1h|6h|24h|7d|30d)$"),
+    range: str = Query("1h", pattern=RANGE_PATTERN),
     params: Optional[str] = Query(None, description="Comma-separated parameter names"),
     db: AsyncSession = Depends(get_db),
     _: User = Depends(get_current_user),
@@ -116,7 +126,7 @@ async def get_device_readings(
 @router.get("/sensor/{sensor_id}", response_model=List[ParameterReadings])
 async def get_sensor_readings(
     sensor_id: int,
-    range: str = Query("24h", pattern="^(1h|6h|24h|7d|30d)$"),
+    range: str = Query("24h", pattern=RANGE_PATTERN),
     db: AsyncSession = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
@@ -138,6 +148,13 @@ async def get_latest_device_readings(
     # scan cycle writes all its parameters together, so the newest hour
     # before the device's last reading holds the latest value of each one;
     # both steps are range scans on ix_readings_device_ts (~0.2 s).
+    return {
+        name: {"value": value, "unit": unit, "timestamp": ts.isoformat()}
+        for name, (value, unit, ts) in (await _latest_values(db, device_id)).items()
+    }
+
+
+async def _latest_values(db: AsyncSession, device_id: int) -> dict:
     newest = await db.scalar(select(func.max(Reading.timestamp)).where(Reading.device_id == device_id))
     if newest is None:
         return {}
@@ -147,7 +164,32 @@ async def get_latest_device_readings(
         .distinct(Reading.parameter_name)
         .order_by(Reading.parameter_name, Reading.timestamp.desc())
     )
-    return {
-        name: {"value": value, "unit": unit, "timestamp": ts.isoformat()}
-        for name, value, unit, ts in result.all()
-    }
+    return {name: (value, unit, ts) for name, value, unit, ts in result.all()}
+
+
+@router.get("/thresholds/device/{device_id}")
+async def get_device_thresholds(
+    device_id: int,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    """Horizontal reference lines for the device chart (setpoint, effective
+    alarm limits) computed by the manufacturer driver from the controller's
+    current values. Empty for profiles without a driver."""
+    import app.drivers.manufacturers  # noqa: F401 - registration
+    from app.drivers.registry import get_driver
+    from app.models.device import Device
+
+    device = await db.get(Device, device_id)
+    profile = device.profile if device else None
+    driver_cls = get_driver(profile.manufacturer) if profile and profile.manufacturer else None
+    if not driver_cls or not driver_cls.threshold_registers:
+        return []
+    by_location = {(r.register_type, r.address): r.name for r in profile.registers}
+    latest = await _latest_values(db, device_id)
+    values = {}
+    for role, location in driver_cls.threshold_registers.items():
+        name = by_location.get(location)
+        if name in latest:
+            values[role] = latest[name][0]
+    return [asdict(t) for t in driver_cls().chart_thresholds(values)]
