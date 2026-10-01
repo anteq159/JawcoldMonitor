@@ -27,6 +27,8 @@ class RegisterMapEntry:
     writable: bool = False
     is_alarm_register: bool = False
     register_type: str = "holding"
+    # Display category (see app.services.register_category); None = derived.
+    category: Optional[str] = None
 
 
 @dataclass

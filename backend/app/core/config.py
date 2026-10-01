@@ -5,7 +5,8 @@ from typing import List
 class Settings(BaseSettings):
     PREVIEW_MODE: bool = False
     DATABASE_URL: str = "postgresql+asyncpg://jawcold:jawcold_dev_pass@postgres/jawcold"
-    REDIS_URL: str = "redis://redis:6379"
+    # Optional - see core/redis.py. Empty = in-process WebSocket broadcast.
+    REDIS_URL: str = ""
     SECRET_KEY: str = "dev-secret-key-change-in-production-32chars"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
     REFRESH_TOKEN_EXPIRE_MINUTES: int = 10080  # 7 days
@@ -14,7 +15,11 @@ class Settings(BaseSettings):
     # Carel MPXpro: port supervisor pracuje na sztywno na 19200 8N2 -
     # bez 2 bitów stopu sterownik nie odpowie mimo poprawnego okablowania.
     RS485_STOPBITS: int = 1
-    MODBUS_TIMEOUT: float = 0.15
+    # 0.3 s, not 0.15: a Carel MPXPRO answering a 26-register read at
+    # 19200 baud regularly took longer than 0.15 s, and the late reply was
+    # then mistaken for the answer to the following request (see
+    # modbus_rtu._read_span).
+    MODBUS_TIMEOUT: float = 0.3
     # Merge register reads separated by up to N unmapped addresses into a
     # single Modbus request (the extra words in the gap are read and
     # discarded - one transaction's ~50-150ms round trip costs far more
@@ -28,7 +33,11 @@ class Settings(BaseSettings):
     # instead of at their normal interval - each probe of a silent address
     # holds the RS485 bus for a full timeout.
     OFFLINE_POLL_INTERVAL: int = 60
-    DISCOVERY_SCAN_INTERVAL: int = 60
+    # Every sweep pings each unused address and waits a full timeout on it -
+    # once a minute that was ~10 s of every 60 s of bus time for nothing on
+    # a stable installation. New controllers still appear within 5 minutes,
+    # or immediately via "Skanuj" in the panel.
+    DISCOVERY_SCAN_INTERVAL: int = 300
     DALLAS_SCAN_INTERVAL: int = 30
     PROFILE_REMOTE_URL: str = ""
     # Production panel is same-origin behind nginx (port 80); :823 is the

@@ -21,6 +21,7 @@ from app.models.user import User, Role, Permission, role_permissions, user_roles
 from app.websocket.manager import ws_manager
 from app.services.scanner import scanner_loop
 from app.services.update_apply import get_current_version
+from app.services.builtin_profiles import GENERIC_PROFILES as _GENERIC_PROFILES
 from app.api.router import api_router
 
 logging.basicConfig(level=logging.INFO)
@@ -191,11 +192,16 @@ async def _init_manufacturer_profiles():
                     writable=r.writable,
                     is_alarm_register=r.is_alarm_register,
                     register_type=r.register_type,
+                    category=r.category,
                 )
                 for i, r in enumerate(driver.default_register_map())
             ]
             if profile:
-                if profile.source == "builtin":
+                # customized: edited in Konfiguracja - re-syncing it here
+                # used to wipe every user change on each backend restart.
+                # "Przywróć domyślne" (POST /device-profiles/{id}/reset)
+                # clears the flag to opt back in.
+                if profile.source == "builtin" and not profile.customized:
                     profile.model = model.model
                     profile.description = model.description
                     profile.registers = registers
@@ -217,38 +223,6 @@ async def _init_manufacturer_profiles():
         await db.commit()
 
 
-# Generic, vendor-agnostic starting templates for the Konfiguracja page's
-# "Inne" tab - other common Modbus devices someone might monitor alongside
-# refrigeration controllers (a site's energy meter, a pressure transducer
-# on a compressor line). Not manufacturer/driver-backed like the profiles
-# above: no real-world brand identity, no alarm register, so there's
-# nothing for decode_active_alarms() to do with them and no mock
-# simulation - a device assigned one of these needs its own real
-# register values, this is a starting point to edit, not a demo device.
-_GENERIC_PROFILES = [
-    {
-        "name": "Licznik energii (ogólny)",
-        "description": "Uniwersalny szablon licznika energii 3-fazowego - adresy przykładowe, dostosuj do konkretnego licznika.",
-        "registers": [
-            {"address": 0, "name": "Napięcie L1", "unit": "V", "data_type": "float32", "scale_factor": 1.0},
-            {"address": 2, "name": "Napięcie L2", "unit": "V", "data_type": "float32", "scale_factor": 1.0},
-            {"address": 4, "name": "Napięcie L3", "unit": "V", "data_type": "float32", "scale_factor": 1.0},
-            {"address": 6, "name": "Prąd L1", "unit": "A", "data_type": "float32", "scale_factor": 1.0},
-            {"address": 20, "name": "Moc czynna", "unit": "kW", "data_type": "float32", "scale_factor": 1.0},
-            {"address": 40, "name": "Energia", "unit": "kWh", "data_type": "float32", "scale_factor": 1.0},
-        ],
-    },
-    {
-        "name": "Przetwornik ciśnienia (ogólny)",
-        "description": "Uniwersalny szablon przetwornika ciśnienia (np. na linii ssawnej/tłocznej sprężarki) - adresy przykładowe.",
-        "registers": [
-            {"address": 0, "name": "Ciśnienie", "unit": "bar", "data_type": "int16", "scale_factor": 0.01},
-            {"address": 1, "name": "Temperatura medium", "unit": "°C", "data_type": "int16", "scale_factor": 0.1},
-        ],
-    },
-]
-
-
 async def _init_generic_profiles():
     """Seed the fixed generic (non-manufacturer) profile templates above.
     Keyed by name (not manufacturer, which is null for these) for the same
@@ -261,7 +235,7 @@ async def _init_generic_profiles():
             profile = result.scalar_one_or_none()
             registers = [RegisterDefinition(**r) for r in spec["registers"]]
             if profile:
-                if profile.source == "builtin":
+                if profile.source == "builtin" and not profile.customized:
                     profile.description = spec["description"]
                     profile.registers = registers
                 continue
@@ -317,11 +291,19 @@ async def _ensure_secret_key():
 async def lifespan(app: FastAPI):
     logger.info("Starting JawcoldMonitor (PREVIEW=%s)", settings.PREVIEW_MODE)
     await init_db()
+    from app.core.timescale import ensure_timescale
+    try:
+        await ensure_timescale()
+    except Exception as e:
+        # Never keep the panel down over this - the plain-table code paths
+        # still work, only slower.
+        logger.error("Konfiguracja TimescaleDB nie powiodła się: %s", e)
     await _ensure_secret_key()
     await init_redis()
     redis = get_redis()
-    ws_manager.init_redis(redis)
-    await ws_manager.start_listener()
+    if redis is not None:
+        ws_manager.init_redis(redis)
+        await ws_manager.start_listener()
     await _init_defaults()
     await _init_manufacturer_profiles()
     await _init_generic_profiles()

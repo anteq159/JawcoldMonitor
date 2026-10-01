@@ -1,4 +1,4 @@
-from typing import Optional, List
+from typing import Literal, Optional, List
 from pydantic import BaseModel
 
 
@@ -14,6 +14,7 @@ class RegisterDefinitionOut(BaseModel):
     writable: bool = False
     is_alarm_register: bool = False
     register_type: str = "holding"
+    category: Optional[str] = None
 
     model_config = {"from_attributes": True}
 
@@ -28,6 +29,7 @@ class RegisterDefinitionIn(BaseModel):
     writable: bool = False
     is_alarm_register: bool = False
     register_type: str = "holding"
+    category: Optional[Literal["measurement", "setpoint", "parameter", "status", "alarm"]] = None
 
 
 class DeviceProfileOut(BaseModel):
@@ -37,6 +39,7 @@ class DeviceProfileOut(BaseModel):
     model: Optional[str] = None
     description: Optional[str] = None
     source: str
+    customized: bool = False
     registers: List[RegisterDefinitionOut] = []
 
     model_config = {"from_attributes": True}

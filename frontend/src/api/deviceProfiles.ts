@@ -1,4 +1,5 @@
 import api from './client'
+import type { RegisterCategory } from '../utils/registers'
 
 export interface RegisterDefinition {
   id: number
@@ -12,6 +13,7 @@ export interface RegisterDefinition {
   writable: boolean
   is_alarm_register: boolean
   register_type: 'holding' | 'input' | 'coil' | 'discrete_input'
+  category: RegisterCategory | null
 }
 
 export interface RegisterDefinitionInput {
@@ -24,6 +26,7 @@ export interface RegisterDefinitionInput {
   writable: boolean
   is_alarm_register?: boolean
   register_type?: 'holding' | 'input' | 'coil' | 'discrete_input'
+  category?: RegisterCategory | null
 }
 
 export interface DeviceProfileDetail {
@@ -33,6 +36,9 @@ export interface DeviceProfileDetail {
   model: string | null
   description: string | null
   source: string
+  // Built-in profile edited by a user - kept as-is across restarts until
+  // "Przywróć domyślne" (resetDeviceProfile).
+  customized: boolean
   registers: RegisterDefinition[]
 }
 
@@ -51,3 +57,5 @@ export const createDeviceProfile = (data: DeviceProfileInput): Promise<DevicePro
 export const updateDeviceProfile = (id: number, data: Partial<DeviceProfileInput>): Promise<DeviceProfileDetail> =>
   api.put(`/device-profiles/${id}`, data).then((r) => r.data)
 export const deleteDeviceProfile = (id: number): Promise<void> => api.delete(`/device-profiles/${id}`)
+export const resetDeviceProfile = (id: number): Promise<DeviceProfileDetail> =>
+  api.post(`/device-profiles/${id}/reset`).then((r) => r.data)

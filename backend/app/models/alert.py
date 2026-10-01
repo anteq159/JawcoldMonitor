@@ -22,6 +22,8 @@ class AlertRule(Base, TimestampMixin):
     category: Mapped[str] = mapped_column(String(32), default="Inne")  # Temperatura, Komunikacja, Drzwi, Zasilanie, Sprzęt, Inne
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     notify_channels: Mapped[Optional[List]] = mapped_column(JSONB, default=list)
+    # Condition must hold continuously this long before an event is raised.
+    delay_seconds: Mapped[int] = mapped_column(Integer, default=0)
 
     events: Mapped[List["AlertEvent"]] = relationship("AlertEvent", back_populates="rule", cascade="all, delete-orphan")
 

@@ -5,7 +5,7 @@ System monitoringu chłodnictwa na Raspberry Pi: sterowniki chłodnicze po RS485
 (1-Wire), alarmy progowe i sprzętowe, wykresy historyczne, mapy obiektu,
 eksporty i role użytkowników.
 
-Stack: FastAPI + PostgreSQL + Redis (backend), React + Vite (frontend),
+Stack: FastAPI + PostgreSQL/TimescaleDB (backend), React + Vite (frontend),
 całość w Dockerze.
 
 ---
@@ -69,10 +69,11 @@ sudo usermod -aG docker $USER   # przeloguj się po tej komendzie
 curl -fsSL https://raw.githubusercontent.com/anteq159/JawcoldMonitor/main/install.sh | bash
 ```
 
-Skrypt sam: instaluje Dockera (jeśli brak), klonuje repozytorium do
+Skrypt sam: instaluje Dockera (jeśli brak), pobiera repozytorium do
 `~/JawcoldMonitor`, generuje `.env` z **losowym `SECRET_KEY` i hasłem bazy**,
-wykrywa adapter RS485 i uruchamia aplikację. Ponowne uruchomienie skryptu jest
-bezpieczne (aktualizuje repo, nie nadpisuje `.env` ani danych).
+wykrywa adapter RS485 (stała ścieżka z `/dev/serial/by-id/`) i uruchamia
+aplikację. Ponowne uruchomienie skryptu jest bezpieczne (działa jak
+aktualizacja, nie nadpisuje `.env` ani danych).
 
 Panel: `http://<adres-pi>` (port 80). Po zalogowaniu wszystkie ustawienia
 robocze (interwały skanowania, alarmy, powiadomienia, kopie zapasowe, port
@@ -87,8 +88,12 @@ git clone https://github.com/anteq159/JawcoldMonitor.git
 cd JawcoldMonitor
 cp .env.example .env
 nano .env   # ustaw DB_PASSWORD, SECRET_KEY (openssl rand -hex 32), RS485_PORTS, ALLOWED_ORIGINS
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+docker compose up -d
 ```
+
+Jeden plik `docker-compose.yml` obsługuje wszystko — adapter RS485 jest
+widoczny przez `/dev` (z ograniczeniem do portów szeregowych USB), więc można
+go odłączyć i podłączyć bez restartu kontenerów.
 
 Bez własnego `SECRET_KEY` aplikacja wygeneruje losowy przy pierwszym starcie
 i zapisze go trwale w bazie. Tryb
@@ -100,19 +105,12 @@ demonstracyjny bez sprzętu: `PREVIEW_MODE=true` i sam `docker compose up -d`.
 Panel domyślnie działa na porcie **80** (`http://<adres-pi>`). Port można
 zmienić na dwa sposoby:
 
-- w pliku `.env` — wpis `PANEL_PORT=8080`, potem
-  `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d`,
+- w pliku `.env` — wpis `PANEL_PORT=8080`, potem `~/JawcoldMonitor/scripts/jawcold apply`,
 - z panelu — **Ustawienia → Konfiguracja systemu → Sieć → Port panelu WWW**;
   zapis trafia do `.env` na hoście, a nowy port zaczyna działać po wykonaniu
-  na Raspberry `cd ~/JawcoldMonitor && docker compose -f docker-compose.yml
-  -f docker-compose.prod.yml up -d` (albo po ponownym uruchomieniu
-  `install.sh`). Aplikacja nie może sama przełączyć portu, bo mapowanie
-  portów wykonuje Docker przy tworzeniu kontenera.
-
-> **Uwaga:** na instalacji produkcyjnej zawsze podawaj oba pliki `-f`.
-> Samo `docker compose up -d` odtworzy backend **bez** zmapowanego portu
-> RS485 (`devices:` jest tylko w `docker-compose.prod.yml`) i wszystkie
-> sterowniki będą pokazywać się jako offline.
+  na Raspberry `~/JawcoldMonitor/scripts/jawcold apply`. Aplikacja nie może
+  sama przełączyć portu, bo mapowanie portów wykonuje Docker przy tworzeniu
+  kontenera.
 
 ---
 
@@ -172,9 +170,30 @@ tryb edycji, w którym dla **tego jednego urządzenia** można:
 Profil rejestrów i pozostałe urządzenia korzystające z tego samego profilu
 pozostają nietknięte.
 
+### Strona sterownika
+
+- **Pomiary** — na pierwszym kafelku tylko wartości procesowe (sondy,
+  ciśnienia). Wejście bez podłączonej sondy pokazuje „brak sondy” zamiast
+  wartości typu −204,8 °C. Nastawy i parametry są zwinięte pod kafelkiem.
+- **Stan i alarmy** — flagi sterownika (błąd czujnika, alarm LO/HI,
+  przekaźnik alarmowy) jako plakietki OK / AKTYWNY, aktywne na początku.
+- **Zmienne sterownika** — pełna tabela pogrupowana na Pomiary, Nastawy,
+  Parametry, Stany i Alarmy; nastawy zapisuje się ikoną ołówka.
+
+O tym, gdzie trafia zmienna, decyduje jej **kategoria** w profilu
+(Konfiguracja → Edytuj → kolumna kategorii). Domyślnie wyznaczana
+automatycznie: rejestry bitowe (coil) to stany, zapisywalne to nastawy,
+pozostałe to pomiary.
+
+Zmiany w profilach wbudowanych (np. Carel MPX MPXPRO) są zachowywane po
+restarcie — profil dostaje plakietkę „zmieniony”, a fabryczną mapę
+rejestrów przywraca przycisk **Przywróć domyślne**.
+
 ### Wykres historyczny
 
 W szczegółach sterownika wykres obejmuje zakresy 1h / 6h / 24h / 7d / 30d.
+Domyślnie pokazuje tylko pomiary; nastawy można dołączyć ikoną suwaków,
+a flagi stanu nie są rysowane wcale.
 Dłuższe zakresy są uśredniane po stronie serwera (np. 7d — średnie
 15-minutowe, 30d — godzinowe), więc wykres ładuje się szybko niezależnie od
 liczby zapisanych odczytów.
@@ -218,8 +237,11 @@ w interfejsie jest tylko ułatwieniem.
 
 ## 6. Alarmy i powiadomienia
 
-- **Reguły progowe** (Alerty → Reguły): próg lub zakres min/max na dowolnym
-  parametrze urządzenia/czujnika, z kategorią i ważnością.
+- **Reguły progowe** (Alerty → Reguły): warunek `>`, `<`, `=` lub `≠` na
+  dowolnym parametrze urządzenia/czujnika, z kategorią i ważnością.
+  **Opóźnienie alarmu** (w minutach) sprawia, że alarm zgłaszany jest dopiero,
+  gdy warunek trwa nieprzerwanie tyle czasu — typowo 30–45 min dla
+  temperatury komory, żeby odszranianie nie dawało fałszywych alarmów.
 - **Alarmy sprzętowe**: kody alarmów raportowane przez sam sterownik
   (np. awaria sondy) — logowane i wyświetlane automatycznie.
 - **Alarmy systemowe**: urządzenie offline dłużej niż `OFFLINE_ALARM_MINUTES`
@@ -270,9 +292,12 @@ BACKUP_RETENTION_COUNT=14    # ile ostatnich plików trzymać
 ```
 
 Aby kopie lądowały **poza kartą SD** (pendrive/udział sieciowy), zamontuj
-nośnik na hoście i podepnij go do kontenera w `docker-compose.prod.yml`:
+nośnik na hoście i podepnij go do kontenera w pliku
+`docker-compose.override.yml` obok `docker-compose.yml` (Docker wczytuje go
+automatycznie, aktualizacje go nie nadpisują), potem `jawcold apply`:
 
 ```yaml
+services:
   backend:
     volumes:
       - /mnt/usb-backup:/backups
@@ -284,17 +309,25 @@ Każda automatyczna kopia (i ewentualny błąd) zapisuje się w Logach zdarzeń.
 
 ## 8. Aktualizacje
 
-- **Backend** (logika, sterowniki, migracje): Ustawienia → Aktualizacje →
-  wgraj plik `updates/<wersja>.zip` z tego repozytorium. Aplikacja instaluje
-  paczkę, wykonuje migracje bazy i restartuje się; dostępny jest rollback.
-- **Frontend (interfejs)**: paczki .zip go **nie** obejmują — interfejs jest
-  wbudowany w obraz Dockera przy instalacji. Aby zaktualizować interfejs,
-  uruchom ponownie komendę instalacyjną na Raspberry (bezpieczne — pobiera
-  nowy kod i przebudowuje kontenery, nie ruszając `.env` ani danych):
+Od wersji 1.22 aktualizacja obejmuje naraz interfejs i backend — na Raspberry:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/anteq159/JawcoldMonitor/main/install.sh | bash
+~/JawcoldMonitor/scripts/jawcold update
 ```
+
+Polecenie pobiera nowy kod, buduje/pobiera obrazy, restartuje kontenery
+i zapamiętuje poprzednią wersję. Powrót do niej: `jawcold rollback`.
+Inne: `jawcold status`, `jawcold logs`, `jawcold restart`. Panel
+(**Ustawienia → Aktualizacje**) pokazuje bieżącą i najnowszą dostępną wersję.
+
+Migracje bazy wykonują się same przy starcie. Pierwszy start wersji 1.22
+przenosi historię odczytów do TimescaleDB — przy kilkunastu milionach odczytów
+trwa to kilka minut, w tym czasie panel nie odpowiada.
+
+Starsze instalacje (sprzed 1.22) aktualizują się po staremu — plik
+`updates/<wersja>.zip` w **Ustawienia → Aktualizacje** — albo, zalecane,
+jednorazowym ponownym uruchomieniem `install.sh`, które przenosi je na nowy
+sposób.
 
 ---
 
@@ -327,11 +360,11 @@ panelu do internetu.
 |---|---|
 | Brak portu `/dev/ttyUSB0` | `ls /dev/ttyUSB*`, `dmesg \| tail` po wpięciu adaptera; inne przejściówki potrafią zgłosić się jako `ttyACM0` — popraw `RS485_PORTS` |
 | Urządzenia nie odpowiadają | zamień żyły A/B; terminatory; wspólny baud; unikalne adresy; zasilanie sterowników. **Carel MPXPRO wymaga 2 bitów stopu** — ustaw `RS485_STOPBITS=2`, bez tego nie odpowiadają mimo poprawnego okablowania |
-| Wszystkie urządzenia nagle offline | czy backend wystartował z oboma plikami `-f`? Samo `docker compose up -d` odtwarza kontener bez dostępu do portu RS485 |
-| Karta SD się zapełnia | `READINGS_RETENTION_DAYS` (patrz niżej) — domyślnie 90 dni historii odczytów |
+| Wszystkie urządzenia nagle offline | czy adapter jest widoczny: `ls /dev/serial/by-id/`; czy `RS485_PORTS` (Ustawienia → RS485) wskazuje właściwy port |
+| Karta SD się zapełnia | `READINGS_RETENTION_DAYS` (patrz niżej) — domyślnie 90 dni surowych odczytów; starsze dni TimescaleDB kompresuje, a 15-minutowe średnie zostają na stałe |
 | Losowe przekłamania odczytów | brak terminatorów, topologia gwiazdy, kabel równolegle do siłowych |
 | Czujniki DS18B20 niewidoczne | włączony 1-Wire w raspi-config; `ls /sys/bus/w1/devices/` powinno pokazać `28-...` |
-| Panel nie działa | `docker compose ps`, `docker compose logs backend --tail 50`; health check: `http://<pi>/api/v1/health` |
+| Panel nie działa | `jawcold status`, `jawcold logs`; health check: `http://<pi>/api/v1/health` |
 | Diagnostyka z UI | zakładka **Diagnostyka** (Admin) — status usług, RS485, błędy aplikacji |
 
 ---
@@ -365,5 +398,6 @@ updates/     paczki aktualizacji do wgrania przez UI
 database/    init.sql
 docs/        instrukcje serwisowe (m.in. sonda ciśnienia na Carel MPXPRO)
 install.sh   instalacja jedną komendą
-docker-compose.yml + .prod.yml / .preview.yml   warianty uruchomienia
+scripts/jawcold    aktualizacja, wycofanie, logi, status (na Raspberry)
+docker-compose.yml (+ .preview.yml do trybu demo)
 ```

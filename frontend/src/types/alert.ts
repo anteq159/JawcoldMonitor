@@ -15,6 +15,7 @@ export interface AlertRule {
   category: string
   enabled: boolean
   notify_channels: string[]
+  delay_seconds: number
   created_at: string
 }
 

@@ -70,7 +70,7 @@ function SystemSettingsSection() {
       setDirty({})
       await load()
       toast.success(res.compose_apply_required
-        ? 'Zapisano. Nowy port panelu zadziała po „docker compose up -d" na Raspberry (lub ponownym uruchomieniu install.sh).'
+        ? 'Zapisano. Nowy port panelu zadziała po „~/JawcoldMonitor/scripts/jawcold apply" na Raspberry (lub ponownym uruchomieniu install.sh).'
         : res.restart_required
         ? 'Zapisano. Zmiany portu RS485 zadziałają po restarcie aplikacji.'
         : 'Ustawienia zapisane i zastosowane')
@@ -440,6 +440,38 @@ function UpdatesSection() {
         <div className="p-5 flex items-center gap-3">
           <RefreshCw size={16} className="animate-spin text-accent shrink-0" />
           <p className="text-sm text-ink-body">Aplikacja się restartuje — strona odświeży się automatycznie za chwilę…</p>
+        </div>
+      </Card>
+    )
+  }
+
+  if (info?.mode === 'image') {
+    return (
+      <Card title="Aktualizacje">
+        <div className="p-5 space-y-3">
+          <p className="text-sm text-ink-muted">
+            Bieżąca wersja: <span className="text-ink font-medium">{info.current_version}</span>
+            {info.latest_version && (
+              <> · najnowsza: <span className="text-ink font-medium">{info.latest_version}</span></>
+            )}
+          </p>
+          {info.update_available ? (
+            <p className="text-sm text-warn font-medium">Dostępna jest nowa wersja.</p>
+          ) : info.latest_version ? (
+            <p className="text-sm text-good">Masz najnowszą wersję.</p>
+          ) : null}
+          <div>
+            <p className="text-sm text-ink-body mb-1.5">
+              Aktualizacja (interfejs i backend naraz) — na Raspberry przez SSH:
+            </p>
+            <code className="block bg-surface-2 border border-border rounded-lg px-3 py-2 text-xs text-ink font-mono select-all">
+              {info.update_command}
+            </code>
+            <p className="text-xs text-ink-muted mt-1.5">
+              Powrót do poprzedniej wersji: to samo polecenie z „rollback” zamiast „update”. Dane i ustawienia
+              pozostają nienaruszone.
+            </p>
+          </div>
         </div>
       </Card>
     )

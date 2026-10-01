@@ -6,7 +6,8 @@ import { getDeviceReadings } from '../api/readings'
 import { getDeviceProfile, type DeviceProfileDetail } from '../api/deviceProfiles'
 import type { Device } from '../types/device'
 import type { ParameterReadings } from '../types/reading'
-import { ParameterGrid } from '../components/Devices/ParameterGrid'
+import { LiveOverview } from '../components/Devices/LiveOverview'
+import { registerCategory, isBinaryCategory, isChartedByDefault, type RegisterCategory } from '../utils/registers'
 import { TimeSeriesChart } from '../components/Charts/TimeSeriesChart'
 import { DeviceStatusBadge } from '../components/Devices/DeviceStatusBadge'
 import { FavoriteToggle } from '../components/Devices/FavoriteToggle'
@@ -144,11 +145,16 @@ export default function DeviceDetail() {
 
   // Chart-only visibility, kept apart from hidden_parameters: a value can be
   // uninteresting on the chart while still mattering in the live grid.
+  // Stored as deviations from the category default: "Name" = a measurement
+  // switched off, "+Name" = a setpoint/parameter switched on (those start
+  // hidden). Lists saved before categories existed only hold plain names,
+  // which keep meaning "hidden".
   const toggleChartSeries = async (realName: string) => {
     if (!device) return
-    const hidden = device.chart_hidden_parameters.includes(realName)
-      ? device.chart_hidden_parameters.filter((n) => n !== realName)
-      : [...device.chart_hidden_parameters, realName]
+    const key = isChartedByDefault(categoryOf(realName)) ? realName : `+${realName}`
+    const hidden = device.chart_hidden_parameters.includes(key)
+      ? device.chart_hidden_parameters.filter((n) => n !== key)
+      : [...device.chart_hidden_parameters, key]
     const previous = device
     setDevice({ ...device, chart_hidden_parameters: hidden })
     try {
@@ -174,16 +180,35 @@ export default function DeviceDetail() {
     }
   }
 
+  const registers = profile?.registers ?? []
+  function categoryOf(name: string): RegisterCategory {
+    const reg = registers.find((r) => r.name === name)
+    return reg ? registerCategory(reg) : 'measurement'
+  }
+  const isSeriesShown = (name: string) => {
+    const list = device?.chart_hidden_parameters ?? []
+    return isChartedByDefault(categoryOf(name)) ? !list.includes(name) : list.includes(`+${name}`)
+  }
+
   if (loading) return <PageSpinner />
   if (!device) return <p className="text-ink-muted">Urządzenie nie znalezione</p>
 
   // Real register names offered as chart series. Already-hidden ones are
   // unioned in so a series switched off before the range changed can still
   // be switched back on, even with no points in the current window.
+  // On/off flags (sensor fault, alarm relay) are never plotted - their 0/1
+  // reads as noise on a temperature axis; they live in "Stan i alarmy".
   const chartSeries = Array.from(new Set([
     ...readings.map((r) => r.parameter_name),
-    ...device.chart_hidden_parameters,
-  ])).filter((name) => !device.hidden_parameters.includes(name)).sort()
+    ...device.chart_hidden_parameters.map((n) => n.replace(/^\+/, '')),
+  ]))
+    .filter((name) => !device.hidden_parameters.includes(name) && !isBinaryCategory(categoryOf(name)))
+    .sort()
+  const chartGroups: Array<[string, string[]]> = [
+    ['Pomiary', chartSeries.filter((n) => isChartedByDefault(categoryOf(n)))],
+    ['Nastawy i parametry', chartSeries.filter((n) => !isChartedByDefault(categoryOf(n)))],
+  ]
+  const lastSeen = device.last_seen ? new Date(device.last_seen) : null
 
   return (
     <div className="space-y-5">
@@ -219,7 +244,12 @@ export default function DeviceDetail() {
             </div>
           )}
           <div className="flex items-center gap-2 mt-1 flex-wrap">
-            <p className="text-xs text-ink-muted">Adres {device.modbus_address} · {device.port} · {device.baudrate} baud</p>
+            {/* device.port/baudrate are unused legacy columns - the bus
+                settings are global (Ustawienia → RS485), so they're not shown. */}
+            <p className="text-xs text-ink-muted">
+              Adres {device.modbus_address}
+              {lastSeen && <> · ostatni odczyt {lastSeen.toLocaleString('pl-PL', { dateStyle: 'short', timeStyle: 'medium' })}</>}
+            </p>
             <ManufacturerBadge profile={device.profile} />
             {editingInterval ? (
               <div className="flex items-center gap-1">
@@ -255,11 +285,13 @@ export default function DeviceDetail() {
 
       {device.recognition_status === 'unrecognized' && <UnrecognizedDeviceBanner device={device} onResolved={loadDevice} />}
 
-      <Card title="Bieżące wartości parametrów">
-        <div className="p-5">
-          <ParameterGrid deviceId={device.id} hiddenNames={device.hidden_parameters} aliases={device.parameter_aliases} />
-        </div>
-      </Card>
+      <LiveOverview
+        deviceId={device.id}
+        registers={registers}
+        hiddenNames={device.hidden_parameters}
+        aliases={device.parameter_aliases}
+        units={device.parameter_units}
+      />
 
       <Card
         title="Wykresy historyczne"
@@ -285,31 +317,36 @@ export default function DeviceDetail() {
           <div className="px-5 pt-3">
             <p className="text-xs text-ink-muted mb-2">
               Kliknij, aby wyłączyć lub włączyć dane na wykresie. Wybór jest zapamiętany dla tego sterownika;
-              wartości pozostają widoczne w „Bieżących wartościach parametrów”.
+              wartości pozostają widoczne w „Pomiarach” i „Zmiennych sterownika”.
             </p>
-            <div className="flex flex-wrap gap-2">
-              {chartSeries.map((name) => {
-                const on = !device.chart_hidden_parameters.includes(name)
-                return (
-                  <button key={name} onClick={() => toggleChartSeries(name)} title={name}
-                    className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${on ? 'bg-accent border-accent text-white' : 'bg-surface-2 border-border text-ink-muted hover:border-border-strong'}`}>
-                    {device.parameter_aliases[name] ?? name}
-                  </button>
-                )
-              })}
-            </div>
+            {chartGroups.filter(([, names]) => names.length).map(([label, names]) => (
+              <div key={label} className="mb-2">
+                <p className="text-[11px] uppercase tracking-wide text-ink-muted mb-1">{label}</p>
+                <div className="flex flex-wrap gap-2">
+                  {names.map((name) => {
+                    const on = isSeriesShown(name)
+                    return (
+                      <button key={name} onClick={() => toggleChartSeries(name)} title={name}
+                        className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${on ? 'bg-accent border-accent text-white' : 'bg-surface-2 border-border text-ink-muted hover:border-border-strong'}`}>
+                        {device.parameter_aliases[name] ?? name}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            ))}
           </div>
         )}
         <div className="px-3 pb-4">
           <TimeSeriesChart
             data={readings
-              .filter((r) => !device.hidden_parameters.includes(r.parameter_name))
+              .filter((r) => chartSeries.includes(r.parameter_name))
               .map((r) => ({
                 ...r,
                 id: r.parameter_name,
                 parameter_name: device.parameter_aliases[r.parameter_name] ?? r.parameter_name,
               }))}
-            hiddenSeries={device.chart_hidden_parameters}
+            hiddenSeries={chartSeries.filter((n) => !isSeriesShown(n))}
             height={320}
           />
         </div>

@@ -1,7 +1,20 @@
+# JawcoldMonitor - jedyny plik potrzebny do uruchomienia:
+#
+#   docker compose up -d
+#
+# Obrazy backendu i frontendu są pobierane gotowe z GHCR (budowane przez
+# GitHub Actions dla arm64 i amd64), więc instalacja na Raspberry trwa
+# minuty, nie kilkanaście minut kompilacji. `build:` zostaje jako
+# zapasowe źródło: bez dostępu do rejestru (lub z JAWCOLD_BUILD=local)
+# `jawcold update` buduje obrazy lokalnie z tego repozytorium.
+#
+# Wersję wybiera JAWCOLD_VERSION w .env (domyślnie "latest").
+name: jawcoldmonitor
+
 # Docker's default json-file driver never rotates: on a Pi running for
-# months the container logs grow without bound on the SD card (and
-# `docker logs` becomes unusably slow). 3 x 10 MB per container is plenty
-# for troubleshooting; application events live in the database anyway.
+# months the container logs grow without bound on the SD card (5 GB in
+# three months on the first installation). 3 x 10 MB per container is
+# plenty for troubleshooting; application events live in the database.
 x-logging: &default-logging
   driver: json-file
   options:
@@ -10,9 +23,14 @@ x-logging: &default-logging
 
 services:
   postgres:
-    logging: *default-logging
-    image: postgres:16-alpine
+    # PostgreSQL 16 + TimescaleDB (hypertable, kompresja i agregaty dla
+    # tabeli odczytów - see backend/app/core/timescale.py). Same Postgres
+    # major and Alpine base as the postgres:16-alpine image used before
+    # 1.22, so an existing data volume is reused as-is.
+    image: timescale/timescaledb:2.30.2-pg16
     restart: unless-stopped
+    logging: *default-logging
+    command: ["postgres", "-c", "shared_preload_libraries=timescaledb", "-c", "timescaledb.telemetry_level=off"]
     environment:
       POSTGRES_DB: jawcold
       POSTGRES_USER: jawcold
@@ -24,84 +42,53 @@ services:
       test: ["CMD-SHELL", "pg_isready -U jawcold"]
       interval: 5s
       timeout: 5s
-      retries: 10
-
-  redis:
-    logging: *default-logging
-    image: redis:7-alpine
-    restart: unless-stopped
-    command: redis-server --appendonly yes
-    volumes:
-      - redis_data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
+      retries: 20
 
   backend:
-    logging: *default-logging
+    image: ghcr.io/anteq159/jawcoldmonitor-backend:${JAWCOLD_VERSION:-latest}
     build: ./backend
     restart: unless-stopped
+    logging: *default-logging
+    # Every application setting comes from .env (see .env.example); only
+    # the values derived from it are spelled out below.
+    env_file:
+      - path: .env
+        required: false
     environment:
       DATABASE_URL: postgresql+asyncpg://jawcold:${DB_PASSWORD:-jawcold_dev_pass}@postgres/jawcold
-      REDIS_URL: redis://redis:6379
-      SECRET_KEY: ${SECRET_KEY:-dev-secret-key-change-in-production-32chars}
-      PREVIEW_MODE: ${PREVIEW_MODE:-false}
-      RS485_PORTS: ${RS485_PORTS:-/dev/ttyUSB0}
-      RS485_BAUDRATE: ${RS485_BAUDRATE:-9600}
-      RS485_STOPBITS: ${RS485_STOPBITS:-1}
-      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost}
-      OFFLINE_ALARM_MINUTES: ${OFFLINE_ALARM_MINUTES:-5}
-      OFFLINE_POLL_INTERVAL: ${OFFLINE_POLL_INTERVAL:-60}
-      DISK_ALARM_PERCENT: ${DISK_ALARM_PERCENT:-90}
-      SMTP_HOST: ${SMTP_HOST:-}
-      SMTP_PORT: ${SMTP_PORT:-587}
-      SMTP_USER: ${SMTP_USER:-}
-      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
-      SMTP_FROM: ${SMTP_FROM:-}
-      ALERT_EMAIL_TO: ${ALERT_EMAIL_TO:-}
-      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
-      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
-      NOTIFY_SYSTEM_CHANNELS: ${NOTIFY_SYSTEM_CHANNELS:-}
-      BACKUP_AUTO_ENABLED: ${BACKUP_AUTO_ENABLED:-false}
-      BACKUP_INTERVAL_HOURS: ${BACKUP_INTERVAL_HOURS:-24}
-      BACKUP_DIR: ${BACKUP_DIR:-backups}
-      BACKUP_RETENTION_COUNT: ${BACKUP_RETENTION_COUNT:-14}
-    # Bind-mounted rather than left baked into the image (COPY . . in the
-    # Dockerfile still runs, but this overlays it at runtime): an update
-    # uploaded through Settings extracts into this same host path, so it
-    # survives the container restart that applies it. Also means local
-    # code edits show up without a rebuild - a real side benefit, not a
-    # workaround. alembic/versions is mounted too, not just app/ - a
-    # migration script has to actually be on disk for `alembic upgrade
-    # head` (run at every startup, see init_db()) to find and apply it;
-    # an update that ships new tables/columns but not the migration that
-    # creates them would leave the new code pointed at a schema that was
-    # never updated.
+      JAWCOLD_DEPLOY: image
     volumes:
-      - ./backend/app:/app/app
-      - ./backend/alembic/versions:/app/alembic/versions
-      # Uploaded floor maps and automatic backups live under /app inside
-      # the container - without these binds a rebuild (install.sh re-run
-      # with --build) would silently wipe them.
+      # Floor maps and automatic backups survive image updates.
       - ./backend/uploads:/app/uploads
       - ./backend/backups:/app/backups
       # The host .env, so the panel can edit deploy-level values like
-      # PANEL_PORT from Ustawienia. install.sh always creates .env before
-      # `compose up` - don't run compose manually without it, or Docker
-      # will create a directory named .env in its place.
+      # PANEL_PORT from Ustawienia (applied with `jawcold apply`).
       - ./.env:/app/host.env
+      # The whole /dev instead of a fixed `devices:` entry: a USB adapter
+      # that is re-plugged (or renumbered ttyACM0 -> ttyACM1) stays
+      # reachable without recreating the container, a stable
+      # /dev/serial/by-id/... path can be used in RS485_PORTS, and the
+      # stack starts on machines with no adapter at all. Access is still
+      # limited to USB serial character devices by the cgroup rules below.
+      - /dev:/dev
+    device_cgroup_rules:
+      - "c 188:* rmw"   # ttyUSB* (FTDI, CH340, CP210x)
+      - "c 166:* rmw"   # ttyACM* (CDC-ACM, e.g. WCH quad serial)
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      start_period: 600s   # first start on TimescaleDB converts existing history
+      retries: 3
     depends_on:
       postgres:
         condition: service_healthy
-      redis:
-        condition: service_healthy
 
   frontend:
-    logging: *default-logging
+    image: ghcr.io/anteq159/jawcoldmonitor-frontend:${JAWCOLD_VERSION:-latest}
     build: ./frontend
     restart: unless-stopped
+    logging: *default-logging
     ports:
       - "${PANEL_PORT:-80}:80"
     depends_on:
@@ -109,4 +96,3 @@ services:
 
 volumes:
   postgres_data:
-  redis_data:

@@ -19,6 +19,12 @@ export interface UpdateInfo {
   current_version: string
   last_update: UpdateMeta | null
   rollback_available: boolean
+  // "image" (1.22+): code lives in Docker images, updated on the host with
+  // update_command; "legacy": .zip packages uploaded here.
+  mode: 'image' | 'legacy'
+  latest_version: string | null
+  update_available: boolean
+  update_command: string
 }
 
 export const getSystemStats = (): Promise<SystemStats> => api.get('/system/stats').then((r) => r.data)

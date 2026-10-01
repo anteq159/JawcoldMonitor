@@ -40,6 +40,8 @@ function formatDuration(start: string, end: string | null): string {
   return `${s}s`
 }
 
+const CONDITION_SYMBOLS: Record<string, string> = { gt: '>', lt: '<', eq: '=', ne: '≠' }
+
 export default function Alerts() {
   const canManage = useAuthStore((s) => s.can('alert:manage'))
   const canAcknowledge = useAuthStore((s) => s.can('alert:acknowledge'))
@@ -215,7 +217,8 @@ export default function Alerts() {
                 <p className="text-xs text-ink-muted">
                   {r.device_id ? (devices.find(d => d.id === r.device_id)?.name ?? `Urządzenie #${r.device_id}`) : `Czujnik #${r.sensor_id}`}
                   {' · '}{r.parameter_name}
-                  {r.threshold_min != null ? ` · min ${r.threshold_min} / max ${r.threshold_max}` : r.threshold_value != null ? ` ${r.condition} ${r.threshold_value}` : ''}
+                  {r.threshold_min != null ? ` · min ${r.threshold_min} / max ${r.threshold_max}` : r.threshold_value != null ? ` ${CONDITION_SYMBOLS[r.condition] ?? r.condition} ${r.threshold_value}` : ''}
+                  {r.delay_seconds > 0 && ` · po ${Math.round(r.delay_seconds / 60)} min`}
                 </p>
               </div>
               <div className="flex items-center gap-2">
@@ -298,6 +301,7 @@ function AddRuleModal({ open, onClose, devices, onAdded }: {
   const [severity, setSeverity] = useState('warning')
   const [category, setCategory] = useState('Inne')
   const [notifyChannels, setNotifyChannels] = useState<string[]>([])
+  const [delayMinutes, setDelayMinutes] = useState('0')
   const [loading, setLoading] = useState(false)
 
   const toggleChannel = (ch: string) =>
@@ -329,9 +333,10 @@ function AddRuleModal({ open, onClose, devices, onAdded }: {
         severity: severity as 'info' | 'warning' | 'critical',
         category,
         notify_channels: notifyChannels,
+        delay_seconds: Math.max(0, Math.round(Number(delayMinutes) * 60) || 0),
       })
       onAdded(); onClose()
-      setDeviceId(''); setParamName(''); setName(''); setThreshold(''); setCategory('Inne'); setNotifyChannels([])
+      setDeviceId(''); setParamName(''); setName(''); setThreshold(''); setCategory('Inne'); setNotifyChannels([]); setDelayMinutes('0')
     } finally {
       setLoading(false)
     }
@@ -379,6 +384,7 @@ function AddRuleModal({ open, onClose, devices, onAdded }: {
               <option value="gt">&gt; (powyżej)</option>
               <option value="lt">&lt; (poniżej)</option>
               <option value="eq">= (równy)</option>
+              <option value="ne">≠ (różny od)</option>
             </select>
           </div>
           <div>
@@ -405,7 +411,16 @@ function AddRuleModal({ open, onClose, devices, onAdded }: {
         </div>
 
         <div>
-          <label className="block text-xs text-ink-muted mb-1">Powiadomienia (wymaga konfiguracji SMTP/Telegram w .env)</label>
+          <label className="block text-xs text-ink-muted mb-1">Opóźnienie alarmu (min)</label>
+          <input type="number" min={0} max={1440} step="1" value={delayMinutes} onChange={e => setDelayMinutes(e.target.value)} className="input" />
+          <p className="text-[11px] text-ink-muted mt-1">
+            Alarm zgłaszany dopiero, gdy warunek trwa nieprzerwanie tyle minut — np. 30–45 min dla temperatury komory,
+            żeby odszranianie nie wywoływało fałszywych alarmów. 0 = natychmiast.
+          </p>
+        </div>
+
+        <div>
+          <label className="block text-xs text-ink-muted mb-1">Powiadomienia (konfiguracja SMTP/Telegram: Ustawienia → Konfiguracja systemu)</label>
           <div className="flex gap-4">
             {[['email', 'E-mail'], ['telegram', 'Telegram']].map(([value, label]) => (
               <label key={value} className="flex items-center gap-1.5 text-sm text-ink-body">

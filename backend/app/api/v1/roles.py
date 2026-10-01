@@ -66,6 +66,10 @@ async def update_role(
     role = result.scalar_one_or_none()
     if not role:
         raise HTTPException(status_code=404, detail="Rola nie znaleziona")
+    if not role.is_custom:
+        # System roles are re-seeded on every startup (main.DEFAULT_ROLES),
+        # so an edit here would silently revert at the next restart.
+        raise HTTPException(status_code=400, detail="Ról systemowych nie można edytować - utwórz rolę niestandardową")
     old_value = {"description": role.description, "permission_ids": [p.id for p in role.permissions]}
     if body.description is not None:
         role.description = body.description

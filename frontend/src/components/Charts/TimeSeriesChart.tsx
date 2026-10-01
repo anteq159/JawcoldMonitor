@@ -58,14 +58,22 @@ export function TimeSeriesChart({ data, height = 300, title, hiddenSeries = [] }
       formatter: (params: any[]) => {
         const time = new Date(params[0].axisValue).toLocaleString('pl-PL')
         return `<div style="font-size:11px;color:#7D8E8A;margin-bottom:4px">${time}</div>` +
-          params.map((p: any) => `<div>${p.marker}${p.seriesName}: <b>${Number(p.value[1]).toFixed(2)}</b></div>`).join('')
+          params.map((p: any) => `<div>${p.marker}${p.seriesName}: <b>${Number(Number(p.value[1]).toFixed(2))}</b></div>`).join('')
       },
     },
     legend: {
       // Also shown for a lone series when it is switched off - otherwise
       // there would be no way to bring it back.
       show: series.length > 1 || anyHidden,
+      // One scrollable row: with many series a wrapping legend grew over
+      // the plot area and covered the y-axis labels.
+      type: 'scroll',
       selected,
+      // Only series currently shown: hidden ones stay in `series` (stable
+      // colours) but listing them greyed-out turned an 8-probe chart's
+      // legend into five pages of switched-off setpoints. They are switched
+      // back on from the series picker instead.
+      data: hiddenSeries.length ? data.filter((d) => selected[seriesName(d)]).map(seriesName) : undefined,
       textStyle: { color: '#7D8E8A', fontSize: 11 },
       top: 0,
     },

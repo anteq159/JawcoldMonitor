@@ -2,13 +2,14 @@ from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select, func, text
 
 from app.core.database import get_db
 from app.models.reading import Reading
 from app.models.user import User
 from app.schemas.reading import ReadingOut, ParameterReadings, ReadingPoint
 from app.api.deps import get_current_user
+from app.core import timescale
 
 router = APIRouter(prefix="/readings", tags=["readings"])
 
@@ -37,10 +38,41 @@ BUCKET_MAP = {
 _BIN_ORIGIN = datetime(2000, 1, 1, tzinfo=timezone.utc)
 
 
+# Ranges served from the TimescaleDB 15-minute continuous aggregate when it
+# exists (app.core.timescale) - a few thousand pre-aggregated rows instead
+# of millions of raw ones.
+CAGG_RANGES = {"7d", "30d"}
+
+
+async def _cagg_series(db: AsyncSession, owner_col: str, owner_id: int, range: str, params: Optional[List[str]]):
+    since = datetime.now(timezone.utc) - RANGE_MAP[range]
+    sql = (
+        "SELECT parameter_name, time_bucket(CAST(:bucket AS interval), bucket) AS b, "
+        "sum(total) / sum(n) AS value, max(unit) AS unit "
+        f"FROM readings_15m WHERE {owner_col} = :owner AND bucket >= :since "
+    )
+    bind = {"bucket": BUCKET_MAP[range], "owner": owner_id, "since": since}
+    if params:
+        sql += "AND parameter_name = ANY(:params) "
+        bind["params"] = params
+    sql += "GROUP BY parameter_name, b ORDER BY parameter_name, b"
+    result = await db.execute(text(sql), bind)
+    series: dict = {}
+    for name, ts, value, unit in result.all():
+        entry = series.setdefault(name, [unit, []])
+        if unit:
+            entry[0] = unit
+        entry[1].append(ReadingPoint(timestamp=ts, value=round(value, 3)))
+    return series
+
+
 async def _bucketed_series(db: AsyncSession, owner_filter, range: str, params: Optional[List[str]] = None):
     """{parameter_name: (unit, [ReadingPoint])} averaged into BUCKET_MAP[range]
     buckets, in time order. Selects plain columns aggregated in Postgres -
     never ORM objects."""
+    if range in CAGG_RANGES and timescale.state["cagg"]:
+        col = owner_filter.left.key
+        return await _cagg_series(db, col, owner_filter.right.value, range, params)
     since = datetime.now(timezone.utc) - RANGE_MAP[range]
     bucket = func.date_bin(BUCKET_MAP[range], Reading.timestamp, _BIN_ORIGIN).label("bucket")
     q = (

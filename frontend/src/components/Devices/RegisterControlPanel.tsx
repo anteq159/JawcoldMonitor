@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { Fragment, useState } from 'react'
 import { Pencil, Check, X, Lock, Star, Eye, EyeOff, Tag } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useDeviceStore } from '../../store/devices'
@@ -6,6 +6,7 @@ import { useAuthStore } from '../../store/auth'
 import { writeDeviceRegister } from '../../api/devices'
 import { useFavoriteParameters } from '../../hooks/useFavoriteParameters'
 import type { RegisterDefinition } from '../../api/deviceProfiles'
+import { registerCategory, isBinaryCategory, formatValue, type RegisterCategory } from '../../utils/registers'
 
 interface Props {
   deviceId: number
@@ -35,6 +36,16 @@ const REGISTER_TYPE_LABELS: Record<string, string> = {
 // 0-5V pressure probe on the same register). "(profil)" restores the default.
 const UNIT_CHOICES = ['bar', '\u00b0C', 'K', 'kPa', '%']
 
+// Table sections, in display order; registers keep their profile order
+// within a section.
+const SECTIONS: Array<[RegisterCategory, string]> = [
+  ['measurement', 'Pomiary'],
+  ['setpoint', 'Nastawy'],
+  ['parameter', 'Parametry'],
+  ['status', 'Stany'],
+  ['alarm', 'Alarmy'],
+]
+
 export function RegisterControlPanel({
   deviceId, registers, profileName, hiddenNames, aliases, units, editingVisibility, onToggleHidden, onRename, onSetUnit,
 }: Props) {
@@ -62,7 +73,10 @@ export function RegisterControlPanel({
   // that's the display filter this whole feature exists for. Edit mode
   // shows everything (dimmed for hidden ones) so a hidden register can be
   // found again and restored.
-  const visibleRegisters = editingVisibility ? registers : registers.filter((r) => !hiddenNames.includes(r.name))
+  const shown = editingVisibility ? registers : registers.filter((r) => !hiddenNames.includes(r.name))
+  const rank = (r: RegisterDefinition) => SECTIONS.findIndex(([c]) => c === registerCategory(r))
+  const visibleRegisters = [...shown].sort((a, b) => rank(a) - rank(b))
+  const colCount = editingVisibility ? 7 : 6
 
   const startEdit = (register: RegisterDefinition) => {
     const current = liveReadings[register.name]?.value
@@ -105,13 +119,23 @@ export function RegisterControlPanel({
           </tr>
         </thead>
         <tbody className="divide-y divide-border">
-          {visibleRegisters.map((r) => {
+          {visibleRegisters.map((r, i) => {
+            const category = registerCategory(r)
+            const sectionStart = i === 0 || registerCategory(visibleRegisters[i - 1]) !== category
             const live = liveReadings[r.name]
             const isEditing = editing === r.name
             const favorite = isFavorite('device', deviceId, r.name)
             const isHidden = hiddenNames.includes(r.name)
             return (
-              <tr key={r.id} className={isHidden ? 'opacity-40' : undefined}>
+              <Fragment key={r.id}>
+              {sectionStart && (
+                <tr className="bg-surface-2/60">
+                  <td colSpan={colCount} className="px-5 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
+                    {SECTIONS.find(([c]) => c === category)?.[1]}
+                  </td>
+                </tr>
+              )}
+              <tr className={isHidden ? 'opacity-40' : undefined}>
                 {editingVisibility && (
                   <td className="px-5 py-2 align-top">
                     <button
@@ -186,7 +210,11 @@ export function RegisterControlPanel({
                     </div>
                   ) : (
                     <span className="text-ink font-medium">
-                      {live ? live.value.toFixed(2) : '—'} {units[r.name] ?? r.unit ?? live?.unit ?? ''}
+                      {!live ? '—' : isBinaryCategory(category) ? (
+                        <BinaryState on={live.value !== 0} alarm={category === 'alarm'} />
+                      ) : (
+                        <>{formatValue(live.value, r.scale_factor)} {units[r.name] ?? r.unit ?? live?.unit ?? ''}</>
+                      )}
                       {editingVisibility && (r.unit || units[r.name]) && (
                         <select
                           value={units[r.name] ?? ''}
@@ -226,18 +254,26 @@ export function RegisterControlPanel({
                   )}
                 </td>
               </tr>
+              </Fragment>
             )
           })}
         </tbody>
       </table>
       <p className="px-5 py-3 text-xs text-ink-muted border-t border-border">
-        Profil {profileName} — reprezentatywna mapa rejestrów producenta. Wartości edytowalne (ikona ołówka) symulują
-        zapis nastawy sterownika; zweryfikuj z oficjalną dokumentacją modelu przed użyciem z rzeczywistym urządzeniem.
-        Tryb edycji (ikona ołówka w nagłówku karty) pozwala ukrywać zmienne oraz zmieniać ich nazwy i jednostki
+        Profil {profileName}. Wartości z ikoną ołówka zapisywane są bezpośrednio do sterownika i weryfikowane
+        ponownym odczytem. Tryb edycji (ikona ołówka w nagłówku karty) pozwala ukrywać zmienne oraz zmieniać ich nazwy i jednostki
         wyłącznie dla tego urządzenia — inne urządzenia z tym samym profilem i sam profil w Konfiguracji pozostają
         bez zmian. Zmiana jednostki (np. °C → bar dla sondy ciśnieniowej na wejściu S6/S7 MPXPRO) obowiązuje od
         następnego cyklu skanowania i obejmuje nowe odczyty, wykresy i dashboard.
       </p>
     </div>
   )
+}
+
+function BinaryState({ on, alarm }: { on: boolean; alarm: boolean }) {
+  const label = alarm ? (on ? 'AKTYWNY' : 'OK') : (on ? 'WŁ.' : 'WYŁ.')
+  const style = alarm
+    ? (on ? 'bg-crit/10 text-crit border-crit/40' : 'bg-good/10 text-good border-good/30')
+    : (on ? 'bg-accent/10 text-accent border-accent/40' : 'bg-surface-2 text-ink-muted border-border')
+  return <span className={`inline-block text-[11px] font-semibold px-2 py-0.5 rounded border ${style}`}>{label}</span>
 }

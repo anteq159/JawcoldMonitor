@@ -77,6 +77,36 @@ async def update_profile(
         setattr(profile, k, v)
     if body.registers is not None:
         profile.registers = [RegisterDefinition(position=i, **r.model_dump()) for i, r in enumerate(body.registers)]
+    if profile.source == "builtin":
+        # Keeps the startup re-sync from overwriting this edit on the next
+        # restart (see main._init_manufacturer_profiles).
+        profile.customized = True
+    await db.commit()
+    await db.refresh(profile)
+    return profile
+
+
+@router.post("/{profile_id}/reset", response_model=DeviceProfileOut)
+async def reset_profile(
+    profile_id: int,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_permission("config:write")),
+):
+    """Restore a built-in profile's factory register map and re-enable the
+    automatic sync on startup."""
+    from app.services.builtin_profiles import default_registers
+
+    result = await db.execute(select(DeviceProfile).where(DeviceProfile.id == profile_id))
+    profile = result.scalar_one_or_none()
+    if not profile:
+        raise HTTPException(status_code=404, detail="Profil nie znaleziony")
+    if profile.source != "builtin":
+        raise HTTPException(status_code=400, detail="Tylko profil wbudowany można przywrócić do ustawień fabrycznych")
+    registers = default_registers(profile)
+    if registers is None:
+        raise HTTPException(status_code=400, detail="Brak fabrycznej definicji dla tego profilu")
+    profile.registers = registers
+    profile.customized = False
     await db.commit()
     await db.refresh(profile)
     return profile

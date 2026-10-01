@@ -19,6 +19,8 @@ import { ConfirmDialog } from '../components/UI/ConfirmDialog'
 import { EmptyState } from '../components/UI/EmptyState'
 import { PageSpinner } from '../components/UI/Spinner'
 import type { Device } from '../types/device'
+import { getLatestDeviceReadings } from '../api/readings'
+import { registerCategory, isBinaryCategory, formatValue, isProbeMissing } from '../utils/registers'
 
 type Tab = 'list' | 'add'
 
@@ -144,18 +146,44 @@ const DeviceCard = memo(function DeviceCard(
   // Bumped on "Anuluj" to remount the picker with the saved selection.
   const [resetKey, setResetKey] = useState(0)
 
+  const updateLiveReadings = useDeviceStore((s) => s.updateLiveReadings)
+  // Last stored values until the first WebSocket scan arrives.
+  useEffect(() => {
+    if (Object.keys(useDeviceStore.getState().liveReadings[device.id] ?? {}).length) return
+    getLatestDeviceReadings(device.id)
+      .then((latest) => updateLiveReadings(device.id, Object.entries(latest).map(([name, r]) => ({
+        parameter_name: name, value: r.value, unit: r.unit,
+      }))))
+      .catch(() => {})
+  }, [device.id])
+
+  const registers = device.profile?.registers ?? []
+  const regByName = new Map(registers.map((r) => [r.name, r]))
+  const categoryOf = (name: string) => {
+    const reg = regByName.get(name)
+    return reg ? registerCategory(reg) : 'measurement'
+  }
+  const activeAlarms = Object.entries(liveReadings)
+    .filter(([name, r]) => categoryOf(name) === 'alarm' && r.value !== 0 && !device.hidden_parameters.includes(name))
+
   // What the tile shows: the parameters picked for this device, minus any
   // hidden in its details, labelled with the same aliases used everywhere
-  // else. With nothing picked, fall back to the first reading that arrived -
-  // the behaviour every install had before this setting existed.
+  // else. With nothing picked, the first measurement in profile order (a
+  // probe temperature) - not whatever reading happened to arrive first,
+  // which could be a setpoint or a sensor-fault flag.
+  const firstMeasurement = registers
+    .filter((r) => registerCategory(r) === 'measurement' && !device.hidden_parameters.includes(r.name) && liveReadings[r.name])
+    .map((r) => r.name)[0]
   const shown = device.card_parameters.length > 0
     ? device.card_parameters
         .filter((name) => !device.hidden_parameters.includes(name))
         .map((name) => [name, liveReadings[name]] as const)
         .filter(([, r]) => r)
-    : Object.entries(liveReadings)
-        .filter(([name]) => !device.hidden_parameters.includes(name))
-        .slice(0, 1)
+    : firstMeasurement
+      ? [[firstMeasurement, liveReadings[firstMeasurement]] as const]
+      : Object.entries(liveReadings)
+          .filter(([name]) => !device.hidden_parameters.includes(name))
+          .slice(0, 1)
 
   // Registers the device could report, even if that value has not arrived
   // over the WebSocket yet - otherwise a freshly loaded page offers nothing
@@ -195,9 +223,17 @@ const DeviceCard = memo(function DeviceCard(
       <div className="flex items-start justify-between mb-3">
         <div className="min-w-0">
           <h3 className="font-medium text-ink truncate">{device.name}</h3>
-          <p className="text-xs text-ink-muted mt-0.5">Adres {device.modbus_address} · {device.port}</p>
+          <p className="text-xs text-ink-muted mt-0.5">Adres {device.modbus_address}</p>
           <div className="mt-1.5 flex items-center gap-1.5">
             <ManufacturerBadge profile={device.profile} />
+            {activeAlarms.length > 0 && (
+              <span title={activeAlarms.map(([n]) => device.parameter_aliases[n] ?? n).join(', ')}>
+                <Badge variant="red">
+                  <AlertTriangle size={10} className="inline -mt-0.5 mr-0.5" />
+                  {activeAlarms.length === 1 ? 'alarm' : `${activeAlarms.length} alarmy`}
+                </Badge>
+              </span>
+            )}
             {device.recognition_status === 'unrecognized' && (
               <Badge variant="yellow"><AlertTriangle size={10} className="inline -mt-0.5 mr-0.5" />nierozpoznany</Badge>
             )}
@@ -213,8 +249,10 @@ const DeviceCard = memo(function DeviceCard(
           {shown.map(([name, r]) => (
             <div key={name} className="min-w-0">
               <div className="flex items-baseline gap-1">
-                <span className={`font-bold text-accent ${shown.length > 1 ? 'text-base' : 'text-lg'}`}>
-                  {r!.value.toFixed(2)}
+                <span className={`font-bold text-accent tabular-nums ${shown.length > 1 ? 'text-base' : 'text-lg'}`}>
+                  {isBinaryCategory(categoryOf(name))
+                    ? (r!.value !== 0 ? (categoryOf(name) === 'alarm' ? 'AKTYWNY' : 'WŁ.') : (categoryOf(name) === 'alarm' ? 'OK' : 'WYŁ.'))
+                    : isProbeMissing(r!.value, r!.unit) ? '—' : formatValue(r!.value, regByName.get(name)?.scale_factor)}
                 </span>
                 <span className="text-xs text-ink-muted">{device.parameter_units[name] ?? r!.unit}</span>
               </div>

@@ -1,3 +1,5 @@
+import type { RegisterCategory } from '../utils/registers'
+
 export interface DeviceParameter {
   id: number
   name: string
@@ -25,6 +27,7 @@ export interface DeviceProfileRegister {
   writable: boolean
   is_alarm_register: boolean
   register_type: 'holding' | 'input' | 'coil' | 'discrete_input'
+  category?: RegisterCategory | null
 }
 
 export interface DeviceProfile {

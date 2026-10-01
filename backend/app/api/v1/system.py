@@ -72,11 +72,13 @@ async def services_status(
     except Exception as e:
         services.append(ServiceStatus(name="PostgreSQL", status="offline", detail=str(e)))
 
-    try:
-        await get_redis().ping()
-        services.append(ServiceStatus(name="Redis", status="online"))
-    except Exception as e:
-        services.append(ServiceStatus(name="Redis", status="offline", detail=str(e)))
+    redis = get_redis()
+    if redis is not None:  # optional since 1.22 - see core/redis.py
+        try:
+            await redis.ping()
+            services.append(ServiceStatus(name="Redis", status="online"))
+        except Exception as e:
+            services.append(ServiceStatus(name="Redis", status="offline", detail=str(e)))
 
     last_tick = scanner.get_last_tick()
     scanner_alive = last_tick is not None and (datetime.now(timezone.utc) - last_tick).total_seconds() < 10

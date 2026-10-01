@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Plus, Pencil, Trash2, X, Settings2, BookOpen, ArrowUp, ArrowDown } from 'lucide-react'
+import { Plus, Pencil, Trash2, X, Settings2, BookOpen, ArrowUp, ArrowDown, RotateCcw } from 'lucide-react'
 import toast from 'react-hot-toast'
 import {
-  getDeviceProfiles, createDeviceProfile, updateDeviceProfile, deleteDeviceProfile,
+  getDeviceProfiles, createDeviceProfile, updateDeviceProfile, deleteDeviceProfile, resetDeviceProfile,
   type DeviceProfileDetail, type RegisterDefinitionInput,
 } from '../api/deviceProfiles'
 import { useAuthStore } from '../store/auth'
@@ -11,6 +11,7 @@ import { Modal } from '../components/UI/Modal'
 import { ConfirmDialog } from '../components/UI/ConfirmDialog'
 import { EmptyState } from '../components/UI/EmptyState'
 import { PageSpinner } from '../components/UI/Spinner'
+import { CATEGORY_LABELS, registerCategory, type RegisterCategory } from '../utils/registers'
 
 const DATA_TYPES = ['uint16', 'int16', 'uint32', 'int32', 'float32']
 const REGISTER_TYPES = [
@@ -38,6 +39,19 @@ export default function Configuration() {
   const [tab, setTab] = useState<Tab>('Carel')
   const [editing, setEditing] = useState<DeviceProfileDetail | 'new' | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<DeviceProfileDetail | null>(null)
+  const [confirmReset, setConfirmReset] = useState<DeviceProfileDetail | null>(null)
+
+  const reset = async (profile: DeviceProfileDetail) => {
+    try {
+      await resetDeviceProfile(profile.id)
+      await load()
+      toast.success('Przywrócono fabryczną mapę rejestrów')
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail ?? 'Błąd przywracania profilu')
+    } finally {
+      setConfirmReset(null)
+    }
+  }
 
   const load = () => getDeviceProfiles().then(setProfiles)
 
@@ -101,6 +115,7 @@ export default function Configuration() {
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
                   <Badge variant={p.source === 'builtin' ? 'blue' : 'gray'}>{p.source === 'builtin' ? 'wbudowany' : 'lokalny'}</Badge>
+                  {p.customized && <Badge variant="yellow">zmieniony</Badge>}
                 </div>
               </div>
               {p.description && <p className="text-xs text-ink-muted mb-3">{p.description}</p>}
@@ -113,6 +128,15 @@ export default function Configuration() {
                   >
                     <Pencil size={12} /> Edytuj
                   </button>
+                  {p.source === 'builtin' && p.customized && (
+                    <button
+                      onClick={() => setConfirmReset(p)}
+                      className="flex items-center gap-1.5 text-xs border border-border text-ink-muted hover:text-ink px-3 py-1.5 rounded-lg transition-colors"
+                      title="Przywróć fabryczną mapę rejestrów tego profilu"
+                    >
+                      <RotateCcw size={12} /> Przywróć domyślne
+                    </button>
+                  )}
                   <button
                     onClick={() => setConfirmDelete(p)}
                     className="flex items-center gap-1.5 text-xs border border-border text-ink-muted hover:text-crit px-3 py-1.5 rounded-lg transition-colors"
@@ -141,6 +165,14 @@ export default function Configuration() {
         confirmLabel="Usuń profil"
         onConfirm={() => confirmDelete && del(confirmDelete)}
         onClose={() => setConfirmDelete(null)}
+      />
+      <ConfirmDialog
+        open={!!confirmReset}
+        title="Przywrócić profil fabryczny?"
+        message={`Wszystkie zmiany w profilu „${confirmReset?.name}” (nazwy, kolejność, dodane rejestry) zostaną zastąpione fabryczną mapą rejestrów. Ustawienia poszczególnych urządzeń (aliasy, jednostki, ukryte zmienne) zostają.`}
+        confirmLabel="Przywróć"
+        onConfirm={() => confirmReset && reset(confirmReset)}
+        onClose={() => setConfirmReset(null)}
       />
     </div>
   )
@@ -229,6 +261,12 @@ function ProfileModal({ profile, onClose, onSaved }: {
   return (
     <Modal open onClose={onClose} title={profile ? `Edytuj profil — ${profile.name}` : 'Dodaj profil producenta'}>
       <form onSubmit={submit} className="space-y-4">
+        {profile?.source === 'builtin' && (
+          <p className="text-xs text-ink-muted bg-surface-2 border border-border rounded-lg px-3 py-2">
+            To profil wbudowany. Twoje zmiany zostaną zachowane także po restarcie — fabryczną mapę rejestrów
+            przywrócisz przyciskiem „Przywróć domyślne” na karcie profilu.
+          </p>
+        )}
         <div className="grid grid-cols-2 gap-3">
           <div className="col-span-2">
             <label className="block text-xs text-ink-muted mb-1">Nazwa profilu</label>
@@ -310,6 +348,17 @@ function ProfileModal({ profile, onClose, onSaved }: {
                     className="w-28 bg-surface border border-border rounded px-1 py-1 text-xs text-ink"
                   >
                     {REGISTER_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+                  </select>
+                  <select
+                    value={r.category ?? ''}
+                    onChange={(e) => updateRow(r.key, { category: (e.target.value || null) as RegisterCategory | null })}
+                    title="Gdzie pokazywać wartość: pomiary trafiają na pierwszy kafelek i wykres, stany i alarmy jako plakietki"
+                    className="w-32 bg-surface border border-border rounded px-1 py-1 text-xs text-ink"
+                  >
+                    <option value="">auto: {CATEGORY_LABELS[registerCategory({ ...r, category: null })]}</option>
+                    {(Object.keys(CATEGORY_LABELS) as RegisterCategory[]).map((c) => (
+                      <option key={c} value={c}>{CATEGORY_LABELS[c]}</option>
+                    ))}
                   </select>
                   <label className="flex items-center gap-1 shrink-0 text-xs text-ink-muted" title="Edytowalny (do zapisu)">
                     <input

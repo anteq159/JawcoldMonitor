@@ -54,6 +54,9 @@ _last_auto_backup: Optional[datetime] = None
 # Consecutive unreadable DS18B20 reads per sensor - one CRC error on a long
 # cable is routine and must not flap the sensor offline/online.
 _sensor_read_failures: Dict[int, int] = {}
+# Alarm delay (AlertRule.delay_seconds): when each rule's condition started
+# holding, for rules that have not raised their event yet.
+_alert_pending_since: Dict[int, datetime] = {}
 SENSOR_FAILURES_BEFORE_OFFLINE = 3
 
 
@@ -419,6 +422,13 @@ def _evaluate_condition(rule: AlertRule, value: float) -> bool:
         return True
     if rule.condition == "lt" and rule.threshold_value is not None and value < rule.threshold_value:
         return True
+    # "eq"/"ne" were offered by the rule form (e.g. "alarm flag = 1") but
+    # never evaluated, so such rules silently never fired. Tolerance covers
+    # scaled values like 0.1 * 3 != 0.3 in floating point.
+    if rule.condition == "eq" and rule.threshold_value is not None and abs(value - rule.threshold_value) < 1e-6:
+        return True
+    if rule.condition == "ne" and rule.threshold_value is not None and abs(value - rule.threshold_value) >= 1e-6:
+        return True
     if rule.threshold_min is not None and rule.threshold_max is not None:
         if value < rule.threshold_min or value > rule.threshold_max:
             return True
@@ -461,7 +471,17 @@ async def _check_alerts(db: AsyncSession, device_id, sensor_id, readings: dict):
             triggered = _evaluate_condition(rule, value)
             active_event = active_by_rule.get(rule.id)
 
+            if not triggered:
+                _alert_pending_since.pop(rule.id, None)
+            if triggered and not active_event and (rule.delay_seconds or 0) > 0:
+                # Condition has to hold continuously for delay_seconds - a
+                # defrost or an open door briefly crossing the threshold is
+                # normal operation, not an alarm.
+                since = _alert_pending_since.setdefault(rule.id, datetime.now(timezone.utc))
+                if (datetime.now(timezone.utc) - since).total_seconds() < rule.delay_seconds:
+                    continue
             if triggered and not active_event:
+                _alert_pending_since.pop(rule.id, None)
                 event = AlertEvent(
                     rule_id=rule.id,
                     device_id=device_id,
@@ -469,7 +489,10 @@ async def _check_alerts(db: AsyncSession, device_id, sensor_id, readings: dict):
                     value=value,
                     severity=rule.severity,
                     category=rule.category,
-                    message=f"{rule.name}: wartość {value} przekroczyła próg",
+                    message=(
+                        f"{rule.name}: wartość {value} przekroczyła próg"
+                        + (f" (od {rule.delay_seconds // 60} min)" if (rule.delay_seconds or 0) >= 60 else "")
+                    ),
                     timestamp=datetime.now(timezone.utc),
                 )
                 db.add(event)
@@ -721,6 +744,15 @@ async def _maybe_prune_readings():
         return
     _last_prune = datetime.now(timezone.utc)
     cutoff = datetime.now(timezone.utc) - timedelta(days=settings.READINGS_RETENTION_DAYS)
+    from app.core import timescale
+    if timescale.state["hypertable"]:
+        try:
+            dropped = await timescale.drop_old_chunks(cutoff)
+            if dropped:
+                logger.info("Usunięto %d dziennych partycji odczytów (starszych niż %d dni)", dropped, settings.READINGS_RETENTION_DAYS)
+        except Exception as e:
+            logger.warning("Readings prune error: %s", e)
+        return
     async with AsyncSessionLocal() as db:
         try:
             result = await db.execute(delete(Reading).where(Reading.timestamp < cutoff))

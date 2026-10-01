@@ -221,14 +221,20 @@ class ModbusRTUDriver(AbstractRS485Driver):
                 logger.warning("Nie można otworzyć portu RS485 %s", self._port)
         return ok
 
-    async def ping(self, address: int) -> bool:
+    async def ping(self, address: int, retries: int = None) -> bool:
         async with self._lock:
             if not await self._ensure_connected():
                 return False
+            ctx = self._client.ctx
+            saved = ctx.retries
+            if retries is not None:
+                ctx.retries = retries
             try:
                 await self._client.read_holding_registers(0, count=1, device_id=address)
             except Exception:
                 return False
+            finally:
+                ctx.retries = saved
             # Any reply addressed from this unit proves it is there - an
             # exception response included. Plenty of controllers have no
             # holding register 0 and answer "illegal data address", which
@@ -253,6 +259,15 @@ class ModbusRTUDriver(AbstractRS485Driver):
         if r.isError():
             logger.debug("Read error addr=%d start=%d type=%s: %s", unit, start, reg_type, r)
             return READ_REJECTED
+        # RTU frames carry no transaction id: a reply that arrives after its
+        # request timed out is taken as the answer to the NEXT request with
+        # the same function code. Live data showed exactly that - a probe
+        # temperature or a "-797.8" pattern stored as a setpoint for one
+        # cycle. A reply of the wrong length is such a stray frame; drop it.
+        got = len(r.bits) if is_bit else len(r.registers)
+        if (is_bit and got < count) or (not is_bit and got != count):
+            logger.debug("Stray reply addr=%d start=%d: expected %d, got %d", unit, start, count, got)
+            return READ_NO_RESPONSE
         for reg in regs:
             offset = reg.address - start
             try:
@@ -302,11 +317,14 @@ class ModbusRTUDriver(AbstractRS485Driver):
         return result
 
     async def scan_range(self, start: int, end: int, known_addresses: set) -> List[int]:
+        # No retries while sweeping: almost every address is silent, and a
+        # retry doubles the bus time each one costs. Restored after every
+        # ping so a known-device poll between two pings keeps its retry.
         found = []
         for addr in range(start, end + 1):
             if addr in known_addresses:
                 continue
-            if await self.ping(addr):
+            if await self.ping(addr, retries=0):
                 found.append(addr)
         return found
 

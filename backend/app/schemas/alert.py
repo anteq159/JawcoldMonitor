@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Optional, List
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class AlertRuleCreate(BaseModel):
@@ -15,6 +15,7 @@ class AlertRuleCreate(BaseModel):
     severity: str = "warning"
     category: str = "Inne"
     notify_channels: List[str] = []
+    delay_seconds: int = Field(0, ge=0, le=86400)
 
 
 class AlertRuleUpdate(BaseModel):
@@ -26,6 +27,7 @@ class AlertRuleUpdate(BaseModel):
     severity: Optional[str] = None
     category: Optional[str] = None
     notify_channels: Optional[List[str]] = None
+    delay_seconds: Optional[int] = Field(None, ge=0, le=86400)
 
 
 class AlertRuleOut(BaseModel):
@@ -42,6 +44,7 @@ class AlertRuleOut(BaseModel):
     category: str
     enabled: bool
     notify_channels: List[str] = []
+    delay_seconds: int = 0
     created_at: datetime
 
     model_config = {"from_attributes": True}

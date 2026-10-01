@@ -15,6 +15,9 @@ class DeviceProfile(Base, TimestampMixin):
     description: Mapped[Optional[str]] = mapped_column(String(512))
     register_map: Mapped[Optional[dict]] = mapped_column(JSONB)
     source: Mapped[str] = mapped_column(String(16), default="local")
+    # Built-in profile edited by a user: the startup re-sync to the driver's
+    # register map skips it (see main._init_manufacturer_profiles).
+    customized: Mapped[bool] = mapped_column(Boolean, default=False)
 
     registers: Mapped[List["RegisterDefinition"]] = relationship(
         "RegisterDefinition", back_populates="profile", cascade="all, delete-orphan", lazy="selectin",
@@ -45,5 +48,8 @@ class RegisterDefinition(Base):
     # (function 2, read-only single bit). See RegisterMapEntry in
     # drivers/base.py for why this exists.
     register_type: Mapped[str] = mapped_column(String(16), default="holding")
+    # measurement | setpoint | parameter | status | alarm; None = derived,
+    # see app.services.register_category.
+    category: Mapped[Optional[str]] = mapped_column(String(16))
 
     profile: Mapped[DeviceProfile] = relationship("DeviceProfile", back_populates="registers")
