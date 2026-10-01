@@ -1,42 +1,133 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { getEventLogs } from '../api/logs'
+import { useDeviceStore } from '../store/devices'
+import { getDevices } from '../api/devices'
 import { EmptyState } from '../components/UI/EmptyState'
 import { PageSpinner } from '../components/UI/Spinner'
 import { format } from 'date-fns'
 
+const PAGE = 100
+
+// Human labels and a tone for every event type the backend writes - the
+// raw identifiers ("sensor_discovered") meant nothing to an operator.
+const EVENT_TYPES: Record<string, { label: string; tone: 'good' | 'bad' | 'warn' | 'info' }> = {
+  device_connected: { label: 'Sterownik online', tone: 'good' },
+  device_disconnected: { label: 'Sterownik offline', tone: 'bad' },
+  device_discovered: { label: 'Nowy sterownik', tone: 'info' },
+  device_offline_alarm: { label: 'Alarm: brak komunikacji', tone: 'bad' },
+  device_offline_resolved: { label: 'Komunikacja przywrócona', tone: 'good' },
+  hardware_alarm_triggered: { label: 'Alarm sterownika', tone: 'bad' },
+  hardware_alarm_resolved: { label: 'Alarm sterownika ustąpił', tone: 'good' },
+  register_written: { label: 'Zmiana nastawy', tone: 'warn' },
+  sensor_discovered: { label: 'Nowy czujnik', tone: 'info' },
+  sensor_offline: { label: 'Czujnik bez odczytu', tone: 'bad' },
+  sensor_online: { label: 'Czujnik ponownie działa', tone: 'good' },
+  disk_alarm: { label: 'Alarm: mało miejsca na dysku', tone: 'bad' },
+  auto_backup: { label: 'Kopia zapasowa', tone: 'good' },
+  auto_backup_failed: { label: 'Błąd kopii zapasowej', tone: 'bad' },
+  settings_changed: { label: 'Zmiana ustawień', tone: 'warn' },
+  power_action: { label: 'Restart / zasilanie', tone: 'warn' },
+  update_applied: { label: 'Aktualizacja', tone: 'info' },
+  update_rolled_back: { label: 'Wycofanie aktualizacji', tone: 'warn' },
+  manufacturer_lookup: { label: 'Rozpoznawanie sterownika', tone: 'info' },
+}
+
+const GROUPS: Array<{ label: string; types: string[] }> = [
+  { label: 'Wszystkie', types: [] },
+  { label: 'Alarmy', types: ['device_offline_alarm', 'hardware_alarm_triggered', 'hardware_alarm_resolved', 'device_offline_resolved', 'disk_alarm', 'sensor_offline'] },
+  { label: 'Komunikacja', types: ['device_connected', 'device_disconnected', 'device_discovered', 'sensor_discovered', 'sensor_online', 'sensor_offline'] },
+  { label: 'Zmiany nastaw', types: ['register_written'] },
+  { label: 'System', types: ['settings_changed', 'power_action', 'update_applied', 'update_rolled_back', 'auto_backup', 'auto_backup_failed'] },
+]
+
+const TONE: Record<string, string> = {
+  good: 'text-good', bad: 'text-crit', warn: 'text-warn', info: 'text-accent',
+}
+
 export default function Logs() {
+  const devices = useDeviceStore((s) => s.devices)
+  const setDevices = useDeviceStore((s) => s.setDevices)
   const [logs, setLogs] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [group, setGroup] = useState(0)
+  const [deviceId, setDeviceId] = useState('')
+  const [hasMore, setHasMore] = useState(false)
+  const [loadingMore, setLoadingMore] = useState(false)
 
-  useEffect(() => { getEventLogs({ limit: 200 }).then(setLogs).finally(() => setLoading(false)) }, [])
+  const params = () => ({
+    limit: PAGE,
+    event_type: GROUPS[group].types.join(',') || undefined,
+    device_id: deviceId ? Number(deviceId) : undefined,
+  })
 
-  const typeColor = (t: string) => {
-    if (t.includes('resolved')) return 'text-good'
-    if (t.includes('connected') || t.includes('discovered')) return 'text-good'
-    if (t.includes('disconnected')) return 'text-crit'
-    if (t.includes('hardware_alarm_triggered')) return 'text-crit'
-    if (t.includes('alert') || t.includes('alarm')) return 'text-warn'
-    return 'text-ink-muted'
+  useEffect(() => {
+    if (!devices.length) getDevices().then(setDevices).catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    setLoading(true)
+    getEventLogs(params())
+      .then((rows) => { setLogs(rows); setHasMore(rows.length === PAGE) })
+      .finally(() => setLoading(false))
+  }, [group, deviceId])
+
+  const loadMore = async () => {
+    if (!logs.length) return
+    setLoadingMore(true)
+    try {
+      const rows = await getEventLogs({ ...params(), before: logs[logs.length - 1].timestamp })
+      setLogs((prev) => [...prev, ...rows])
+      setHasMore(rows.length === PAGE)
+    } finally {
+      setLoadingMore(false)
+    }
   }
 
-  if (loading) return <PageSpinner />
+  const deviceName = (id: number) => devices.find((d) => d.id === id)?.name ?? `Urządzenie #${id}`
 
   return (
     <div className="space-y-3">
-      <p className="text-sm text-ink-muted">{logs.length} wpisów</p>
-      <div className="bg-surface border border-border rounded-xl shadow-panel divide-y divide-border">
-        {logs.length === 0 && <EmptyState message="Brak logów" />}
-        {logs.map((l) => (
-          <div key={l.id} className="flex items-start gap-4 px-5 py-3">
-            <div className="flex-1">
-              <span className={`text-xs font-medium ${typeColor(l.event_type)}`}>{l.event_type}</span>
-              <p className="text-sm text-ink-body mt-0.5">{l.message}</p>
-              {l.device_id && <p className="text-xs text-ink-muted">Urządzenie #{l.device_id}</p>}
-            </div>
-            <p className="text-xs text-ink-muted whitespace-nowrap">{format(new Date(l.timestamp), 'dd.MM HH:mm:ss')}</p>
-          </div>
+      <div className="flex flex-wrap items-center gap-2">
+        {GROUPS.map((g, i) => (
+          <button key={g.label} onClick={() => setGroup(i)}
+            className={`px-3 py-1.5 text-sm rounded-lg border transition-colors ${group === i ? 'bg-accent border-accent text-white' : 'border-border text-ink-muted hover:text-ink'}`}>
+            {g.label}
+          </button>
         ))}
+        <select value={deviceId} onChange={(e) => setDeviceId(e.target.value)} className="input !w-auto text-sm sm:ml-auto">
+          <option value="">Wszystkie urządzenia</option>
+          {devices.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+        </select>
       </div>
+
+      {loading ? <PageSpinner /> : (
+        <div className="bg-surface border border-border rounded-xl shadow-panel divide-y divide-border">
+          {logs.length === 0 && <EmptyState message="Brak wpisów dla wybranego filtra" />}
+          {logs.map((l) => {
+            const meta = EVENT_TYPES[l.event_type]
+            return (
+              <div key={l.id} className="flex items-start gap-4 px-5 py-3">
+                <div className="flex-1 min-w-0">
+                  <span className={`text-xs font-medium ${TONE[meta?.tone ?? 'info']}`}>{meta?.label ?? l.event_type}</span>
+                  <p className="text-sm text-ink-body mt-0.5 break-words">{l.message}</p>
+                  {l.device_id && (
+                    <Link to={`/devices/${l.device_id}`} className="text-xs text-accent hover:underline">{deviceName(l.device_id)}</Link>
+                  )}
+                </div>
+                <p className="text-xs text-ink-muted whitespace-nowrap">{format(new Date(l.timestamp), 'dd.MM HH:mm:ss')}</p>
+              </div>
+            )
+          })}
+          {hasMore && (
+            <div className="px-5 py-3 text-center">
+              <button onClick={loadMore} disabled={loadingMore} className="text-sm text-accent hover:text-accent-strong disabled:opacity-50">
+                {loadingMore ? 'Wczytywanie…' : 'Pokaż starsze'}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }

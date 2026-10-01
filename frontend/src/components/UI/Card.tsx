@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom'
 interface Props {
   children: React.ReactNode
   className?: string
@@ -19,8 +20,10 @@ export function Card({ children, className = '', title, action }: Props) {
   )
 }
 
-export function StatCard({ label, value, sub, icon, color = 'blue' }: {
+export function StatCard({ label, value, sub, icon, color = 'blue', to }: {
   label: string; value: string | number; sub?: string; icon?: React.ReactNode; color?: string
+  // Makes the whole tile a link (e.g. "Aktywne alerty" -> /alerts).
+  to?: string
 }) {
   const colors: Record<string, string> = {
     blue: 'text-accent',
@@ -29,16 +32,18 @@ export function StatCard({ label, value, sub, icon, color = 'blue' }: {
     yellow: 'text-warn',
     purple: 'text-violet-600',
   }
-  return (
-    <div className="bg-surface border border-border rounded-xl shadow-panel p-5">
-      <div className="flex items-start justify-between">
-        <div>
-          <p className="text-xs text-ink-muted uppercase tracking-wider">{label}</p>
-          <p className={`text-2xl font-bold mt-1 ${colors[color] || 'text-ink'}`}>{value}</p>
-          {sub && <p className="text-xs text-ink-muted mt-1">{sub}</p>}
-        </div>
-        {icon && <div className={`${colors[color]} opacity-70`}>{icon}</div>}
+  const body = (
+    <div className="flex items-start justify-between">
+      <div>
+        <p className="text-xs text-ink-muted uppercase tracking-wider">{label}</p>
+        <p className={`text-2xl font-bold mt-1 ${colors[color] || 'text-ink'}`}>{value}</p>
+        {sub && <p className="text-xs text-ink-muted mt-1">{sub}</p>}
       </div>
+      {icon && <div className={`${colors[color]} opacity-70`}>{icon}</div>}
     </div>
   )
+  const cls = 'block bg-surface border border-border rounded-xl shadow-panel p-5'
+  return to
+    ? <Link to={to} className={`${cls} hover:border-border-strong transition-colors`}>{body}</Link>
+    : <div className={cls}>{body}</div>
 }

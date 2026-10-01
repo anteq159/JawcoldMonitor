@@ -123,7 +123,7 @@ async def _init_defaults():
             # warning, not info: uvicorn's log config filters INFO from app
             # loggers, and this is exactly the line someone needs to find in
             # `docker logs` when asking "why can't I log in".
-            logger.warning("Utworzono domyslne konto admin (haslo: admin)")
+            logger.warning("Utworzono domyślne konto admin (hasło: admin)")
         elif admin.last_login is None and admin.must_change_password:
             # Factory account nobody has ever logged into - re-assert
             # admin/admin. A half-finished first install (interrupted seed,
@@ -135,7 +135,7 @@ async def _init_defaults():
             # this branch never touches the account again.
             admin.password_hash = hash_password("admin")
             admin.is_active = True
-            logger.warning("Przywrocono fabryczne konto admin (haslo: admin)")
+            logger.warning("Przywrócono fabryczne konto admin (hasło: admin)")
 
         # Idempotent - a partially seeded install can leave the admin row
         # without its role, which logs in but can't do anything.

@@ -19,6 +19,7 @@ export function Header({ onMenuClick, onToggleSidebar, sidebarCollapsed, title }
   const wsStatus = useDeviceStore((s) => s.wsStatus)
 
   return (
+    <>
     <header className="h-14 bg-surface border-b border-border flex items-center px-4 gap-4 shrink-0">
       <button onClick={onMenuClick} className="text-ink-muted hover:text-ink lg:hidden" aria-label="Otwórz menu">
         <Menu size={20} />
@@ -34,7 +35,7 @@ export function Header({ onMenuClick, onToggleSidebar, sidebarCollapsed, title }
       <h1 className="text-sm font-semibold text-ink flex-1">{title}</h1>
 
       <div
-        className={`hidden sm:flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border shrink-0 ${
+        className={`flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border shrink-0 ${
           wsStatus === 'connected'
             ? 'bg-good-bg text-good border-good/20'
             : wsStatus === 'connecting'
@@ -50,7 +51,8 @@ export function Header({ onMenuClick, onToggleSidebar, sidebarCollapsed, title }
         ) : (
           <WifiOff size={12} />
         )}
-        {WS_LABEL[wsStatus]}
+        {/* Icon only on phones - the status still has to be visible there. */}
+        <span className="hidden sm:inline">{WS_LABEL[wsStatus]}</span>
       </div>
 
       {stats && (
@@ -63,5 +65,14 @@ export function Header({ onMenuClick, onToggleSidebar, sidebarCollapsed, title }
         </div>
       )}
     </header>
+    {wsStatus === 'disconnected' && (
+      // Values on screen stop updating without the live stream - say so
+      // instead of letting stale temperatures look current.
+      <div className="bg-crit-bg text-crit text-xs px-4 py-1.5 border-b border-crit/20 flex items-center gap-2 shrink-0">
+        <WifiOff size={12} className="shrink-0" />
+        Brak połączenia na żywo — wyświetlane wartości mogą być nieaktualne. Ponawiam połączenie…
+      </div>
+    )}
+    </>
   )
 }

@@ -19,8 +19,8 @@ import { ConfirmDialog } from '../components/UI/ConfirmDialog'
 import { EmptyState } from '../components/UI/EmptyState'
 import { PageSpinner } from '../components/UI/Spinner'
 import type { Device } from '../types/device'
-import { getLatestDeviceReadings } from '../api/readings'
-import { registerCategory, isBinaryCategory, formatValue, isProbeMissing } from '../utils/registers'
+import { useSeedLatestReadings } from '../hooks/useSeedLatestReadings'
+import { deviceSummary, isBinaryCategory, formatValue, isProbeMissing, plural } from '../utils/registers'
 
 type Tab = 'list' | 'add'
 
@@ -146,44 +146,10 @@ const DeviceCard = memo(function DeviceCard(
   // Bumped on "Anuluj" to remount the picker with the saved selection.
   const [resetKey, setResetKey] = useState(0)
 
-  const updateLiveReadings = useDeviceStore((s) => s.updateLiveReadings)
-  // Last stored values until the first WebSocket scan arrives.
-  useEffect(() => {
-    if (Object.keys(useDeviceStore.getState().liveReadings[device.id] ?? {}).length) return
-    getLatestDeviceReadings(device.id)
-      .then((latest) => updateLiveReadings(device.id, Object.entries(latest).map(([name, r]) => ({
-        parameter_name: name, value: r.value, unit: r.unit,
-      }))))
-      .catch(() => {})
-  }, [device.id])
-
-  const registers = device.profile?.registers ?? []
-  const regByName = new Map(registers.map((r) => [r.name, r]))
-  const categoryOf = (name: string) => {
-    const reg = regByName.get(name)
-    return reg ? registerCategory(reg) : 'measurement'
-  }
-  const activeAlarms = Object.entries(liveReadings)
-    .filter(([name, r]) => categoryOf(name) === 'alarm' && r.value !== 0 && !device.hidden_parameters.includes(name))
-
-  // What the tile shows: the parameters picked for this device, minus any
-  // hidden in its details, labelled with the same aliases used everywhere
-  // else. With nothing picked, the first measurement in profile order (a
-  // probe temperature) - not whatever reading happened to arrive first,
-  // which could be a setpoint or a sensor-fault flag.
-  const firstMeasurement = registers
-    .filter((r) => registerCategory(r) === 'measurement' && !device.hidden_parameters.includes(r.name) && liveReadings[r.name])
-    .map((r) => r.name)[0]
-  const shown = device.card_parameters.length > 0
-    ? device.card_parameters
-        .filter((name) => !device.hidden_parameters.includes(name))
-        .map((name) => [name, liveReadings[name]] as const)
-        .filter(([, r]) => r)
-    : firstMeasurement
-      ? [[firstMeasurement, liveReadings[firstMeasurement]] as const]
-      : Object.entries(liveReadings)
-          .filter(([name]) => !device.hidden_parameters.includes(name))
-          .slice(0, 1)
+  useSeedLatestReadings(device.id)
+  const { values: summaryValues, activeAlarms, categoryOf } = deviceSummary(device, liveReadings)
+  const regByName = new Map((device.profile?.registers ?? []).map((r) => [r.name, r]))
+  const shown = summaryValues.map((v) => [v.name, liveReadings[v.name]] as const)
 
   // Registers the device could report, even if that value has not arrived
   // over the WebSocket yet - otherwise a freshly loaded page offers nothing
@@ -227,10 +193,10 @@ const DeviceCard = memo(function DeviceCard(
           <div className="mt-1.5 flex items-center gap-1.5">
             <ManufacturerBadge profile={device.profile} />
             {activeAlarms.length > 0 && (
-              <span title={activeAlarms.map(([n]) => device.parameter_aliases[n] ?? n).join(', ')}>
+              <span title={activeAlarms.map((n) => device.parameter_aliases[n] ?? n).join(', ')}>
                 <Badge variant="red">
                   <AlertTriangle size={10} className="inline -mt-0.5 mr-0.5" />
-                  {activeAlarms.length === 1 ? 'alarm' : `${activeAlarms.length} alarmy`}
+                  {activeAlarms.length === 1 ? 'alarm' : plural(activeAlarms.length, 'alarm', 'alarmy', 'alarmów')}
                 </Badge>
               </span>
             )}

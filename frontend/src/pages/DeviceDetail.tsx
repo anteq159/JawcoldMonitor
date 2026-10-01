@@ -311,7 +311,7 @@ export default function DeviceDetail() {
           </button>
         )}
       >
-        <div className="px-5 pt-3 pb-1 flex gap-2">
+        <div className="px-5 pt-3 pb-1 flex flex-wrap gap-1 sm:gap-2">
           {RANGES.map((r) => (
             <button key={r} onClick={() => setRange(r)}
               className={`px-3 py-1 text-xs rounded-lg transition-colors ${range === r ? 'bg-accent text-white' : 'text-ink-muted hover:text-ink hover:bg-surface-2'}`}>

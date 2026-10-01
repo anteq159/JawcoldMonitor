@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
+import { useSearchParams } from 'react-router-dom'
 import { format } from 'date-fns'
 import { Download, Upload, RefreshCw, RotateCcw, Wand2, Bell } from 'lucide-react'
 import { Card } from '../components/UI/Card'
 import { ConfirmDialog } from '../components/UI/ConfirmDialog'
 import { downloadReadings, downloadAlerts } from '../api/export'
 import { downloadBackup, restoreBackup } from '../api/backup'
-import { getUpdateInfo, uploadUpdate, rollbackUpdate, getServicesStatus, getRuntimeSettings, updateRuntimeSettings, powerAction, type UpdateInfo, type RuntimeSetting, type PowerAction } from '../api/system'
+import { getUpdateInfo, uploadUpdate, rollbackUpdate, getServicesStatus, getRuntimeSettings, getSerialPorts, updateRuntimeSettings, powerAction, type UpdateInfo, type RuntimeSetting, type PowerAction } from '../api/system'
 import { useDeviceStore } from '../store/devices'
 import { useAuthStore } from '../store/auth'
 import { isNotificationSupported, getNotificationPermission, requestNotificationPermission } from '../utils/notifications'
@@ -24,20 +25,44 @@ export default function Settings() {
   const canExport = useAuthStore((s) => s.can('export:any'))
   const isAdmin = useAuthStore((s) => s.isAdmin())
 
+  // One long page of unrelated forms became tabs; the active one lives in
+  // the URL (?tab=) so a link or a reload lands on the same section.
+  const [params, setParams] = useSearchParams()
+  const tabs = [
+    isAdmin && { id: 'system', label: 'Konfiguracja' },
+    { id: 'notifications', label: 'Powiadomienia' },
+    canExport && { id: 'export', label: 'Eksport danych' },
+    isAdmin && { id: 'backup', label: 'Kopie zapasowe' },
+    { id: 'about', label: isAdmin ? 'Aktualizacje i Raspberry' : 'O systemie' },
+  ].filter(Boolean) as Array<{ id: string; label: string }>
+  const tab = tabs.find((t) => t.id === params.get('tab'))?.id ?? tabs[0].id
+
   return (
     <div className="space-y-6">
-      {isAdmin && <SystemSettingsSection />}
-      <NotificationsSection />
-      {canExport && <ExportCard title="Eksport odczytów" download={downloadReadings} />}
-      {canExport && <ExportCard title="Eksport alarmów" download={downloadAlerts} />}
-      {isAdmin && <BackupSection />}
-      {isAdmin && <UpdatesSection />}
-      {isAdmin && <PowerSection />}
+      <div className="flex flex-wrap gap-1 border-b border-border">
+        {tabs.map((t) => (
+          <button key={t.id} onClick={() => setParams({ tab: t.id }, { replace: true })}
+            className={`px-3 py-2 text-sm -mb-px border-b-2 transition-colors ${tab === t.id ? 'border-accent text-accent font-medium' : 'border-transparent text-ink-muted hover:text-ink'}`}>
+            {t.label}
+          </button>
+        ))}
+      </div>
 
-      <Card title="Informacje o systemie">
+      {tab === 'system' && <SystemSettingsSection />}
+      {tab === 'notifications' && <NotificationsSection />}
+      {tab === 'export' && (
+        <>
+          <ExportCard title="Eksport odczytów" download={downloadReadings} />
+          <ExportCard title="Eksport alarmów" download={downloadAlerts} />
+        </>
+      )}
+      {tab === 'backup' && <BackupSection />}
+      {tab === 'about' && isAdmin && <UpdatesSection />}
+      {tab === 'about' && isAdmin && <PowerSection />}
+
+      {tab === 'about' && <Card title="Informacje o systemie">
         <div className="p-5 space-y-3 text-sm text-ink-muted">
-          <p>Swagger API: <a href="/api/v1/docs" target="_blank" rel="noreferrer" className="text-accent hover:underline">/api/v1/docs</a></p>
-          <p>Stack: FastAPI + React + PostgreSQL + Redis</p>
+          <p>Stack: FastAPI + React + PostgreSQL/TimescaleDB</p>
           <button
             onClick={() => setWizardOpen(true)}
             className="flex items-center gap-2 text-ink-muted hover:text-ink border border-border text-sm px-4 py-2 rounded-lg transition-colors"
@@ -45,7 +70,7 @@ export default function Settings() {
             <Wand2 size={14} /> Uruchom kreator pierwszej konfiguracji ponownie
           </button>
         </div>
-      </Card>
+      </Card>}
     </div>
   )
 }
@@ -56,8 +81,12 @@ function SystemSettingsSection() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
 
+  const [ports, setPorts] = useState<string[]>([])
   const load = () => getRuntimeSettings().then(setSettings).finally(() => setLoading(false))
-  useEffect(() => { load() }, [])
+  useEffect(() => {
+    load()
+    getSerialPorts().then((r) => setPorts(r.ports)).catch(() => {})
+  }, [])
 
   const currentValue = (s: RuntimeSetting) => dirty[s.key] !== undefined ? dirty[s.key] : s.value
   const setValue = (key: string, value: string) => setDirty((d) => ({ ...d, [key]: value }))
@@ -100,7 +129,23 @@ function SystemSettingsSection() {
                     {s.label}
                     {s.restart_required && <span className="ml-1 text-warn">(restart)</span>}
                   </label>
-                  {s.type === 'bool' ? (
+                  {s.key === 'NOTIFY_SYSTEM_CHANNELS' ? (
+                    // Was a free-text "email,telegram" field.
+                    <div className="flex gap-4 py-2">
+                      {[['email', 'E-mail'], ['telegram', 'Telegram']].map(([ch, label]) => {
+                        const list = currentValue(s).split(',').map((x) => x.trim()).filter(Boolean)
+                        const on = list.includes(ch)
+                        return (
+                          <label key={ch} className="flex items-center gap-1.5 text-sm text-ink-body">
+                            <input type="checkbox" checked={on}
+                              onChange={() => setValue(s.key, (on ? list.filter((x) => x !== ch) : [...list, ch]).join(','))}
+                              className="rounded border-border-strong text-accent focus:ring-0" />
+                            {label}
+                          </label>
+                        )
+                      })}
+                    </div>
+                  ) : s.type === 'bool' ? (
                     <select value={currentValue(s)} onChange={(e) => setValue(s.key, e.target.value)} className="input">
                       <option value="true">Tak</option>
                       <option value="false">Nie</option>
@@ -112,6 +157,7 @@ function SystemSettingsSection() {
                       value={currentValue(s)}
                       onChange={(e) => setValue(s.key, e.target.value)}
                       placeholder={s.secret ? (s.is_set ? '••••••• (ustawione — wpisz aby zmienić)' : 'nie ustawione') : undefined}
+                      list={s.key === 'RS485_PORTS' ? 'rs485-ports' : undefined}
                       className="input"
                     />
                   )}
@@ -121,6 +167,11 @@ function SystemSettingsSection() {
             </div>
           </div>
         ))}
+        {/* Detected adapters as suggestions for "Port RS485" - stable
+            /dev/serial/by-id names first; any path can still be typed. */}
+        <datalist id="rs485-ports">
+          {ports.map((p) => <option key={p} value={p} />)}
+        </datalist>
         <button
           onClick={save}
           disabled={saving || Object.keys(dirty).length === 0}

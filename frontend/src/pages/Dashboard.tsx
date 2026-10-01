@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
 import { Cpu, Thermometer, Bell } from 'lucide-react'
 import { StatCard, Card } from '../components/UI/Card'
 import { useDeviceStore } from '../store/devices'
 import { getDashboard } from '../api/system'
 import { getDevices } from '../api/devices'
 import { getSensors } from '../api/sensors'
-import { DeviceStatusBadge } from '../components/Devices/DeviceStatusBadge'
+import { SiteOverviewWidget } from '../components/Dashboard/widgets/SiteOverviewWidget'
+import { deviceSummary } from '../utils/registers'
 import { ComparisonPicker } from '../components/Charts/ComparisonPicker'
 import { PageSpinner } from '../components/UI/Spinner'
 import { RpiMonitorWidget } from '../components/Dashboard/widgets/RpiMonitorWidget'
@@ -34,6 +34,10 @@ export default function Dashboard() {
   const setSensors = useDeviceStore((s) => s.setSensors)
   const devices = useDeviceStore((s) => s.devices)
   const sensors = useDeviceStore((s) => s.sensors)
+  // Selector returns a number, so the page re-renders only when the count
+  // changes - not on every incoming reading.
+  const liveAlarmFlags = useDeviceStore((s) =>
+    s.devices.reduce((n, d) => n + deviceSummary(d, s.liveReadings[d.id] ?? {}).activeAlarms.length, 0))
   const [dashboard, setDashboard] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const comparison = useComparisonSeries('1h')
@@ -48,24 +52,31 @@ export default function Dashboard() {
 
   if (loading) return <PageSpinner />
 
+  // Live controller alarm flags (sensor fault, LO/HI, alarm relay) plus
+  // ongoing threshold-rule alarms - the same alarms "Stan obiektu" lists.
+  const activeAlarms = (dashboard?.active_rule_alarms ?? 0) + liveAlarmFlags
   const devicesOnline = devices.filter((d) => d.status === 'online').length
   const devicesOffline = devices.filter((d) => d.status === 'offline').length
 
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <StatCard label="Urządzenia online" value={devicesOnline} color="green" icon={<Cpu size={20} />} />
-        <StatCard label="Urządzenia offline" value={devicesOffline} color="red" icon={<Cpu size={20} />} />
-        <StatCard label="Czujniki" value={sensors.length} color="blue" icon={<Thermometer size={20} />} />
-        <StatCard label="Aktywne alerty" value={dashboard?.active_alerts ?? 0} color={dashboard?.active_alerts ? 'red' : 'green'} icon={<Bell size={20} />} />
+        <StatCard label="Urządzenia online" value={devicesOnline} color="green" icon={<Cpu size={20} />} to="/devices" />
+        <StatCard label="Urządzenia offline" value={devicesOffline} color={devicesOffline ? 'red' : 'green'} icon={<Cpu size={20} />} to="/devices" />
+        <StatCard label="Czujniki" value={sensors.length} color="blue" icon={<Thermometer size={20} />} to="/sensors" />
+        <StatCard label="Aktywne alarmy" value={activeAlarms} color={activeAlarms ? 'red' : 'green'} icon={<Bell size={20} />} to="/alerts" />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
         <div className="lg:col-span-2 space-y-4">
+          <SiteOverviewWidget devices={devices} />
+
           <FavoriteParametersWidget />
 
           <Card title="Podgląd parametru">
-            <div className="p-3" style={{ minHeight: 360 }}>
+            {/* Grows with content - the fixed 360 px left a big empty box
+                until the first series was added. */}
+            <div className="p-3">
               <ComparisonPicker
                 devices={devices}
                 series={comparison.series}
@@ -76,23 +87,6 @@ export default function Dashboard() {
                 onRemove={comparison.removeSeries}
                 height={300}
               />
-            </div>
-          </Card>
-
-          <Card title="Sterowniki" action={<Link to="/devices" className="text-xs text-accent hover:text-accent-strong shrink-0">Zobacz wszystkie</Link>}>
-            <div className="divide-y divide-border">
-              {devices.slice(0, 8).map((d) => (
-                <Link key={d.id} to={`/devices/${d.id}`} className="flex items-center justify-between px-4 py-2.5 hover:bg-surface-2 transition-colors">
-                  <div className="min-w-0">
-                    <p className="text-sm text-ink truncate">{d.name}</p>
-                    <p className="text-xs text-ink-muted">Adres {d.modbus_address}</p>
-                  </div>
-                  <DeviceStatusBadge status={d.status} />
-                </Link>
-              ))}
-              {devices.length === 0 && (
-                <p className="px-4 py-4 text-sm text-ink-muted">Brak urządzeń — skaner RS485 pracuje...</p>
-              )}
             </div>
           </Card>
         </div>

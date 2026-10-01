@@ -1,4 +1,6 @@
 import { NavLink } from 'react-router-dom'
+import { useDeviceStore } from '../../store/devices'
+import { deviceSummary } from '../../utils/registers'
 import {
   LayoutDashboard, Cpu, Thermometer, Bell, TrendingUp, FileText, Users, ShieldCheck, Activity, Settings2, Map, Settings, X, LogOut, Snowflake
 } from 'lucide-react'
@@ -46,6 +48,9 @@ interface Props { onClose?: () => void }
 
 export function Sidebar({ onClose }: Props) {
   const { user, logout, isAdmin } = useAuth()
+  // Primitive selector: re-renders only when the number changes.
+  const alarmCount = useDeviceStore((s) =>
+    s.devices.reduce((n, d) => n + deviceSummary(d, s.liveReadings[d.id] ?? {}).activeAlarms.length, 0))
 
   return (
     <aside className="flex flex-col h-full bg-surface border-r border-border w-64 shrink-0">
@@ -87,7 +92,13 @@ export function Sidebar({ onClose }: Props) {
                   onClick={onClose}
                 >
                   <Icon size={16} />
-                  {label}
+                  <span className="flex-1">{label}</span>
+                  {to === '/alerts' && alarmCount > 0 && (
+                    <span className="min-w-[1.25rem] text-center text-[11px] font-semibold bg-crit text-white rounded-full px-1.5 py-0.5"
+                      title="Aktywne alarmy sterowników">
+                      {alarmCount}
+                    </span>
+                  )}
                 </NavLink>
               ))}
             </div>

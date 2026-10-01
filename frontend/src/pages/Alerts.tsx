@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
 import { Bell, CheckCircle, Plus, Trash2, Download } from 'lucide-react'
-import { getAlertRules, getAlertEvents, acknowledgeEvent, deleteAlertRule, createAlertRule } from '../api/alerts'
+import { getAlertRules, getAlertEvents, acknowledgeEvent, deleteAlertRule, createAlertRule, updateAlertRule } from '../api/alerts'
 import { getHardwareAlarms, acknowledgeHardwareAlarm, type HardwareAlarmEvent } from '../api/hardwareAlarms'
 import { downloadAlerts } from '../api/export'
 import { getDevices } from '../api/devices'
@@ -9,6 +9,7 @@ import { useDeviceStore } from '../store/devices'
 import { useAuthStore } from '../store/auth'
 import { Badge } from '../components/UI/Badge'
 import { Modal } from '../components/UI/Modal'
+import { ConfirmDialog } from '../components/UI/ConfirmDialog'
 import { EmptyState } from '../components/UI/EmptyState'
 import { PageSpinner } from '../components/UI/Spinner'
 import { format } from 'date-fns'
@@ -39,6 +40,8 @@ function formatDuration(start: string, end: string | null): string {
   if (m > 0) return `${m}min ${s}s`
   return `${s}s`
 }
+
+const SEV_LABELS: Record<string, string> = { critical: 'krytyczny', warning: 'ostrzeżenie', info: 'informacja' }
 
 const CONDITION_SYMBOLS: Record<string, string> = { gt: '>', lt: '<', eq: '=', ne: '≠' }
 
@@ -83,6 +86,16 @@ export default function Alerts() {
     setHwAlarms(hw => hw.map(a => a.id === id ? { ...a, acknowledged: true } : a))
   }
 
+  const [confirmDeleteRule, setConfirmDeleteRule] = useState<AlertRule | null>(null)
+  const toggleRule = async (id: number, enabled: boolean) => {
+    setRules((rs) => rs.map((r) => (r.id === id ? { ...r, enabled } : r)))
+    try {
+      await updateAlertRule(id, { enabled })
+    } catch {
+      setRules((rs) => rs.map((r) => (r.id === id ? { ...r, enabled: !enabled } : r)))
+      toast.error('Nie udało się zmienić reguły')
+    }
+  }
   const delRule = async (id: number) => {
     await deleteAlertRule(id)
     setRules(r => r.filter(ru => ru.id !== id))
@@ -151,7 +164,10 @@ export default function Alerts() {
               <div className="flex items-center gap-3 min-w-0">
                 <Bell size={14} className={`shrink-0 ${sevIconColor(ev.severity)}`} />
                 <div className="min-w-0">
-                  <p className="text-sm text-ink truncate">{ev.message}</p>
+                  <p className="text-sm text-ink truncate">
+                    {ev.device_id && <span className="font-medium">{devices.find(d => d.id === ev.device_id)?.name ?? `Urządzenie #${ev.device_id}`}: </span>}
+                    {ev.message}
+                  </p>
                   <p className="text-xs text-ink-muted">
                     {format(new Date(ev.timestamp), 'dd.MM.yyyy HH:mm:ss')}
                     {' · '}
@@ -161,10 +177,10 @@ export default function Alerts() {
               </div>
               <div className="flex items-center gap-2 shrink-0">
                 <Badge variant="gray">{ev.category}</Badge>
-                <Badge variant={sevColor(ev.severity)}>{ev.severity}</Badge>
+                <Badge variant={sevColor(ev.severity)}>{SEV_LABELS[ev.severity] ?? ev.severity}</Badge>
                 {!ev.acknowledged && canAcknowledge && (
-                  <button onClick={() => ack(ev.id)} className="text-ink-muted hover:text-good transition-colors" title="Potwierdź">
-                    <CheckCircle size={16} />
+                  <button onClick={() => ack(ev.id)} className="flex items-center gap-1 text-xs text-ink-muted hover:text-good border border-border rounded-lg px-2 py-1 transition-colors" title="Potwierdź">
+                    <CheckCircle size={14} /> <span className="hidden sm:inline">Potwierdź</span>
                   </button>
                 )}
               </div>
@@ -193,7 +209,7 @@ export default function Alerts() {
                 </div>
               </div>
               <div className="flex items-center gap-2 shrink-0">
-                <Badge variant={sevColor(a.severity)}>{a.severity}</Badge>
+                <Badge variant={sevColor(a.severity)}>{SEV_LABELS[a.severity] ?? a.severity}</Badge>
                 {a.acknowledged ? (
                   <Badge variant="gray">potwierdzone</Badge>
                 ) : canAcknowledge && (
@@ -211,9 +227,9 @@ export default function Alerts() {
         <div className="bg-surface border border-border rounded-xl shadow-panel divide-y divide-border">
           {rules.length === 0 && <EmptyState message="Brak reguł alertów" />}
           {rules.map(r => (
-            <div key={r.id} className="flex items-center justify-between px-5 py-3">
-              <div>
-                <p className="text-sm text-ink">{r.name}</p>
+            <div key={r.id} className={`flex items-center justify-between gap-3 px-5 py-3 ${r.enabled ? '' : 'opacity-60'}`}>
+              <div className="min-w-0">
+                <p className="text-sm text-ink">{r.name}{!r.enabled && <span className="ml-2 text-xs text-ink-muted">(wyłączona)</span>}</p>
                 <p className="text-xs text-ink-muted">
                   {r.device_id ? (devices.find(d => d.id === r.device_id)?.name ?? `Urządzenie #${r.device_id}`) : `Czujnik #${r.sensor_id}`}
                   {' · '}{r.parameter_name}
@@ -223,9 +239,16 @@ export default function Alerts() {
               </div>
               <div className="flex items-center gap-2">
                 <Badge variant="gray">{r.category}</Badge>
-                <Badge variant={sevColor(r.severity)}>{r.severity}</Badge>
+                <Badge variant={sevColor(r.severity)}>{SEV_LABELS[r.severity] ?? r.severity}</Badge>
                 {canManage && (
-                  <button onClick={() => delRule(r.id)} className="text-ink-muted hover:text-crit transition-colors">
+                  <label className="flex items-center gap-1.5 text-xs text-ink-muted cursor-pointer" title="Wyłączona reguła nie wywołuje alarmów (np. na czas serwisu)">
+                    <input type="checkbox" checked={r.enabled} onChange={() => toggleRule(r.id, !r.enabled)}
+                      className="rounded border-border-strong text-accent focus:ring-0" />
+                    <span className="hidden sm:inline">aktywna</span>
+                  </label>
+                )}
+                {canManage && (
+                  <button onClick={() => setConfirmDeleteRule(r)} className="text-ink-muted hover:text-crit transition-colors" title="Usuń regułę">
                     <Trash2 size={14} />
                   </button>
                 )}
@@ -235,6 +258,14 @@ export default function Alerts() {
         </div>
       )}
 
+      <ConfirmDialog
+        open={!!confirmDeleteRule}
+        title="Usunąć regułę?"
+        message={`Reguła „${confirmDeleteRule?.name}” i historia jej zdarzeń zostaną usunięte. Jeśli chcesz ją tylko czasowo wstrzymać, odznacz „aktywna”.`}
+        confirmLabel="Usuń"
+        onConfirm={() => { if (confirmDeleteRule) delRule(confirmDeleteRule.id); setConfirmDeleteRule(null) }}
+        onClose={() => setConfirmDeleteRule(null)}
+      />
       <AddRuleModal open={showAdd} onClose={() => setShowAdd(false)} devices={devices} onAdded={load} />
       <ExportAlertsModal open={showExport} onClose={() => setShowExport(false)} />
     </div>

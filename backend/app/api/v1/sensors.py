@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta, timezone
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -5,6 +6,7 @@ from sqlalchemy import select
 
 from app.core.database import get_db
 from app.models.sensor import Sensor
+from app.models.reading import Reading
 from app.models.user import User
 from app.schemas.sensor import SensorOut, SensorUpdate
 from app.api.deps import get_current_user, require_permission
@@ -18,7 +20,17 @@ async def list_sensors(
     _: User = Depends(get_current_user),
 ):
     result = await db.execute(select(Sensor).order_by(Sensor.name))
-    return result.scalars().all()
+    sensors = result.scalars().all()
+    # One DISTINCT ON over the last day (index ix_readings_sensor_ts) rather
+    # than a query per sensor.
+    latest = await db.execute(
+        select(Reading.sensor_id, Reading.value)
+        .where(Reading.sensor_id.is_not(None), Reading.timestamp >= datetime.now(timezone.utc) - timedelta(days=1))
+        .distinct(Reading.sensor_id)
+        .order_by(Reading.sensor_id, Reading.timestamp.desc())
+    )
+    values = dict(latest.all())
+    return [SensorOut.model_validate(s).model_copy(update={"last_value": values.get(s.id)}) for s in sensors]
 
 
 @router.get("/{sensor_id}", response_model=SensorOut)

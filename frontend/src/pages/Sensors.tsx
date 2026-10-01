@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Thermometer, Pencil, Check, X, SlidersHorizontal, Star } from 'lucide-react'
 import { getSensors, updateSensor } from '../api/sensors'
-import { getSensorReadings } from '../api/readings'
+import { getSensorReadings, type TimeRange } from '../api/readings'
 import { useDeviceStore } from '../store/devices'
 import { useAuthStore } from '../store/auth'
 import { useFavoriteParameters } from '../hooks/useFavoriteParameters'
@@ -15,6 +15,8 @@ import toast from 'react-hot-toast'
 import type { Sensor } from '../types/sensor'
 import type { ParameterReadings } from '../types/reading'
 
+const SENSOR_RANGES: TimeRange[] = ['1h', '6h', '24h', '7d', '30d', '90d', '1y']
+
 export default function Sensors() {
   const sensors = useDeviceStore((s) => s.sensors)
   const setSensors = useDeviceStore((s) => s.setSensors)
@@ -22,6 +24,7 @@ export default function Sensors() {
   const [loading, setLoading] = useState(sensors.length === 0)
   const [selected, setSelected] = useState<Sensor | null>(null)
   const [chart, setChart] = useState<ParameterReadings[]>([])
+  const [range, setRange] = useState<TimeRange>('24h')
   const [calibrating, setCalibrating] = useState<Sensor | null>(null)
   const { isFavorite, toggleFavorite } = useFavoriteParameters()
 
@@ -30,8 +33,8 @@ export default function Sensors() {
   }, [])
 
   useEffect(() => {
-    if (selected) getSensorReadings(selected.id, '24h').then(setChart)
-  }, [selected])
+    if (selected) getSensorReadings(selected.id, range).then(setChart)
+  }, [selected, range])
 
   const handleRename = async (sensor: Sensor, newName: string) => {
     await updateSensor(sensor.id, { name: newName })
@@ -55,7 +58,9 @@ export default function Sensors() {
 
       <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {sensors.map((s) => {
+          // Last stored value until the next 1-Wire scan arrives live.
           const live = liveSensorTemps[s.id]
+            ?? (s.last_value != null && s.last_seen ? { temp: s.last_value, ts: new Date(s.last_seen).getTime() } : undefined)
           return (
             <SensorCard
               key={s.id}
@@ -79,8 +84,16 @@ export default function Sensors() {
 
       {selected && (
         <div className="bg-surface border border-border rounded-xl shadow-panel">
-          <div className="px-5 py-4 border-b border-border">
-            <h3 className="font-semibold text-ink text-sm">{selected.name} — ostatnie 24h</h3>
+          <div className="px-5 py-4 border-b border-border flex flex-wrap items-center justify-between gap-2">
+            <h3 className="font-semibold text-ink text-sm">{selected.name}</h3>
+            <div className="flex flex-wrap gap-1">
+              {SENSOR_RANGES.map((r) => (
+                <button key={r} onClick={() => setRange(r)}
+                  className={`px-2.5 py-1 text-xs rounded-lg transition-colors ${range === r ? 'bg-accent text-white' : 'text-ink-muted hover:text-ink hover:bg-surface-2'}`}>
+                  {r === '1y' ? '1 rok' : r}
+                </button>
+              ))}
+            </div>
           </div>
           <div className="p-4">
             <TimeSeriesChart data={chart} height={280} />
@@ -91,7 +104,7 @@ export default function Sensors() {
       {calibrating && (
         <CalibrationModal
           sensor={calibrating}
-          currentTemp={liveSensorTemps[calibrating.id]?.temp ?? null}
+          currentTemp={liveSensorTemps[calibrating.id]?.temp ?? calibrating.last_value ?? null}
           onClose={() => setCalibrating(null)}
           onSaved={(offset) => handleCalibrated(calibrating, offset)}
         />

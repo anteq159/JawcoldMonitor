@@ -110,11 +110,11 @@ export function RegisterControlPanel({
         <thead>
           <tr className="border-b border-border text-left">
             {editingVisibility && <th className="px-5 py-2 text-xs font-semibold text-ink-muted uppercase tracking-wide"></th>}
-            <th className="px-5 py-2 text-xs font-semibold text-ink-muted uppercase tracking-wide"></th>
-            <th className="px-3 py-2 text-xs font-semibold text-ink-muted uppercase tracking-wide">Adres</th>
+            <th className="px-3 sm:px-5 py-2 text-xs font-semibold text-ink-muted uppercase tracking-wide"></th>
+            <th className="hidden sm:table-cell px-3 py-2 text-xs font-semibold text-ink-muted uppercase tracking-wide">Adres</th>
             <th className="px-3 py-2 text-xs font-semibold text-ink-muted uppercase tracking-wide">Nazwa</th>
             <th className="px-3 py-2 text-xs font-semibold text-ink-muted uppercase tracking-wide">Wartość</th>
-            <th className="px-3 py-2 text-xs font-semibold text-ink-muted uppercase tracking-wide">Typ danych</th>
+            <th className="hidden md:table-cell px-3 py-2 text-xs font-semibold text-ink-muted uppercase tracking-wide">Typ danych</th>
             <th className="px-5 py-2 text-xs font-semibold text-ink-muted uppercase tracking-wide"></th>
           </tr>
         </thead>
@@ -156,7 +156,7 @@ export function RegisterControlPanel({
                     <Star size={14} fill={favorite ? 'currentColor' : 'none'} />
                   </button>
                 </td>
-                <td className="px-3 py-2 font-mono text-ink-muted align-top">{r.address}</td>
+                <td className="hidden sm:table-cell px-3 py-2 font-mono text-ink-muted align-top">{r.address}</td>
                 <td className="px-3 py-2 text-ink align-top">
                   {renaming === r.name ? (
                     <div className="flex items-center gap-1.5">
@@ -234,7 +234,7 @@ export function RegisterControlPanel({
                     </span>
                   )}
                 </td>
-                <td className="px-3 py-2 font-mono text-ink-muted align-top">
+                <td className="hidden md:table-cell px-3 py-2 font-mono text-ink-muted align-top">
                   {r.data_type}{r.scale_factor !== 1 ? ` ×${r.scale_factor}` : ''}
                   {r.register_type && r.register_type !== 'holding' && (
                     <span className="block text-ink-muted/70">{REGISTER_TYPE_LABELS[r.register_type]}</span>

@@ -55,11 +55,13 @@ async def ensure_timescale() -> None:
             "SELECT count(*) FROM timescaledb_information.hypertables WHERE hypertable_name = 'readings'",
         )
         if not is_hyper:
+            # reltuples is -1 for a never-analyzed (fresh, empty) table.
             rows = await _scalar(conn, "SELECT reltuples::bigint FROM pg_class WHERE relname = 'readings'")
-            logger.warning(
-                "Konwersja tabeli odczytów do TimescaleDB (~%s wierszy) - jednorazowo, może potrwać kilka minut",
-                rows,
-            )
+            if rows and rows > 0:
+                logger.warning(
+                    "Konwersja historii odczytów do TimescaleDB (~%s wierszy) - jednorazowo, może potrwać kilka minut",
+                    rows,
+                )
             # A hypertable's unique constraints must include the time
             # column; nothing looks readings up by id, so the primary key
             # index (one more write per inserted reading) just goes.
@@ -68,7 +70,7 @@ async def ensure_timescale() -> None:
                 "SELECT create_hypertable('readings', by_range('timestamp', INTERVAL '1 day'), "
                 "create_default_indexes => false, migrate_data => true)"
             ))
-            logger.warning("Tabela odczytów przekonwertowana do TimescaleDB")
+            logger.info("Tabela odczytów przekonwertowana do TimescaleDB")
         state["hypertable"] = True
 
         compressed = await _scalar(
@@ -129,7 +131,7 @@ async def _initial_refresh() -> None:
         async with engine.connect() as conn:
             conn = await conn.execution_options(isolation_level="AUTOCOMMIT")
             await conn.execute(text(f"CALL refresh_continuous_aggregate('{CAGG}', NULL, now() - INTERVAL '15 minutes')"))
-        logger.warning("Agregat %s wypełniony historią", CAGG)
+        logger.info("Agregat %s wypełniony historią", CAGG)
     except Exception as e:
         logger.warning("Wypełnianie agregatu %s nie powiodło się: %s", CAGG, e)
 

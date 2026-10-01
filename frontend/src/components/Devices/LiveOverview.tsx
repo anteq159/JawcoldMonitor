@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { AlertTriangle, CheckCircle2, ChevronDown, ChevronUp } from 'lucide-react'
 import { useDeviceStore } from '../../store/devices'
-import { getLatestDeviceReadings } from '../../api/readings'
+import { useSeedLatestReadings } from '../../hooks/useSeedLatestReadings'
 import { Card } from '../UI/Card'
 import type { RegisterDefinition } from '../../api/deviceProfiles'
 import { registerCategory, formatValue, isProbeMissing, type RegisterCategory } from '../../utils/registers'
@@ -31,23 +31,11 @@ interface Item {
 // temperatures.
 export function LiveOverview({ deviceId, registers, hiddenNames, aliases, units }: Props) {
   const readings = useDeviceStore((s) => s.liveReadings[deviceId])
-  const updateLiveReadings = useDeviceStore((s) => s.updateLiveReadings)
   const [showSettings, setShowSettings] = useState(false)
 
   // Seed from the last stored values - live readings otherwise only appear
   // with the next WebSocket scan, leaving the page empty for up to a cycle.
-  useEffect(() => {
-    if (readings && Object.keys(readings).length) return
-    getLatestDeviceReadings(deviceId)
-      .then((latest) => {
-        const current = useDeviceStore.getState().liveReadings[deviceId]
-        if (current && Object.keys(current).length) return
-        updateLiveReadings(deviceId, Object.entries(latest).map(([name, r]) => ({
-          parameter_name: name, value: r.value, unit: r.unit,
-        })))
-      })
-      .catch(() => {})
-  }, [deviceId])
+  useSeedLatestReadings(deviceId)
 
   const byName = new Map(registers.map((r) => [r.name, r]))
   const order = new Map(registers.map((r, i) => [r.name, i]))

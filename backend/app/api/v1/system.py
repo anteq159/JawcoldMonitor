@@ -95,7 +95,9 @@ async def services_status(
 async def list_serial_ports(_: User = Depends(get_current_user)):
     # ttyACM included: CDC-ACM USB-RS485 adapters (like the one on the
     # production Pi) enumerate there, not under ttyUSB.
-    ports = sorted(
+    # Stable /dev/serial/by-id names first: they survive re-plugging the
+    # adapter, ttyACM0/ttyUSB0 numbering does not.
+    ports = sorted(glob.glob("/dev/serial/by-id/*")) + sorted(
         glob.glob("/dev/ttyUSB*") + glob.glob("/dev/ttyACM*")
         + glob.glob("/dev/ttyS[0-9]*") + glob.glob("/dev/ttyAMA*")
     )
@@ -112,23 +114,12 @@ async def dashboard_summary(
     devices_online = (await db.execute(select(func.count(Device.id)).where(Device.status == "online"))).scalar()
     devices_offline = (await db.execute(select(func.count(Device.id)).where(Device.status == "offline"))).scalar()
     sensors_online = (await db.execute(select(func.count(Sensor.id)).where(Sensor.status == "online"))).scalar()
-    alerts = (await db.execute(select(func.count(AlertEvent.id)).where(AlertEvent.acknowledged == False))).scalar()
-
-    recent_readings = await db.execute(
-        select(Reading).order_by(Reading.timestamp.desc()).limit(20)
-    )
-    recent = recent_readings.scalars().all()
-    recent_list = [
-        {
-            "device_id": r.device_id,
-            "sensor_id": r.sensor_id,
-            "parameter_name": r.parameter_name,
-            "value": r.value,
-            "unit": r.unit,
-            "timestamp": r.timestamp.isoformat(),
-        }
-        for r in recent
-    ]
+    # Alarms that are still going on: threshold events not yet resolved plus
+    # controller alarms still active. Counting unacknowledged events instead
+    # kept the tile red for alarms that had cleared hours ago.
+    from app.models.hardware_alarm import HardwareAlarmEvent
+    rule_alarms = (await db.execute(select(func.count(AlertEvent.id)).where(AlertEvent.resolved_at.is_(None)))).scalar()
+    alerts = rule_alarms + (await db.execute(select(func.count(HardwareAlarmEvent.id)).where(HardwareAlarmEvent.active == True))).scalar()
 
     system = await get_system_stats()
     return {
@@ -136,7 +127,10 @@ async def dashboard_summary(
         "devices_offline": devices_offline,
         "sensors_online": sensors_online,
         "active_alerts": alerts,
-        "recent_readings": recent_list,
+        # Threshold-rule alarms only - the panel adds the controllers' live
+        # alarm flags itself (they are not all stored as events).
+        "active_rule_alarms": rule_alarms,
+        "recent_readings": [],  # kept for API compatibility; never used by the panel
         "system": system,
     }
 

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 import { Sidebar } from './Sidebar'
 import { Header } from './Header'
+import { getDevices } from '../../api/devices'
 import { Toaster } from 'react-hot-toast'
 import { useWebSocket } from '../../hooks/useWebSocket'
 import { NewDeviceModal } from '../Alerts/NewDeviceModal'
@@ -60,6 +61,11 @@ export function AppLayout() {
         paramName: f.param_name ?? undefined,
       }))
     )).catch(() => {})
+    // Device list (with register profiles) app-wide, so live alarm flags
+    // can be recognised on any page - e.g. the alarm counter in the menu.
+    if (!useDeviceStore.getState().devices.length) {
+      getDevices().then((d) => useDeviceStore.getState().setDevices(d)).catch(() => {})
+    }
     if (!isWizardCompleted()) setWizardOpen(true)
   }, [])
 

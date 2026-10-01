@@ -11,4 +11,5 @@ export interface Sensor {
   first_seen: string | null
   last_seen: string | null
   created_at: string
+  last_value?: number | null
 }

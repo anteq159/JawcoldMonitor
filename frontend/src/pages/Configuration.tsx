@@ -11,7 +11,7 @@ import { Modal } from '../components/UI/Modal'
 import { ConfirmDialog } from '../components/UI/ConfirmDialog'
 import { EmptyState } from '../components/UI/EmptyState'
 import { PageSpinner } from '../components/UI/Spinner'
-import { registerCategory, type RegisterCategory } from '../utils/registers'
+import { registerCategory, plural, type RegisterCategory } from '../utils/registers'
 
 const DATA_TYPES = ['uint16', 'int16', 'uint32', 'int32', 'float32']
 const REGISTER_TYPES = [
@@ -21,8 +21,12 @@ const REGISTER_TYPES = [
   { value: 'discrete_input', label: 'Discrete (2, R/O)' },
 ]
 
-const CATEGORY_COUNT_LABELS: Record<RegisterCategory, string> = {
-  measurement: 'pomiary', setpoint: 'nastawy', parameter: 'parametry', status: 'stany', alarm: 'alarmy',
+const CATEGORY_COUNT_FORMS: Record<RegisterCategory, [string, string, string]> = {
+  measurement: ['pomiar', 'pomiary', 'pomiarów'],
+  setpoint: ['nastawa', 'nastawy', 'nastaw'],
+  parameter: ['parametr', 'parametry', 'parametrów'],
+  status: ['stan', 'stany', 'stanów'],
+  alarm: ['alarm', 'alarmy', 'alarmów'],
 }
 
 const TABS = ['Carel', 'Danfoss', 'Eliwell', 'Inne'] as const
@@ -127,7 +131,7 @@ export default function Configuration() {
                 {(['measurement', 'setpoint', 'parameter', 'status', 'alarm'] as RegisterCategory[])
                   .map((c) => [c, p.registers.filter((r) => registerCategory(r) === c).length] as const)
                   .filter(([, n]) => n > 0)
-                  .map(([c, n]) => `${n} ${CATEGORY_COUNT_LABELS[c]}`)
+                  .map(([c, n]) => plural(n, ...CATEGORY_COUNT_FORMS[c]))
                   .join(' · ') || 'brak zmiennych'}
               </p>
               {canConfigure && (

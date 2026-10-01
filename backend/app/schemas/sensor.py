@@ -16,6 +16,9 @@ class SensorOut(BaseModel):
     first_seen: Optional[datetime] = None
     last_seen: Optional[datetime] = None
     created_at: datetime
+    # Most recent stored temperature, so the panel shows a value right away
+    # instead of "—" until the next 1-Wire scan (every 30 s).
+    last_value: Optional[float] = None
 
     model_config = {"from_attributes": True}
 
