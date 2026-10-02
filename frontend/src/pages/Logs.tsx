@@ -7,7 +7,7 @@ import { EmptyState } from '../components/UI/EmptyState'
 import { PageSpinner } from '../components/UI/Spinner'
 import { format } from 'date-fns'
 
-import { EVENT_TYPES, TONE } from '../utils/eventTypes'
+import { eventText, EVENT_TYPES, TONE } from '../utils/eventTypes'
 
 const PAGE = 100
 
@@ -85,7 +85,7 @@ export default function Logs() {
               <div key={l.id} className="flex items-start gap-4 px-5 py-3">
                 <div className="flex-1 min-w-0">
                   <span className={`text-xs font-medium ${TONE[meta?.tone ?? 'info']}`}>{meta?.label ?? l.event_type}</span>
-                  <p className="text-sm text-ink-body mt-0.5 break-words">{l.message}</p>
+                  <p className="text-sm text-ink-body mt-0.5 break-words">{l.device_id ? eventText(l.message, deviceName(l.device_id)) : l.message}</p>
                   {l.device_id && (
                     <Link to={`/devices/${l.device_id}`} className="text-xs text-accent hover:underline">{deviceName(l.device_id)}</Link>
                   )}

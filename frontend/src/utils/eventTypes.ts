@@ -25,3 +25,18 @@ export const EVENT_TYPES: Record<string, { label: string; tone: 'good' | 'bad' |
 export const TONE: Record<string, string> = {
   good: 'text-good', bad: 'text-crit', warn: 'text-warn', info: 'text-accent',
 }
+
+// What to print for an event when its device is already shown next to it
+// (link, card, device page): drops the "Device name: " prefix the backend
+// writes for notifications, plus the wording of entries from before 1.33
+// ("alarm sterownika X — Flaga alarmowa sterownika").
+export function eventText(message: string, deviceName?: string | null): string {
+  let text = message
+  if (deviceName && text.startsWith(`${deviceName}: `)) text = text.slice(deviceName.length + 2)
+  text = text
+    .replace(/ — Flaga alarmowa sterownika$/, '')
+    // The green "Alarm sterownika ustąpił" label already says it.
+    .replace(/^ustąpił (alarm sterownika )?/, '')
+    .replace(/^alarm sterownika /, '')
+  return text.charAt(0).toUpperCase() + text.slice(1)
+}

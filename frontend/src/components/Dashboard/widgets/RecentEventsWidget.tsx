@@ -5,7 +5,7 @@ import { pl } from 'date-fns/locale'
 import { Card } from '../../UI/Card'
 import { getEventLogs } from '../../../api/logs'
 import { useDeviceStore } from '../../../store/devices'
-import { EVENT_TYPES, TONE } from '../../../utils/eventTypes'
+import { eventText, EVENT_TYPES, TONE } from '../../../utils/eventTypes'
 
 const LIMIT = 8
 
@@ -44,7 +44,7 @@ export function RecentEventsWidget() {
                     {formatDistanceToNow(new Date(e.timestamp), { addSuffix: true, locale: pl })}
                   </span>
                 </div>
-                <p className="text-xs text-ink-body line-clamp-2">{e.message}</p>
+                <p className="text-xs text-ink-body line-clamp-2">{name ? eventText(e.message, name) : e.message}</p>
                 {name && <p className="text-[11px] text-ink-muted">{name}</p>}
               </div>
             )

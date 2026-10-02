@@ -90,7 +90,7 @@ function handleMessage(msg: WSMessage, store: ReturnType<typeof useDeviceStore.g
     case 'alert_triggered': {
       const ev = msg.data
       const label = ev.severity === 'critical' ? 'Krytyczny' : ev.severity === 'warning' ? 'Ostrzeżenie' : 'Informacja'
-      toast.error(`${label}: ${ev.rule_name} — ${ev.value}`, { duration: 8000 })
+      toast.error(`${label}: ${ev.rule_name} — ${ev.value}`, { duration: 8000, id: `alert-${ev.rule_id ?? ev.rule_name}` })
       notifyIfHidden(`Alarm: ${ev.rule_name}`, {
         body: `${label} — wartość ${ev.value}`,
         tag: `jawcold-alert-${ev.id}`,
@@ -108,8 +108,11 @@ function handleMessage(msg: WSMessage, store: ReturnType<typeof useDeviceStore.g
       // configured. Also appears in Logi regardless of this toast.
       const a = msg.data
       if (a.status === 'active') {
-        toast.error(`${a.device_name}: ${a.name} — ${a.description}`, { duration: 8000 })
-        notifyIfHidden(`Alarm sterownika: ${a.device_name}`, { body: `${a.name} — ${a.description}`, tag: `jawcold-hwalarm-${a.device_id}-${a.code}` })
+        const text = a.description ? `${a.name} — ${a.description}` : a.name
+        // One toast per alarm: a flag flickering on and off replaces its
+        // toast instead of stacking a new one every few seconds.
+        toast.error(`${a.device_name}: ${text}`, { duration: 8000, id: `hwalarm-${a.device_id}-${a.code}` })
+        notifyIfHidden(`Alarm sterownika: ${a.device_name}`, { body: text, tag: `jawcold-hwalarm-${a.device_id}-${a.code}` })
       }
       break
     }

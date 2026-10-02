@@ -42,18 +42,18 @@ class SettingMeta:
 
 EDITABLE_SETTINGS: Dict[str, SettingMeta] = {
     # Skanowanie
-    "KNOWN_SCAN_INTERVAL": SettingMeta("Interwał odpytywania urządzeń (s)", "Skanowanie", "int"),
+    "KNOWN_SCAN_INTERVAL": SettingMeta("Odczyt sterowników co (s)", "Skanowanie", "int"),
     "OFFLINE_POLL_INTERVAL": SettingMeta("Odpytywanie urządzeń offline co (s)", "Skanowanie", "int"),
-    "DISCOVERY_SCAN_INTERVAL": SettingMeta("Interwał wykrywania nowych urządzeń (s)", "Skanowanie", "int"),
+    "DISCOVERY_SCAN_INTERVAL": SettingMeta("Szukanie nowych sterowników co (s)", "Skanowanie", "int"),
     "DISCOVERY_MAX_ADDRESS": SettingMeta("Najwyższy skanowany adres Modbus", "Skanowanie", "int"),
-    "DALLAS_SCAN_INTERVAL": SettingMeta("Interwał odczytu czujników Dallas (s)", "Skanowanie", "int"),
-    "READINGS_RETENTION_DAYS": SettingMeta("Retencja odczytów (dni, 0 = bez kasowania)", "Skanowanie", "int"),
+    "DALLAS_SCAN_INTERVAL": SettingMeta("Odczyt czujników Dallas co (s)", "Skanowanie", "int"),
+    "READINGS_RETENTION_DAYS": SettingMeta("Przechowuj szczegółowe odczyty (dni, 0 = bez kasowania)", "Skanowanie", "int"),
     # RS485 (restart)
     "RS485_PORTS": SettingMeta("Port RS485", "RS485", "str", restart_required=True),
     "RS485_BAUDRATE": SettingMeta("Prędkość transmisji (baud)", "RS485", "int", restart_required=True),
     "RS485_STOPBITS": SettingMeta("Bity stopu (1 lub 2)", "RS485", "int", restart_required=True),
     "RS485_PARITY": SettingMeta("Parzystość (N, E lub O)", "RS485", "str", restart_required=True),
-    "MODBUS_TIMEOUT": SettingMeta("Timeout Modbus (s)", "RS485", "float", restart_required=True),
+    "MODBUS_TIMEOUT": SettingMeta("Czas oczekiwania na odpowiedź sterownika (s)", "RS485", "float", restart_required=True),
     # Read dynamically on every scan cycle - no restart needed.
     "MODBUS_BATCH_MAX_GAP": SettingMeta("Scalanie odczytów: maks. przerwa adresów (0 = wył.)", "RS485", "int"),
     # Alarmy systemowe
@@ -69,7 +69,7 @@ EDITABLE_SETTINGS: Dict[str, SettingMeta] = {
     "ALERT_EMAIL_TO": SettingMeta("Odbiorcy alarmów (po przecinku)", "Powiadomienia e-mail", "str"),
     # Telegram
     "TELEGRAM_BOT_TOKEN": SettingMeta("Token bota", "Powiadomienia Telegram", "str", secret=True),
-    "TELEGRAM_CHAT_ID": SettingMeta("Chat ID", "Powiadomienia Telegram", "str"),
+    "TELEGRAM_CHAT_ID": SettingMeta("ID czatu", "Powiadomienia Telegram", "str"),
     # Kopie zapasowe
     "BACKUP_AUTO_ENABLED": SettingMeta("Automatyczne kopie włączone", "Kopie zapasowe", "bool"),
     "BACKUP_INTERVAL_HOURS": SettingMeta("Co ile godzin", "Kopie zapasowe", "int"),

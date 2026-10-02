@@ -8,6 +8,7 @@ import { ConfirmDialog } from '../components/UI/ConfirmDialog'
 import { Badge } from '../components/UI/Badge'
 import { PageSpinner } from '../components/UI/Spinner'
 import { format } from 'date-fns'
+import { plural } from '../utils/registers'
 import toast from 'react-hot-toast'
 import type { User } from '../types/user'
 
@@ -53,7 +54,7 @@ export default function Users() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <p className="text-sm text-ink-muted">{users.length} użytkowników</p>
+        <p className="text-sm text-ink-muted">{plural(users.length, 'użytkownik', 'użytkowników', 'użytkowników')}</p>
         <button onClick={() => setShowAdd(true)} className="flex items-center gap-2 bg-accent hover:bg-accent-strong text-white text-sm px-4 py-2 rounded-lg">
           <Plus size={14} /> Dodaj użytkownika
         </button>
@@ -61,27 +62,27 @@ export default function Users() {
 
       <div className="bg-surface border border-border rounded-xl shadow-panel divide-y divide-border">
         {users.map(u => (
-          <div key={u.id} className="flex items-center justify-between px-5 py-4">
-            <div>
+          <div key={u.id} className="flex items-center justify-between gap-3 px-5 py-4">
+            <div className="min-w-0">
               <div className="flex items-center gap-2">
                 <p className="text-sm font-medium text-ink">{u.username}</p>
-                {!u.is_active && <Badge variant="red">nieaktywny</Badge>}
+                {!u.is_active && <Badge variant="red">zablokowany</Badge>}
                 {u.must_change_password && <Badge variant="yellow">zmiana hasła</Badge>}
               </div>
               <p className="text-xs text-ink-muted mt-0.5">
                 {u.email && `${u.email} · `}
-                role: {u.roles.map(r => r.name).join(', ') || '—'}
+                {u.roles.length ? `Rola: ${u.roles.map(r => r.name).join(', ')}` : 'Bez roli (tylko podgląd)'}
               </p>
               {u.last_login && <p className="text-xs text-ink-muted">Ostatnie logowanie: {format(new Date(u.last_login), 'dd.MM.yyyy HH:mm')}</p>}
             </div>
-            <div className="flex gap-2">
-              <button onClick={() => setEditUser(u)} className="text-ink-muted hover:text-accent transition-colors" title="Edytuj (rola, e-mail, reset hasła)">
+            <div className="flex gap-1 shrink-0">
+              <button onClick={() => setEditUser(u)} className="p-2 rounded-lg text-ink-muted hover:text-accent hover:bg-surface-2 transition-colors" title="Edytuj (rola, e-mail, reset hasła)" aria-label="Edytuj">
                 <Pencil size={16} />
               </button>
-              <button onClick={() => toggleActive(u)} className="text-ink-muted hover:text-ink transition-colors" title={u.is_active ? 'Dezaktywuj' : 'Aktywuj'}>
+              <button onClick={() => toggleActive(u)} className="p-2 rounded-lg text-ink-muted hover:text-ink hover:bg-surface-2 transition-colors" title={u.is_active ? 'Zablokuj konto' : 'Odblokuj konto'} aria-label={u.is_active ? 'Zablokuj konto' : 'Odblokuj konto'}>
                 {u.is_active ? <UserX size={16} /> : <UserCheck size={16} />}
               </button>
-              <button onClick={() => setConfirmDeleteUser(u)} className="text-ink-muted hover:text-crit transition-colors">
+              <button onClick={() => setConfirmDeleteUser(u)} className="p-2 rounded-lg text-ink-muted hover:text-crit hover:bg-surface-2 transition-colors" title="Usuń konto" aria-label="Usuń konto">
                 <Trash2 size={16} />
               </button>
             </div>

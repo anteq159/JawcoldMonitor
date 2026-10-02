@@ -56,12 +56,14 @@ export default function Devices() {
       <div className="flex items-center justify-between">
         <div className="flex gap-1 bg-surface border border-border rounded-lg p-1">
           <TabBtn active={tab === 'list'} onClick={() => setTab('list')}>
-            Lista urządzeń ({devices.length})
+            <span className="whitespace-nowrap">Lista<span className="hidden sm:inline"> urządzeń</span> ({devices.length})</span>
           </TabBtn>
           {canWrite && (
             <TabBtn active={tab === 'add'} onClick={() => setTab('add')}>
-              <Plus size={13} className="inline mr-1" />
-              Dodaj urządzenie
+              <span className="whitespace-nowrap">
+                <Plus size={13} className="inline mr-1" />
+                Dodaj<span className="hidden sm:inline"> urządzenie</span>
+              </span>
             </TabBtn>
           )}
         </div>

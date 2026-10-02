@@ -3,7 +3,8 @@ import { Link } from 'react-router-dom'
 import { format } from 'date-fns'
 import { Card } from '../UI/Card'
 import { getEventLogs } from '../../api/logs'
-import { EVENT_TYPES, TONE } from '../../utils/eventTypes'
+import { eventText, EVENT_TYPES, TONE } from '../../utils/eventTypes'
+import { useDeviceStore } from '../../store/devices'
 
 const LIMIT = 10
 
@@ -11,6 +12,7 @@ const LIMIT = 10
 // old -> new), lost communication - without filtering the global log.
 export function DeviceEventsCard({ deviceId }: { deviceId: number }) {
   const [events, setEvents] = useState<any[] | null>(null)
+  const deviceName = useDeviceStore((s) => s.devices.find((d) => d.id === deviceId)?.name)
 
   useEffect(() => {
     const load = () => getEventLogs({ device_id: deviceId, limit: LIMIT }).then(setEvents).catch(() => setEvents([]))
@@ -38,7 +40,7 @@ export function DeviceEventsCard({ deviceId }: { deviceId: number }) {
               <div key={e.id} className="flex items-start gap-4 px-5 py-2.5">
                 <div className="min-w-0 flex-1">
                   <span className={`text-xs font-medium ${TONE[meta?.tone ?? 'info']}`}>{meta?.label ?? e.event_type}</span>
-                  <p className="text-sm text-ink-body break-words">{e.message}</p>
+                  <p className="text-sm text-ink-body break-words">{eventText(e.message, deviceName)}</p>
                 </div>
                 <span className="text-xs text-ink-muted whitespace-nowrap">{format(new Date(e.timestamp), 'dd.MM HH:mm')}</span>
               </div>

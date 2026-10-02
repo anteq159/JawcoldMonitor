@@ -45,6 +45,12 @@ _last_tick: Optional[datetime] = None
 # currently active per device, so a steady alarm logs once, not every
 # scan cycle, and a WS event fires when it actually clears.
 _active_hw_alarms: Dict[int, Set[int]] = {}
+# (device_id, alarm code) -> when an e-mail/Telegram went out for it. A flag
+# hovering around its limit goes active/inactive every few cycles; each
+# activation is still logged, but the external message is sent at most
+# once per HW_ALARM_NOTIFY_COOLDOWN.
+_hw_alarm_notified: Dict[tuple, datetime] = {}
+HW_ALARM_NOTIFY_COOLDOWN = timedelta(minutes=15)
 # Offline-too-long alarm (edge-triggered): when each device was last seen
 # going offline, and which ones have already fired the alarm.
 _offline_since: Dict[int, datetime] = {}
@@ -574,7 +580,7 @@ def _active_device_alarms(device: Device, readings: dict) -> Dict[int, tuple]:
             else:
                 code = FLAG_CODE_BASE + (50000 if reg.register_type == "discrete_input" else 0) + reg.address
             label = aliases.get(reg.name, reg.name)
-            active[code] = (label, "Flaga alarmowa sterownika", "warning")
+            active[code] = (label, reg.description or "", "warning")
     return active
 
 
@@ -595,10 +601,11 @@ async def _check_hardware_alarms(db: AsyncSession, device: Device, readings: dic
 
         for code in newly_active:
             name, description, severity = active[code]
+            text = f"{name} — {description}" if description else name
             db.add(EventLog(
                 event_type="hardware_alarm_triggered",
                 device_id=device.id,
-                message=f"{device.name}: alarm sterownika {name} — {description}",
+                message=f"{device.name}: {text}",
             ))
             # Persistent, acknowledgeable state (Etap: zatwierdzanie alarmu)
             # - separate from EventLog, which is an append-only audit trail
@@ -612,10 +619,14 @@ async def _check_hardware_alarms(db: AsyncSession, device: Device, readings: dic
             await ws_manager.broadcast(ws_events.hardware_alarm(
                 device.id, device.name, code, name, description, severity, "active",
             ))
-            await notifications.notify_system(
-                f"[JawcoldMonitor] Alarm sterownika: {device.name}",
-                f"{device.name}: {name} — {description}",
-            )
+            now = datetime.now(timezone.utc)
+            last = _hw_alarm_notified.get((device.id, code))
+            if last is None or now - last >= HW_ALARM_NOTIFY_COOLDOWN:
+                _hw_alarm_notified[(device.id, code)] = now
+                await notifications.notify_system(
+                    f"[JawcoldMonitor] Alarm sterownika: {device.name}",
+                    f"{device.name}: {text}",
+                )
         if newly_resolved:
             open_rows = await db.execute(select(HardwareAlarmEvent).where(
                 HardwareAlarmEvent.device_id == device.id,
@@ -631,7 +642,7 @@ async def _check_hardware_alarms(db: AsyncSession, device: Device, readings: dic
             db.add(EventLog(
                 event_type="hardware_alarm_resolved",
                 device_id=device.id,
-                message=f"{device.name}: ustąpił alarm sterownika {', '.join(sorted(names)) or sorted(newly_resolved)}",
+                message=f"{device.name}: ustąpił {', '.join(sorted(names)) or sorted(newly_resolved)}",
             ))
             await ws_manager.broadcast(ws_events.hardware_alarm(
                 device.id, device.name, min(newly_resolved), "", "", "info", "resolved",
