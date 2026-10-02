@@ -43,11 +43,6 @@ export interface Device {
   id: number
   name: string
   modbus_address: number
-  port: string
-  baudrate: number
-  parity: string
-  stopbits: number
-  timeout: number
   poll_interval_seconds: number | null
   profile_id: number | null
   status: 'online' | 'offline' | 'unknown'
@@ -71,11 +66,6 @@ export interface Device {
 export interface DeviceCreate {
   name: string
   modbus_address: number
-  port?: string
-  baudrate?: number
-  parity?: string
-  stopbits?: number
-  timeout?: number
   profile_id?: number | null
   location?: string
   group_name?: string

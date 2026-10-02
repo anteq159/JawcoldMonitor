@@ -40,11 +40,6 @@ class DeviceOut(BaseModel):
     id: int
     name: str
     modbus_address: int
-    port: str
-    baudrate: int
-    parity: str
-    stopbits: int
-    timeout: float
     poll_interval_seconds: Optional[int] = None
     profile_id: Optional[int] = None
     status: str
@@ -70,11 +65,6 @@ class DeviceOut(BaseModel):
 class DeviceCreate(BaseModel):
     name: str
     modbus_address: int
-    port: str = "/dev/ttyUSB0"
-    baudrate: int = 9600
-    parity: str = "N"
-    stopbits: int = 1
-    timeout: float = 0.15
     profile_id: Optional[int] = None
     location: Optional[str] = None
     group_name: Optional[str] = None
@@ -87,8 +77,6 @@ class DeviceUpdate(BaseModel):
     group_name: Optional[str] = None
     description: Optional[str] = None
     profile_id: Optional[int] = None
-    baudrate: Optional[int] = None
-    timeout: Optional[float] = None
     poll_interval_seconds: Optional[int] = None
     hidden_parameters: Optional[List[str]] = None
     parameter_aliases: Optional[Dict[str, str]] = None

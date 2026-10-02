@@ -7,7 +7,6 @@ import {
   MAX_CARD_PARAMS, type DiscoveredDevice,
 } from '../api/devices'
 import { ParamPickerPanel } from '../components/Map/ParamPickerPanel'
-import { getSerialPorts } from '../api/system'
 import { getDeviceProfiles, type DeviceProfileDetail } from '../api/deviceProfiles'
 import { useDeviceStore } from '../store/devices'
 import { useAuthStore } from '../store/auth'
@@ -288,23 +287,12 @@ const DeviceCard = memo(function DeviceCard(
 function AddDeviceForm({ prefill, onAdded }: { prefill: Prefill | null; onAdded: () => void }) {
   const [name, setName] = useState('')
   const [address, setAddress] = useState(1)
-  const [port, setPort] = useState('')
-  const [customPort, setCustomPort] = useState('')
-  const [baudrate, setBaudrate] = useState(9600)
   const [profileId, setProfileId] = useState('')
-  const [ports, setPorts] = useState<string[]>([])
   const [profiles, setProfiles] = useState<DeviceProfileDetail[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
   useEffect(() => {
-    getSerialPorts().then(({ ports: p }) => {
-      setPorts(p)
-      if (p.length > 0) setPort(p[0])
-    }).catch(() => {
-      setPorts(['/dev/ttyUSB0', '/dev/ttyUSB1', '/dev/ttyAMA0'])
-      setPort('/dev/ttyUSB0')
-    })
     getDeviceProfiles().then(setProfiles).catch(() => {})
   }, [])
 
@@ -315,15 +303,13 @@ function AddDeviceForm({ prefill, onAdded }: { prefill: Prefill | null; onAdded:
     setProfileId(prefill.profileId != null ? String(prefill.profileId) : '')
   }, [prefill])
 
-  const effectivePort = port === '__custom__' ? customPort : port
-
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
     setLoading(true)
     try {
       await createDevice({
-        name, modbus_address: address, port: effectivePort, baudrate,
+        name, modbus_address: address,
         profile_id: profileId ? Number(profileId) : null,
       })
       setName(''); setAddress(1); setProfileId('')
@@ -352,28 +338,12 @@ function AddDeviceForm({ prefill, onAdded }: { prefill: Prefill | null; onAdded:
               ))}
             </select>
           </Field>
-          <div className="grid grid-cols-2 gap-4">
-            <Field label="Adres Modbus (1–247)">
-              <input type="number" value={address} onChange={(e) => setAddress(Number(e.target.value))} min={1} max={247} required className="input" />
-            </Field>
-            <Field label="Baudrate">
-              <select value={baudrate} onChange={(e) => setBaudrate(Number(e.target.value))} className="input">
-                {[1200, 2400, 4800, 9600, 19200, 38400, 57600, 115200].map(b => (
-                  <option key={b} value={b}>{b}</option>
-                ))}
-              </select>
-            </Field>
-          </div>
-          <Field label="Port szeregowy">
-            <select value={port} onChange={(e) => setPort(e.target.value)} className="input">
-              {ports.map(p => <option key={p} value={p}>{p}</option>)}
-              <option value="__custom__">Inne...</option>
-            </select>
-            {port === '__custom__' && (
-              <input value={customPort} onChange={(e) => setCustomPort(e.target.value)}
-                placeholder="/dev/ttyUSB2" required className="input mt-2" />
-            )}
+          <Field label="Adres Modbus (1–247)">
+            <input type="number" value={address} onChange={(e) => setAddress(Number(e.target.value))} min={1} max={247} required className="input" />
           </Field>
+          <p className="text-xs text-ink-muted">
+            Port i prędkość magistrali są wspólne dla wszystkich sterowników — Ustawienia → Konfiguracja → RS485.
+          </p>
           {error && <p className="text-sm text-crit">{error}</p>}
           <button type="submit" disabled={loading}
             className="w-full bg-accent hover:bg-accent-strong disabled:opacity-50 text-white text-sm py-2.5 rounded-lg transition-colors">

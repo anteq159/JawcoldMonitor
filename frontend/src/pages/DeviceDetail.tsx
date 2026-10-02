@@ -250,8 +250,6 @@ export default function DeviceDetail() {
             </div>
           )}
           <div className="flex items-center gap-2 mt-1 flex-wrap">
-            {/* device.port/baudrate are unused legacy columns - the bus
-                settings are global (Ustawienia → RS485), so they're not shown. */}
             <p className="text-xs text-ink-muted">
               Adres {device.modbus_address}
               {lastSeen && <> · ostatni odczyt {lastSeen.toLocaleString('pl-PL', { dateStyle: 'short', timeStyle: 'medium' })}</>}

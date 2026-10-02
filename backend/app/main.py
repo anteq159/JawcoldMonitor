@@ -13,14 +13,13 @@ from slowapi.errors import RateLimitExceeded
 
 from app.core.config import settings
 from app.core.database import init_db, AsyncSessionLocal
-from app.core.redis import init_redis, close_redis, get_redis
 from app.core.security import hash_password, decode_token, password_fingerprint
 from app.core.limiter import limiter
 from app.core.diagnostics import install_handler as install_diagnostics_handler
 from app.models.user import User, Role, Permission, role_permissions, user_roles
 from app.websocket.manager import ws_manager
 from app.services.scanner import scanner_loop
-from app.services.update_apply import get_current_version
+from app.core.version import get_current_version
 from app.services.builtin_profiles import GENERIC_PROFILES as _GENERIC_PROFILES
 from app.api.router import api_router
 
@@ -299,11 +298,6 @@ async def lifespan(app: FastAPI):
         # still work, only slower.
         logger.error("Konfiguracja TimescaleDB nie powiodła się: %s", e)
     await _ensure_secret_key()
-    await init_redis()
-    redis = get_redis()
-    if redis is not None:
-        ws_manager.init_redis(redis)
-        await ws_manager.start_listener()
     await _init_defaults()
     await _init_manufacturer_profiles()
     await _init_generic_profiles()
@@ -320,8 +314,6 @@ async def lifespan(app: FastAPI):
         await scanner_task
     except asyncio.CancelledError:
         pass
-    await ws_manager.stop_listener()
-    await close_redis()
     logger.info("JawcoldMonitor stopped")
 
 

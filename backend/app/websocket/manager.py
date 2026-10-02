@@ -1,34 +1,18 @@
-import asyncio
 import json
 import logging
 from typing import Dict, Set
 from fastapi import WebSocket
-import redis.asyncio as aioredis
 
 logger = logging.getLogger(__name__)
 
-REDIS_CHANNEL = "ws_broadcast"
-
 
 class WebSocketManager:
+    """In-process broadcast to every connected browser. The backend runs a
+    single uvicorn worker, so there is no other process to fan out to (the
+    Redis pub/sub that used to sit here was removed in 1.25)."""
+
     def __init__(self):
         self._connections: Dict[str, WebSocket] = {}
-        self._redis: aioredis.Redis | None = None
-        self._listener_task: asyncio.Task | None = None
-
-    def init_redis(self, redis_client: aioredis.Redis) -> None:
-        self._redis = redis_client
-
-    async def start_listener(self) -> None:
-        self._listener_task = asyncio.create_task(self._redis_listener())
-
-    async def stop_listener(self) -> None:
-        if self._listener_task:
-            self._listener_task.cancel()
-            try:
-                await self._listener_task
-            except asyncio.CancelledError:
-                pass
 
     async def connect(self, client_id: str, ws: WebSocket) -> None:
         await ws.accept()
@@ -40,28 +24,7 @@ class WebSocketManager:
         logger.debug("WS disconnected: %s (total: %d)", client_id, len(self._connections))
 
     async def broadcast(self, event: dict) -> None:
-        if self._redis:
-            await self._redis.publish(REDIS_CHANNEL, json.dumps(event))
-        else:
-            await self._send_to_all(json.dumps(event))
-
-    async def _redis_listener(self) -> None:
-        if not self._redis:
-            return
-        pubsub = self._redis.pubsub()
-        await pubsub.subscribe(REDIS_CHANNEL)
-        try:
-            async for message in pubsub.listen():
-                if message["type"] == "message":
-                    payload = message["data"]
-                    await self._send_to_all(payload)
-        except asyncio.CancelledError:
-            pass
-        finally:
-            await pubsub.unsubscribe(REDIS_CHANNEL)
-            await pubsub.aclose()
-
-    async def _send_to_all(self, payload: str) -> None:
+        payload = json.dumps(event)
         dead: Set[str] = set()
         for client_id, ws in list(self._connections.items()):
             try:

@@ -1,7 +1,8 @@
+import toast from 'react-hot-toast'
 import { useEffect, useState } from 'react'
 import { Snowflake, Radio, Search, CheckCircle2, Cpu, Thermometer, ArrowRight } from 'lucide-react'
 import { useDeviceStore } from '../../store/devices'
-import { getSerialPorts } from '../../api/system'
+import { getSerialPorts, getRuntimeSettings, updateRuntimeSettings, powerAction } from '../../api/system'
 import { getDevices } from '../../api/devices'
 import { getSensors } from '../../api/sensors'
 import { ManufacturerBadge } from '../Devices/ManufacturerBadge'
@@ -92,12 +93,47 @@ function WelcomeStep() {
 function CommsStep() {
   const [ports, setPorts] = useState<string[]>([])
   const [selected, setSelected] = useState('')
-  const [baudrate, setBaudrate] = useState(9600)
+  const [baudrate, setBaudrate] = useState('9600')
+  const [stopbits, setStopbits] = useState('1')
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
 
   useEffect(() => {
-    getSerialPorts().then(({ ports: p }) => { setPorts(p); if (p.length) setSelected(p[0]) })
-      .catch(() => setPorts(['/dev/ttyUSB0', '/dev/ttyAMA0']))
+    // Current values first, so the step shows what is configured now.
+    getRuntimeSettings().then((all) => {
+      const v = (k: string) => all.find((x) => x.key === k)?.value
+      if (v('RS485_PORTS')) setSelected(v('RS485_PORTS')!)
+      if (v('RS485_BAUDRATE')) setBaudrate(v('RS485_BAUDRATE')!)
+      if (v('RS485_STOPBITS')) setStopbits(v('RS485_STOPBITS')!)
+    }).catch(() => {})
+    getSerialPorts().then(({ ports: p }) => {
+      setPorts(p)
+      setSelected((cur) => cur || p[0] || '')
+    }).catch(() => {})
   }, [])
+
+  // Used to be a preview only - nothing was saved. Now it writes the same
+  // runtime settings as Ustawienia -> RS485 and offers the restart they need.
+  const save = async () => {
+    setSaving(true)
+    try {
+      await updateRuntimeSettings({ RS485_PORTS: selected, RS485_BAUDRATE: baudrate, RS485_STOPBITS: stopbits })
+      setSaved(true)
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail ?? 'Nie udało się zapisać ustawień RS485')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const restart = async () => {
+    try {
+      await powerAction('restart-app')
+      toast.success('Aplikacja uruchamia się ponownie — odśwież stronę za kilka sekund')
+    } catch {
+      toast.error('Nie udało się zrestartować aplikacji')
+    }
+  }
 
   return (
     <div className="flex-1 space-y-4">
@@ -105,30 +141,48 @@ function CommsStep() {
         <Radio size={16} className="text-accent" />
         <h2 className="text-sm font-semibold text-ink">Komunikacja RS485 / Modbus</h2>
       </div>
-      <p className="text-sm text-ink-muted">Wybierz port szeregowy podłączonego adaptera RS485.</p>
+      <p className="text-sm text-ink-muted">Wybierz port podłączonego adaptera RS485 i parametry magistrali.</p>
       <div className="flex flex-wrap gap-2">
         {ports.map((p) => (
           <button
             key={p}
-            onClick={() => setSelected(p)}
-            className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${selected === p ? 'bg-accent border-accent text-white' : 'border-border text-ink-muted hover:text-ink'}`}
+            onClick={() => { setSelected(p); setSaved(false) }}
+            title={p}
+            className={`text-xs px-3 py-1.5 rounded-lg border transition-colors max-w-full truncate ${selected === p ? 'bg-accent border-accent text-white' : 'border-border text-ink-muted hover:text-ink'}`}
           >
-            {p}
+            {p.replace('/dev/serial/by-id/', '')}
           </button>
         ))}
+        {!ports.length && <p className="text-xs text-ink-muted">Nie wykryto adaptera — podłącz go i otwórz kreator ponownie.</p>}
       </div>
-      <div>
-        <label className="block text-xs text-ink-muted mb-1.5">Baudrate</label>
-        <select value={baudrate} onChange={(e) => setBaudrate(Number(e.target.value))} className="input">
-          {[1200, 2400, 4800, 9600, 19200, 38400, 57600, 115200].map((b) => (
-            <option key={b} value={b}>{b}</option>
-          ))}
-        </select>
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="block text-xs text-ink-muted mb-1.5">Prędkość (baud)</label>
+          <select value={baudrate} onChange={(e) => { setBaudrate(e.target.value); setSaved(false) }} className="input">
+            {[1200, 2400, 4800, 9600, 19200, 38400, 57600, 115200].map((b) => (
+              <option key={b} value={String(b)}>{b}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="block text-xs text-ink-muted mb-1.5">Bity stopu</label>
+          <select value={stopbits} onChange={(e) => { setStopbits(e.target.value); setSaved(false) }} className="input">
+            <option value="1">1</option>
+            <option value="2">2 (np. Carel MPXPRO)</option>
+          </select>
+        </div>
       </div>
-      <p className="text-xs text-ink-muted bg-surface-2 border border-border rounded-lg p-3">
-        W wersji demonstracyjnej ten wybór służy jako podgląd. Rzeczywista konfiguracja portu odbywa się przez
-        zmienne środowiskowe <code className="font-mono">RS485_PORTS</code> / <code className="font-mono">RS485_BAUDRATE</code>.
-      </p>
+      {saved ? (
+        <div className="text-xs bg-good-bg border border-good/30 text-ink-body rounded-lg p-3 flex flex-wrap items-center gap-3">
+          <span className="flex-1">Zapisano. Nowe ustawienia portu zadziałają po ponownym uruchomieniu aplikacji.</span>
+          <button onClick={restart} className="text-xs bg-accent hover:bg-accent-strong text-white px-3 py-1.5 rounded-lg">Uruchom ponownie</button>
+        </div>
+      ) : (
+        <button onClick={save} disabled={saving || !selected}
+          className="text-sm bg-accent hover:bg-accent-strong disabled:opacity-50 text-white px-4 py-2 rounded-lg transition-colors">
+          {saving ? 'Zapisywanie…' : 'Zapisz ustawienia magistrali'}
+        </button>
+      )}
     </div>
   )
 }

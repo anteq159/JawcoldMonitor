@@ -39,11 +39,8 @@ class BackupParameter(BaseModel):
 class BackupDevice(BaseModel):
     name: str
     modbus_address: int
-    port: str = "/dev/ttyUSB0"
-    baudrate: int = 9600
-    parity: str = "N"
-    stopbits: int = 1
-    timeout: float = 0.15
+    # port/baudrate/parity/stopbits/timeout from backups made before 1.25
+    # are ignored - the bus settings are global (Ustawienia -> RS485).
     profile_name: Optional[str] = None  # natural-key reference to a BackupProfile
     location: Optional[str] = None
     group_name: Optional[str] = None

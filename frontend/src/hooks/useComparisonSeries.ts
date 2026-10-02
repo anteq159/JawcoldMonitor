@@ -10,9 +10,8 @@ export interface CompSeries {
   data: ParameterReadings[]
 }
 
-// Shared by the Dashboard comparison widget and the full-page Trendy view -
-// both let a user pick several device/parameter pairs and compare them on
-// one chart, just at different sizes.
+// The dashboard's "Porównanie parametrów": pick several device/parameter
+// pairs and compare them on one chart.
 export function useComparisonSeries(initialRange: TimeRange = '1h') {
   const [series, setSeries] = useState<CompSeries[]>([])
   const [range, setRange] = useState<TimeRange>(initialRange)

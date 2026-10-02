@@ -5,8 +5,6 @@ from typing import List
 class Settings(BaseSettings):
     PREVIEW_MODE: bool = False
     DATABASE_URL: str = "postgresql+asyncpg://jawcold:jawcold_dev_pass@postgres/jawcold"
-    # Optional - see core/redis.py. Empty = in-process WebSocket broadcast.
-    REDIS_URL: str = ""
     SECRET_KEY: str = "dev-secret-key-change-in-production-32chars"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
     REFRESH_TOKEN_EXPIRE_MINUTES: int = 10080  # 7 days

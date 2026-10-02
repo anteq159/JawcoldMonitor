@@ -122,6 +122,8 @@ async def delete_profile(
     profile = result.scalar_one_or_none()
     if not profile:
         raise HTTPException(status_code=404, detail="Profil nie znaleziony")
+    if profile.source == "builtin":
+        raise HTTPException(status_code=400, detail="Profilu wbudowanego nie można usunąć (wraca przy każdym starcie) - możesz go edytować")
     in_use = await db.execute(select(Device.id).where(Device.profile_id == profile_id).limit(1))
     if in_use.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="Profil jest używany przez co najmniej jedno urządzenie")

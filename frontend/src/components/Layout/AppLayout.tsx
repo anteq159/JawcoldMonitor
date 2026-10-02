@@ -19,7 +19,6 @@ const TITLES: Record<string, string> = {
   '/configuration': 'Konfiguracja',
   '/sensors': 'Czujniki',
   '/alerts': 'Alerty',
-  '/trendy': 'Trendy',
   '/logs': 'Logi zdarzeń',
   '/users': 'Użytkownicy',
   '/roles': 'Role i uprawnienia',

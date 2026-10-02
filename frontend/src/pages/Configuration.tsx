@@ -151,12 +151,14 @@ export default function Configuration() {
                       <RotateCcw size={12} /> Przywróć domyślne
                     </button>
                   )}
-                  <button
+                  {/* Built-in profiles are re-created on every start, so
+                      deleting one only looked like it worked. */}
+                  {p.source !== 'builtin' && <button
                     onClick={() => setConfirmDelete(p)}
                     className="flex items-center gap-1.5 text-xs border border-border text-ink-muted hover:text-crit px-3 py-1.5 rounded-lg transition-colors"
                   >
                     <Trash2 size={12} /> Usuń
-                  </button>
+                  </button>}
                 </div>
               )}
             </div>

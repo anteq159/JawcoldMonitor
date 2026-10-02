@@ -8,7 +8,6 @@ from sqlalchemy import select, func
 
 from app.core.database import get_db
 from app.core.config import settings
-from app.core.redis import get_redis
 from app.models.user import User
 from app.models.device import Device
 from app.models.sensor import Sensor
@@ -72,13 +71,6 @@ async def services_status(
     except Exception as e:
         services.append(ServiceStatus(name="PostgreSQL", status="offline", detail=str(e)))
 
-    redis = get_redis()
-    if redis is not None:  # optional since 1.22 - see core/redis.py
-        try:
-            await redis.ping()
-            services.append(ServiceStatus(name="Redis", status="online"))
-        except Exception as e:
-            services.append(ServiceStatus(name="Redis", status="offline", detail=str(e)))
 
     last_tick = scanner.get_last_tick()
     scanner_alive = last_tick is not None and (datetime.now(timezone.utc) - last_tick).total_seconds() < 10
@@ -101,8 +93,8 @@ async def list_serial_ports(_: User = Depends(get_current_user)):
         glob.glob("/dev/ttyUSB*") + glob.glob("/dev/ttyACM*")
         + glob.glob("/dev/ttyS[0-9]*") + glob.glob("/dev/ttyAMA*")
     )
-    if not ports:
-        ports = ["/dev/ttyUSB0", "/dev/ttyUSB1", "/dev/ttyACM0", "/dev/ttyAMA0"]
+    # No made-up fallback list: offering /dev/ttyUSB0 when nothing is
+    # plugged in only led to saving a port that does not exist.
     return {"ports": ports}
 
 
@@ -252,7 +244,7 @@ async def power_action(
     cannot power the host off - see README)."""
     from fastapi import HTTPException
     from app.models.log import EventLog
-    from app.services.update_apply import schedule_restart
+    from app.core.version import schedule_restart
 
     labels = {
         "restart-app": "restart aplikacji",

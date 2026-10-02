@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react'
-import { createBrowserRouter } from 'react-router-dom'
+import { createBrowserRouter, Navigate } from 'react-router-dom'
 import { AppLayout } from './components/Layout/AppLayout'
 import { PageSpinner } from './components/UI/Spinner'
 import { ProtectedRoute } from './App'
@@ -18,7 +18,6 @@ const Devices = lazy(() => import('./pages/Devices'))
 const DeviceDetail = lazy(() => import('./pages/DeviceDetail'))
 const Sensors = lazy(() => import('./pages/Sensors'))
 const Alerts = lazy(() => import('./pages/Alerts'))
-const Trends = lazy(() => import('./pages/Trends'))
 const Logs = lazy(() => import('./pages/Logs'))
 const Users = lazy(() => import('./pages/Users'))
 const Roles = lazy(() => import('./pages/Roles'))
@@ -46,7 +45,8 @@ export const router = createBrowserRouter([
       { path: 'devices/:id', element: page(<DeviceDetail />) },
       { path: 'sensors', element: page(<Sensors />) },
       { path: 'alerts', element: page(<Alerts />) },
-      { path: 'trendy', element: page(<Trends />) },
+      // Trendy was folded into the dashboard's comparison chart.
+      { path: 'trendy', element: <Navigate to="/" replace /> },
       { path: 'map', element: page(<Map />) },
       { path: 'logs', element: page(<Logs />) },
       { path: 'users', element: page(<Users />) },

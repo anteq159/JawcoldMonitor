@@ -17,7 +17,7 @@ interface Props {
   height?: number
 }
 
-// Shared by the Dashboard comparison widget and the full-page Trendy view.
+// The dashboard's "Porównanie parametrów" chart.
 export function ComparisonPicker({ devices, series, range, ranges, onRangeChange, onAdd, onRemove, height = 220 }: Props) {
   const [showAdd, setShowAdd] = useState(false)
   const [pickDevice, setPickDevice] = useState<number | null>(null)

@@ -56,8 +56,7 @@ async def export_backup(db: AsyncSession) -> BackupPayload:
         ],
         devices=[
             BackupDevice(
-                name=d.name, modbus_address=d.modbus_address, port=d.port,
-                baudrate=d.baudrate, parity=d.parity, stopbits=d.stopbits, timeout=d.timeout,
+                name=d.name, modbus_address=d.modbus_address,
                 profile_name=profile_name_by_id.get(d.profile_id) if d.profile_id else None,
                 location=d.location, group_name=d.group_name, description=d.description,
                 parameters=[
@@ -143,11 +142,6 @@ async def import_backup(db: AsyncSession, payload: BackupPayload) -> RestoreSumm
         ]
         if device:
             device.name = bd.name
-            device.port = bd.port
-            device.baudrate = bd.baudrate
-            device.parity = bd.parity
-            device.stopbits = bd.stopbits
-            device.timeout = bd.timeout
             device.profile_id = profile_id
             device.location = bd.location
             device.group_name = bd.group_name
@@ -156,8 +150,7 @@ async def import_backup(db: AsyncSession, payload: BackupPayload) -> RestoreSumm
             summary.devices_updated += 1
         else:
             device = Device(
-                name=bd.name, modbus_address=bd.modbus_address, port=bd.port,
-                baudrate=bd.baudrate, parity=bd.parity, stopbits=bd.stopbits, timeout=bd.timeout,
+                name=bd.name, modbus_address=bd.modbus_address,
                 profile_id=profile_id, location=bd.location, group_name=bd.group_name,
                 description=bd.description, status="unknown", parameters=parameters,
             )

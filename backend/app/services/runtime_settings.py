@@ -12,7 +12,7 @@ How it works:
   constructed once at startup, so those are flagged restart_required and
   only take effect after the app restarts.
 
-Deliberately NOT editable here: SECRET_KEY, DATABASE_URL, REDIS_URL,
+Deliberately NOT editable here: SECRET_KEY, DATABASE_URL,
 PREVIEW_MODE, ALLOWED_ORIGINS - infrastructure/security settings that
 should require shell access, not a web form.
 """

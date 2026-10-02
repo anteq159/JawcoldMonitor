@@ -8,22 +8,11 @@ export interface DiagnosticEntry {
   message: string
 }
 
-export interface UpdateMeta {
-  from_version: string
-  to_version: string
-  applied_at: string
-  action: 'update' | 'rollback'
-}
-
 export interface UpdateInfo {
   current_version: string
-  last_update: UpdateMeta | null
-  rollback_available: boolean
-  // "image" (1.22+): code lives in Docker images, updated on the host with
-  // update_command; "legacy": .zip packages uploaded here.
-  mode: 'image' | 'legacy'
   latest_version: string | null
   update_available: boolean
+  // Updates run on the Raspberry with this command (scripts/jawcold).
   update_command: string
 }
 
@@ -36,17 +25,6 @@ export const getDiagnostics = (limit = 100): Promise<DiagnosticEntry[]> =>
   api.get('/system/diagnostics', { params: { limit } }).then((r) => r.data)
 
 export const getUpdateInfo = (): Promise<UpdateInfo> => api.get('/system/update/info').then((r) => r.data)
-export const uploadUpdate = (file: File): Promise<UpdateMeta & { message: string }> => {
-  const form = new FormData()
-  form.append('file', file)
-  // Longer than the default client timeout - this copies a full app/
-  // backup and extracts the new tree before responding, not just a quick
-  // API round trip.
-  return api.post('/system/update/upload', form, { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 60000 }).then((r) => r.data)
-}
-export const rollbackUpdate = (): Promise<UpdateMeta & { message: string }> =>
-  api.post('/system/update/rollback').then((r) => r.data)
-
 export interface RuntimeSetting {
   key: string
   label: string

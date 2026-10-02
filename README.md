@@ -130,10 +130,9 @@ zmienić na dwa sposoby:
 
 | Zakładka | Do czego służy |
 |---|---|
-| **Pulpit** | przegląd instalacji: kafelki stanu, ulubione parametry, obciążenie Raspberry (CPU / RAM / temperatura / dysk), szybkie akcje |
+| **Pulpit** | stan obiektu (temperatury i alarmy każdego sterownika), ulubione parametry, porównanie dowolnych parametrów na jednym wykresie (z eksportem CSV), ostatnie zdarzenia, obciążenie Raspberry |
 | **Sterowniki** | lista podłączonych urządzeń i szczegóły każdego z nich |
 | **Czujniki** | czujniki 1-Wire DS18B20 (niezależne od magistrali RS485) |
-| **Trendy** | porównywanie przebiegów z wielu urządzeń i czujników na jednym wykresie |
 | **Mapa** | rzut obiektu lub schemat obiegu z żywymi wartościami (patrz niżej) |
 | **Alerty** | reguły progowe, historia zdarzeń, potwierdzanie alarmów |
 | **Konfiguracja** | profile rejestrów sterowników (własne i wbudowane) |
@@ -332,10 +331,8 @@ Migracje bazy wykonują się same przy starcie. Pierwszy start wersji 1.22
 przenosi historię odczytów do TimescaleDB — przy kilkunastu milionach odczytów
 trwa to kilka minut, w tym czasie panel nie odpowiada.
 
-Starsze instalacje (sprzed 1.22) aktualizują się po staremu — plik
-`updates/<wersja>.zip` w **Ustawienia → Aktualizacje** — albo, zalecane,
-jednorazowym ponownym uruchomieniem `install.sh`, które przenosi je na nowy
-sposób.
+Starsze instalacje (sprzed 1.22) przenosi na ten sposób aktualizacji
+jednorazowe ponowne uruchomienie `install.sh`.
 
 ---
 
@@ -402,7 +399,6 @@ o których najłatwiej zapomnieć:
 ```
 backend/     FastAPI, sterowniki urządzeń (app/drivers/), migracje Alembic
 frontend/    React + Vite; nginx.conf (serwuje frontend, proxy /api i /ws)
-updates/     paczki aktualizacji do wgrania przez UI
 database/    init.sql
 docs/        instrukcje serwisowe (m.in. sonda ciśnienia na Carel MPXPRO)
 install.sh   instalacja jedną komendą
