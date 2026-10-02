@@ -10,6 +10,12 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
+# Fail the build - not the running panel - on a broken import, including in
+# alembic/env.py (outside the app package). Nothing connects to a database
+# here; this only loads the modules.
+RUN python -c "import app.main, ast; ast.parse(open('alembic/env.py').read())" \
+    && python -c "import importlib.util, sys; sys.argv=['x']; [__import__(l.split()[1]) for l in open('alembic/env.py') if l.startswith('import app.')]"
+
 ARG VERSION=dev
 LABEL org.opencontainers.image.source="https://github.com/anteq159/JawcoldMonitor" \
       org.opencontainers.image.version="${VERSION}"

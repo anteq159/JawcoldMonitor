@@ -100,3 +100,23 @@ export function plural(n: number, one: string, few: string, many: string): strin
   const word = n === 1 ? one : mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14) ? few : many
   return `${n} ${word}`
 }
+
+// One place that turns a reading into what the operator should read:
+// OK/AKTYWNY for alarm flags, WŁ./WYŁ. for status bits, "brak sondy" for an
+// unplugged probe, otherwise the value at the register's resolution with
+// the per-device unit override. Used by every compact view (favorites, map
+// pins, overview) so they all agree with the device page.
+export function readingText(
+  device: { profile?: { registers?: Array<RegisterLike & { name: string; scale_factor?: number }> } | null; parameter_units?: Record<string, string> } | undefined,
+  name: string,
+  value: number,
+  unit: string | null | undefined,
+): string {
+  const reg = device?.profile?.registers?.find((r) => r.name === name)
+  const category = reg ? registerCategory(reg) : 'measurement'
+  if (category === 'alarm') return value !== 0 ? 'AKTYWNY' : 'OK'
+  if (category === 'status') return value !== 0 ? 'WŁ.' : 'WYŁ.'
+  const shownUnit = device?.parameter_units?.[name] ?? unit ?? ''
+  if (isProbeMissing(value, shownUnit)) return 'brak sondy'
+  return `${formatValue(value, reg?.scale_factor)}${shownUnit ? ` ${shownUnit}` : ''}`
+}

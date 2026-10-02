@@ -36,6 +36,25 @@ save_rollback_point() {
     done
 }
 
+# Waits for the new backend to pass its healthcheck. Fails fast on a crash
+# loop (the container restarting) - a broken release otherwise left the
+# panel down until someone noticed. 15 min cap: the first start after a
+# TimescaleDB conversion legitimately takes that long.
+wait_healthy() {
+    local cid start h rc
+    cid="$($COMPOSE ps -q backend)"
+    start=$(date +%s)
+    log "Czekam, aż nowa wersja wystartuje..."
+    while :; do
+        h="$($DOCKER inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{end}}' "$cid" 2>/dev/null)"
+        rc="$($DOCKER inspect -f '{{.RestartCount}}' "$cid" 2>/dev/null || echo 0)"
+        [ "$h" = "healthy" ] && return 0
+        [ "${rc:-0}" -gt 0 ] && return 1
+        [ $(( $(date +%s) - start )) -gt 900 ] && return 1
+        sleep 5
+    done
+}
+
 cmd_update() {
     if [ -d .git ]; then
         git pull --ff-only || warn "git pull nie powiódł się - kontynuuję z obecnymi plikami"
@@ -48,6 +67,13 @@ cmd_update() {
     # that the image behind an unchanged tag is new, and kept running the
     # old frontend.
     $COMPOSE up -d --force-recreate --no-deps $APP_SERVICES || return 1
+    if ! wait_healthy; then
+        warn "Nowa wersja nie wystartowała poprawnie - ostatnie logi backendu:"
+        $COMPOSE logs --tail 30 backend >&2
+        warn "Wracam do poprzedniej wersji (zmiany w bazie danych zostają)."
+        cmd_rollback
+        return 1
+    fi
     $DOCKER image prune -f >/dev/null 2>&1 || true
     log "Zaktualizowano."
 }

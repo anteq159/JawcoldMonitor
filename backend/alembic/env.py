@@ -26,7 +26,6 @@ import app.models.alert  # noqa: E402,F401
 import app.models.log  # noqa: E402,F401
 import app.models.audit  # noqa: E402,F401
 import app.models.map  # noqa: E402,F401
-import app.models.visibility  # noqa: E402,F401
 import app.models.favorite  # noqa: E402,F401
 import app.models.hardware_alarm  # noqa: E402,F401
 

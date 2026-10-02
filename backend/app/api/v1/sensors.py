@@ -52,7 +52,7 @@ async def update_sensor(
     body: SensorUpdate,
     db: AsyncSession = Depends(get_db),
     # device:write, not just login: calibration_offset shifts every
-    # recorded temperature from this sensor - a read-only Viewer must not
+    # recorded temperature from this sensor - a user without config:write must not
     # be able to alter measurement data.
     _: User = Depends(require_permission("device:write")),
 ):

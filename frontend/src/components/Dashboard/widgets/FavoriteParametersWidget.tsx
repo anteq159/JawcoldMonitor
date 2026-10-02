@@ -4,6 +4,7 @@ import { useDeviceStore } from '../../../store/devices'
 import { useFavoriteParameters, MAX_FAVORITE_PARAMETERS } from '../../../hooks/useFavoriteParameters'
 import { EmptyState } from '../../UI/EmptyState'
 import { Card } from '../../UI/Card'
+import { readingText } from '../../../utils/registers'
 
 // Favorites at the parameter level (not whole-device) - a device/sensor
 // variable is starred from "Zmienne sterownika" or the sensor list. The
@@ -29,9 +30,8 @@ export function FavoriteParametersWidget() {
             const device = f.type === 'device' ? devices.find((d) => d.id === f.sourceId) : undefined
             const sensor = f.type === 'sensor' ? sensors.find((s) => s.id === f.sourceId) : undefined
             const reading = f.type === 'device' && f.paramName ? liveReadings[f.sourceId]?.[f.paramName] : undefined
-            const sensorTemp = f.type === 'sensor' ? liveSensorTemps[f.sourceId] : undefined
-            const value = f.type === 'device' ? reading?.value : sensorTemp?.temp
-            const unit = f.type === 'device' ? reading?.unit : '°C'
+            // Sensors: last stored value until the next 1-Wire scan.
+            const sensorTemp = f.type === 'sensor' ? (liveSensorTemps[f.sourceId]?.temp ?? sensor?.last_value ?? undefined) : undefined
             const linkTo = f.type === 'device' ? `/devices/${f.sourceId}` : '/sensors'
             const name = device?.name ?? sensor?.name ?? 'Usunięte źródło'
             // Per-device display alias - favorites store the real register
@@ -46,8 +46,10 @@ export function FavoriteParametersWidget() {
                   <p className="text-sm text-ink truncate">{name}{paramLabel ? ` · ${paramLabel}` : ''}</p>
                 </Link>
                 <div className="flex items-center gap-2 shrink-0">
-                  <span className="text-sm font-semibold text-accent">
-                    {value !== undefined ? value.toFixed(1) : '—'} {unit}
+                  <span className="text-sm font-semibold text-accent tabular-nums">
+                    {f.type === 'device'
+                      ? (reading && f.paramName ? readingText(device, f.paramName, reading.value, reading.unit) : '—')
+                      : (sensorTemp != null ? `${sensorTemp.toFixed(1)} °C` : '—')}
                   </span>
                   <button
                     onClick={() => toggleFavorite(f.type, f.sourceId, f.paramName)}

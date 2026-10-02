@@ -12,7 +12,6 @@ from app.models.log import EventLog
 from app.models.alert import AlertRule, AlertEvent
 from app.models.reading import Reading
 from app.models.favorite import Favorite, FavoriteParameter
-from app.models.visibility import UserDeviceVisibility
 from app.models.map import DevicePosition
 from app.models.user import User
 from app.schemas.device import (
@@ -161,7 +160,6 @@ async def delete_device(
     await db.execute(delete(FavoriteParameter).where(
         FavoriteParameter.source_type == "device", FavoriteParameter.source_id == device_id
     ))
-    await db.execute(delete(UserDeviceVisibility).where(UserDeviceVisibility.device_id == device_id))
     await db.execute(delete(DevicePosition).where(DevicePosition.device_id == device_id))
 
     await db.delete(device)

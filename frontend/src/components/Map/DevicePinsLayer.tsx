@@ -1,6 +1,8 @@
 import { MapPin, X } from 'lucide-react'
 import { useDeviceStore } from '../../store/devices'
 import type { Device } from '../../types/device'
+import { deviceSummary, readingText } from '../../utils/registers'
+import { useSeedLatestReadings } from '../../hooks/useSeedLatestReadings'
 import type { MapPosition } from '../../api/maps'
 
 export interface PendingPosition extends MapPosition { deviceName: string }
@@ -19,18 +21,22 @@ export function DevicePinsLayer({ positions, devices, editMode, onEditParams, on
 
   return (
     <>
+      {positions.map(pos => <SeedReadings key={`seed-${pos.device_id}`} deviceId={pos.device_id} />)}
       {positions.map(pos => {
         const device = devices.find(d => d.id === pos.device_id)
         const readings = liveReadings[pos.device_id] ?? {}
-        const shown = pos.selected_params.length > 0
-          ? pos.selected_params.map(name => [name, readings[name]] as const).filter(([, v]) => v)
-          : Object.entries(readings).slice(0, 1)
+        // Nothing picked: the device's first measurement (not whichever
+        // reading arrived first - often a setpoint or an alarm flag).
+        const fallback = device ? deviceSummary(device, readings, 1).values.map((v) => v.name) : Object.keys(readings).slice(0, 1)
+        const shown = (pos.selected_params.length > 0 ? pos.selected_params : fallback)
+          .map(name => [name, readings[name]] as const).filter(([, v]) => v)
+        const alarms = device ? deviceSummary(device, readings).activeAlarms.length : 0
 
         return (
           <div key={pos.device_id}
             className="absolute -translate-x-1/2 -translate-y-full pointer-events-auto"
             style={{ left: `${pos.x_percent}%`, top: `${pos.y_percent}%` }}>
-            <div className="bg-surface border border-border rounded-lg px-2 py-1 text-xs shadow-lg min-w-max">
+            <div className={`bg-surface border rounded-lg px-2 py-1 text-xs shadow-lg min-w-max ${alarms ? 'border-crit ring-2 ring-crit/30' : 'border-border'}`}>
               <div className="flex items-center gap-1.5">
                 <MapPin size={10} className={device?.status === 'online' ? 'text-good' : 'text-ink-muted'} />
                 {editMode && onEditParams ? (
@@ -50,7 +56,8 @@ export function DevicePinsLayer({ positions, devices, editMode, onEditParams, on
               </div>
               {shown.map(([name, reading]) => (
                 <div key={name} className="text-accent font-bold mt-0.5">
-                  {reading.value.toFixed(1)} {reading.unit} <span className="text-ink-muted font-normal">{name}</span>
+                  {readingText(device, name, reading!.value, reading!.unit)}{' '}
+                  <span className="text-ink-muted font-normal">{device?.parameter_aliases[name] ?? name}</span>
                 </div>
               ))}
             </div>
@@ -60,4 +67,11 @@ export function DevicePinsLayer({ positions, devices, editMode, onEditParams, on
       })}
     </>
   )
+}
+
+// Pins show the last stored values right away instead of staying empty
+// until each device's next scan.
+function SeedReadings({ deviceId }: { deviceId: number }) {
+  useSeedLatestReadings(deviceId)
+  return null
 }

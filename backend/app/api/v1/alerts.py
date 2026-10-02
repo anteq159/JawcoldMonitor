@@ -101,7 +101,7 @@ async def acknowledge_event(
     event_id: int,
     # Acknowledging silences an active alarm for everyone - an operator
     # action (alert:acknowledge), lighter than rule management but not
-    # something a read-only Viewer should be able to do.
+    # something a read-only account should be able to do.
     current_user: User = Depends(require_permission("alert:acknowledge")),
     db: AsyncSession = Depends(get_db),
 ):
