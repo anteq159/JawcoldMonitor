@@ -8,7 +8,9 @@ from app.core.security import (
     verify_password, hash_password, create_access_token, create_refresh_token,
     decode_token, password_fingerprint,
 )
+from app.core.config import settings
 from app.core.limiter import limiter, client_ip
+from app.models.audit import AuditLog
 from app.models.user import User
 from app.schemas.auth import LoginRequest, TokenResponse, RefreshRequest, ChangePasswordRequest
 from app.api.deps import get_current_user
@@ -27,6 +29,27 @@ def _token_payload(user: User) -> dict:
     return {"sub": str(user.id), "pwd": password_fingerprint(user.password_hash)}
 
 
+def _login_entry(request: Request, action: str, user: User | None, username: str, reason: str | None = None) -> AuditLog:
+    """One row of Logi > Logowania. The username is stored as typed, so a
+    failed attempt on a non-existent account is visible too; the browser
+    string is cut to what fits a list."""
+    agent = (request.headers.get("user-agent") or "")[:200]
+    return AuditLog(
+        user_id=user.id if user else None,
+        action=action,
+        resource_type="user",
+        resource_id=user.id if user else None,
+        new_value={"username": username[:64], "user_agent": agent, **({"reason": reason} if reason else {})},
+        ip_address=client_ip(request),
+    )
+
+
+async def _login_failed(db: AsyncSession, request: Request, user: User | None, username: str, reason: str) -> None:
+    if settings.LOG_USER_LOGINS:
+        db.add(_login_entry(request, "auth.login_failed", user, username, reason))
+        await db.commit()
+
+
 @router.post("/login", response_model=TokenResponse)
 @limiter.limit("10/minute")
 async def login(request: Request, body: LoginRequest, db: AsyncSession = Depends(get_db)):
@@ -34,17 +57,18 @@ async def login(request: Request, body: LoginRequest, db: AsyncSession = Depends
     user = result.scalar_one_or_none()
     if not user:
         verify_password(body.password, _DUMMY_HASH)
+        await _login_failed(db, request, None, body.username, "unknown_user")
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Nieprawidłowy login lub hasło")
     if not verify_password(body.password, user.password_hash):
+        await _login_failed(db, request, user, body.username, "bad_password")
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Nieprawidłowy login lub hasło")
     if not user.is_active:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Konto jest nieaktywne")
+        await _login_failed(db, request, user, body.username, "inactive")
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Konto jest zablokowane")
 
     user.last_login = datetime.now(timezone.utc)
-    await record_audit(
-        db, user.id, "auth.login", "user", user.id,
-        ip_address=client_ip(request),
-    )
+    if settings.LOG_USER_LOGINS:
+        db.add(_login_entry(request, "auth.login", user, user.username))
     await db.commit()
 
     payload = _token_payload(user)
@@ -102,6 +126,7 @@ async def change_password(
     current_user.must_change_password = False
     await record_audit(
         db, current_user.id, "auth.change_password", "user", current_user.id,
+        new_value={"username": current_user.username, "user_agent": (request.headers.get("user-agent") or "")[:200]},
         ip_address=client_ip(request),
     )
     await db.commit()
@@ -114,6 +139,19 @@ async def change_password(
         refresh_token=create_refresh_token(p),
         must_change_password=False,
     )
+
+
+@router.post("/logout", status_code=204)
+async def logout(
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Only records the logout - tokens are stateless and the panel drops
+    them itself."""
+    if settings.LOG_USER_LOGINS:
+        db.add(_login_entry(request, "auth.logout", current_user, current_user.username))
+        await db.commit()
 
 
 @router.get("/me")

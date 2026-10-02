@@ -297,3 +297,20 @@ async def test_notification(channel: str, _: User = Depends(require_permission("
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Nie udało się wysłać: {e}")
     return {"message": "Wysłano wiadomość testową"}
+
+
+@router.get("/notifications/status")
+async def notification_status(_: User = Depends(require_permission("settings:write"))):
+    """Per channel: switched on, filled in, and today's SMS count - the
+    Alerty > Powiadomienia overview."""
+    from app.services import notifications as n
+    return {
+        "channels": {
+            ch: {"enabled": n.channel_enabled(ch), "configured": n.channel_configured(ch)}
+            for ch in n.CHANNELS
+        },
+        "system_channels": settings.notify_system_channels_list,
+        "sms_sent_today": n.sms_sent_today(),
+        "sms_daily_limit": settings.SMS_DAILY_LIMIT,
+    }
+

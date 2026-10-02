@@ -261,11 +261,15 @@ w interfejsie jest tylko ułatwieniem.
   (domyślnie 5 min; 0 wyłącza) oraz zapełnienie dysku powyżej
   `DISK_ALARM_PERCENT` (domyślnie 90%).
 
-### Powiadomienia e-mail / Telegram
+### Powiadomienia e-mail / Telegram / SMS
 
-Konfiguracja w panelu: **Ustawienia → Konfiguracja systemu** (działa od razu,
-bez restartu). Te same wartości można podać z góry w `.env` jako wartości
-startowe:
+Konfiguracja w panelu: **Alerty → Powiadomienia** — dla każdego kanału
+włącznik, ustawienia, stan („gotowy" / „do uzupełnienia") i przycisk
+wiadomości testowej; tam też wybiera się kanały dla alarmów systemowych.
+Działa od razu, bez restartu. SMS idą przez bramkę **SMSAPI.pl** (token
+z panelu SMSAPI) albo **Twilio**, z dziennym limitem `SMS_DAILY_LIMIT`
+(domyślnie 30), żeby zapętlony alarm nie wyczerpał konta. Te same wartości
+można podać z góry w `.env` jako wartości startowe:
 
 ```bash
 # E-mail (SMTP)
@@ -280,9 +284,17 @@ ALERT_EMAIL_TO=serwis@twojafirma.pl,kierownik@twojafirma.pl
 TELEGRAM_BOT_TOKEN=123456:ABC...
 TELEGRAM_CHAT_ID=-100123456789
 
+# SMS (SMSAPI.pl; dla Twilio: SMS_PROVIDER=twilio, SMS_ACCOUNT_SID, nadawca = numer Twilio)
+SMS_PROVIDER=smsapi
+SMS_API_TOKEN=token-z-panelu-smsapi
+SMS_TO=+48600100200,+48600100201
+
 # Które kanały mają dostawać alarmy systemowe i sprzętowe
-NOTIFY_SYSTEM_CHANNELS=email,telegram
+NOTIFY_SYSTEM_CHANNELS=email,telegram,sms
 ```
+
+Historia logowań (udane, nieudane, wylogowania, zmiany hasła — z IP
+i przeglądarką) jest w **Logi → Logowania**; tam też wyłącza się jej zapis.
 
 W regule progowej zaznacza się, którymi kanałami ma być wysyłana
 (pole „Powiadomienia" przy tworzeniu reguły). Błąd wysyłki nigdy nie

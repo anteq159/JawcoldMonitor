@@ -1,3 +1,4 @@
+import api from '../api/client'
 import { useAuthStore } from '../store/auth'
 import { useNavigate } from 'react-router-dom'
 import { login as apiLogin, changePassword as apiChangePassword, getMe } from '../api/auth'
@@ -21,6 +22,8 @@ export function useAuth() {
   }
 
   const logout = () => {
+    // Recorded in Logi > Logowania; never blocks leaving.
+    api.post('/auth/logout').catch(() => {})
     store.logout()
     navigate('/login')
   }

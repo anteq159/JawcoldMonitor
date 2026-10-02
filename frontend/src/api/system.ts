@@ -48,5 +48,14 @@ export type PowerAction = 'restart-app' | 'reboot' | 'shutdown'
 export const powerAction = (action: PowerAction): Promise<{ message: string }> =>
   api.post(`/system/power/${action}`).then((r) => r.data)
 
-export const testNotification = (channel: 'email' | 'telegram'): Promise<{ message: string }> =>
+export type NotifyChannel = 'email' | 'telegram' | 'sms'
+export interface NotificationStatus {
+  channels: Record<NotifyChannel, { enabled: boolean; configured: boolean }>
+  system_channels: string[]
+  sms_sent_today: number
+  sms_daily_limit: number
+}
+export const getNotificationStatus = (): Promise<NotificationStatus> =>
+  api.get('/system/notifications/status').then((r) => r.data)
+export const testNotification = (channel: NotifyChannel): Promise<{ message: string }> =>
   api.post('/system/notifications/test', null, { params: { channel }, timeout: 30000 }).then((r) => r.data)

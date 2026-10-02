@@ -59,8 +59,9 @@ EDITABLE_SETTINGS: Dict[str, SettingMeta] = {
     # Alarmy systemowe
     "OFFLINE_ALARM_MINUTES": SettingMeta("Alarm offline po (min, 0 = wył.)", "Alarmy systemowe", "int"),
     "DISK_ALARM_PERCENT": SettingMeta("Alarm zapełnienia dysku (%, 0 = wył.)", "Alarmy systemowe", "int"),
-    "NOTIFY_SYSTEM_CHANNELS": SettingMeta("Kanały alarmów systemowych (email,telegram)", "Alarmy systemowe", "str"),
+    "NOTIFY_SYSTEM_CHANNELS": SettingMeta("Kanały alarmów systemowych (email,telegram,sms)", "Alarmy systemowe", "str"),
     # E-mail
+    "EMAIL_ENABLED": SettingMeta("Kanał e-mail włączony", "Powiadomienia e-mail", "bool"),
     "SMTP_HOST": SettingMeta("Serwer SMTP", "Powiadomienia e-mail", "str"),
     "SMTP_PORT": SettingMeta("Port SMTP", "Powiadomienia e-mail", "int"),
     "SMTP_USER": SettingMeta("Użytkownik SMTP", "Powiadomienia e-mail", "str"),
@@ -68,8 +69,19 @@ EDITABLE_SETTINGS: Dict[str, SettingMeta] = {
     "SMTP_FROM": SettingMeta("Adres nadawcy", "Powiadomienia e-mail", "str"),
     "ALERT_EMAIL_TO": SettingMeta("Odbiorcy alarmów (po przecinku)", "Powiadomienia e-mail", "str"),
     # Telegram
+    "TELEGRAM_ENABLED": SettingMeta("Kanał Telegram włączony", "Powiadomienia Telegram", "bool"),
     "TELEGRAM_BOT_TOKEN": SettingMeta("Token bota", "Powiadomienia Telegram", "str", secret=True),
-    "TELEGRAM_CHAT_ID": SettingMeta("ID czatu", "Powiadomienia Telegram", "str"),
+    "TELEGRAM_CHAT_ID": SettingMeta("ID czatu (kilka po przecinku)", "Powiadomienia Telegram", "str"),
+    # SMS
+    "SMS_ENABLED": SettingMeta("Kanał SMS włączony", "Powiadomienia SMS", "bool"),
+    "SMS_PROVIDER": SettingMeta("Bramka SMS", "Powiadomienia SMS", "str"),
+    "SMS_API_TOKEN": SettingMeta("Token API (SMSAPI) / Auth Token (Twilio)", "Powiadomienia SMS", "str", secret=True),
+    "SMS_ACCOUNT_SID": SettingMeta("Account SID (tylko Twilio)", "Powiadomienia SMS", "str"),
+    "SMS_SENDER": SettingMeta("Nadawca (pole nadawcy SMSAPI lub numer Twilio)", "Powiadomienia SMS", "str"),
+    "SMS_TO": SettingMeta("Numery odbiorców (po przecinku, np. +48600100200)", "Powiadomienia SMS", "str"),
+    "SMS_DAILY_LIMIT": SettingMeta("Limit SMS na dobę (0 = bez limitu)", "Powiadomienia SMS", "int"),
+    # Logi
+    "LOG_USER_LOGINS": SettingMeta("Zapisuj logowania użytkowników", "Logi", "bool"),
     # Kopie zapasowe
     "BACKUP_AUTO_ENABLED": SettingMeta("Automatyczne kopie włączone", "Kopie zapasowe", "bool"),
     "BACKUP_INTERVAL_HOURS": SettingMeta("Co ile godzin", "Kopie zapasowe", "int"),

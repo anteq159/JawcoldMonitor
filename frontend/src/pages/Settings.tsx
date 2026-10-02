@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
-import { useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { Download, Upload, Wand2, Bell, Send } from 'lucide-react'
 import { Card } from '../components/UI/Card'
 import { ConfirmDialog } from '../components/UI/ConfirmDialog'
 import { downloadReadings, downloadAlerts } from '../api/export'
 import { downloadBackup, restoreBackup } from '../api/backup'
-import { getUpdateInfo, testNotification, getRuntimeSettings, getSerialPorts, updateRuntimeSettings, powerAction, type UpdateInfo, type RuntimeSetting, type PowerAction } from '../api/system'
+import { getUpdateInfo, getRuntimeSettings, getSerialPorts, updateRuntimeSettings, powerAction, type UpdateInfo, type RuntimeSetting, type PowerAction } from '../api/system'
 import { useDeviceStore } from '../store/devices'
 import { useAuthStore } from '../store/auth'
 import { isNotificationSupported, getNotificationPermission, requestNotificationPermission } from '../utils/notifications'
@@ -50,7 +50,7 @@ export default function Settings() {
 
       {tab === 'system' && <SystemSettingsSection />}
       {tab === 'notifications' && <NotificationsSection />}
-      {tab === 'notifications' && canSettings && <AlarmChannelsTestCard onConfigure={() => setParams({ tab: 'system' }, { replace: true })} />}
+      {tab === 'notifications' && canSettings && <AlarmChannelsLinkCard />}
       {tab === 'export' && (
         <>
           <ExportCard title="Eksport odczytów" download={downloadReadings} />
@@ -75,6 +75,8 @@ export default function Settings() {
     </div>
   )
 }
+
+const MOVED_CATEGORIES = ['Alarmy systemowe', 'Powiadomienia e-mail', 'Powiadomienia Telegram', 'Powiadomienia SMS', 'Logi']
 
 function SystemSettingsSection() {
   const [settings, setSettings] = useState<RuntimeSetting[]>([])
@@ -111,7 +113,9 @@ function SystemSettingsSection() {
     }
   }
 
-  const categories = [...new Set(settings.map((s) => s.category))]
+  // E-mail, Telegram, SMS and system-alarm channels are managed in
+  // Alerty > Powiadomienia; the login-log switch in Logi > Logowania.
+  const categories = [...new Set(settings.map((s) => s.category))].filter((c) => !MOVED_CATEGORIES.includes(c))
 
   return (
     <Card title="Konfiguracja systemu">
@@ -242,37 +246,19 @@ function PowerSection() {
   )
 }
 
-// E-mail/Telegram are configured in "Konfiguracja"; this is where you
-// find out whether they actually work - before a real alarm depends on it.
-function AlarmChannelsTestCard({ onConfigure }: { onConfigure: () => void }) {
-  const [busy, setBusy] = useState<string | null>(null)
-  const test = async (channel: 'email' | 'telegram') => {
-    setBusy(channel)
-    try {
-      const r = await testNotification(channel)
-      toast.success(`${r.message} — sprawdź ${channel === 'email' ? 'skrzynkę' : 'Telegram'}`)
-    } catch (err: any) {
-      toast.error(err.response?.data?.detail ?? 'Nie udało się wysłać wiadomości testowej')
-    } finally {
-      setBusy(null)
-    }
-  }
+// E-mail, Telegram and SMS moved to Alerty > Powiadomienia - this keeps
+// the old place pointing there.
+function AlarmChannelsLinkCard() {
   return (
-    <Card title="Alarmy e-mail i Telegram">
+    <Card title="Alarmy e-mail, Telegram i SMS">
       <div className="p-5 space-y-3">
         <p className="text-sm text-ink-muted">
-          Wyślij wiadomość testową, żeby sprawdzić ustawienia zapisane w zakładce{' '}
-          <button onClick={onConfigure} className="text-accent hover:underline">Konfiguracja</button>{' '}
-          (serwer SMTP, odbiorcy, bot Telegram).
+          Odbiorców, bramki i wiadomości testowe ustawisz w jednym miejscu: Alerty → Powiadomienia.
         </p>
-        <div className="flex flex-wrap gap-2">
-          {(['email', 'telegram'] as const).map((ch) => (
-            <button key={ch} onClick={() => test(ch)} disabled={busy !== null}
-              className="flex items-center gap-2 border border-border text-sm text-ink-body hover:border-accent hover:text-accent disabled:opacity-50 px-4 py-2 rounded-lg transition-colors">
-              <Send size={14} /> {busy === ch ? 'Wysyłanie…' : ch === 'email' ? 'Testowy e-mail' : 'Testowa wiadomość Telegram'}
-            </button>
-          ))}
-        </div>
+        <Link to="/alerts?zakladka=powiadomienia"
+          className="inline-flex items-center gap-2 border border-border text-sm text-ink-body hover:border-accent hover:text-accent px-4 py-2 rounded-lg transition-colors">
+          <Send size={14} /> Przejdź do powiadomień
+        </Link>
       </div>
     </Card>
   )

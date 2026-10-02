@@ -66,10 +66,27 @@ class Settings(BaseSettings):
     ALERT_EMAIL_TO: str = ""  # comma-separated recipients
     TELEGRAM_BOT_TOKEN: str = ""
     TELEGRAM_CHAT_ID: str = ""
+    # SMS through a gateway's HTTP API: "smsapi" (SMSAPI.pl, Bearer token)
+    # or "twilio" (Account SID + Auth Token, sender = a Twilio number).
+    SMS_PROVIDER: str = "smsapi"
+    SMS_API_TOKEN: str = ""
+    SMS_ACCOUNT_SID: str = ""
+    SMS_SENDER: str = ""
+    SMS_TO: str = ""  # comma-separated numbers, e.g. +48600100200
+    # Every SMS costs money: a runaway alarm loop must not empty the
+    # account. 0 = no limit.
+    SMS_DAILY_LIMIT: int = 30
+    # Per-channel switches - mute a channel without deleting its settings.
+    EMAIL_ENABLED: bool = True
+    TELEGRAM_ENABLED: bool = True
+    SMS_ENABLED: bool = True
     # Which channels receive SYSTEM alarms (offline/disk/hardware):
-    # comma-separated subset of: email, telegram. Threshold rules carry
-    # their own per-rule notify_channels instead.
+    # comma-separated subset of: email, telegram, sms. Threshold rules
+    # carry their own per-rule notify_channels instead.
     NOTIFY_SYSTEM_CHANNELS: str = ""
+
+    # Successful/failed logins and logouts in Logi > Logowania.
+    LOG_USER_LOGINS: bool = True
 
     # Automatic backups: periodic JSON export (same payload as the manual
     # Ustawienia backup) written to BACKUP_DIR - point it at a mounted
@@ -92,6 +109,14 @@ class Settings(BaseSettings):
     @property
     def alert_email_to_list(self) -> List[str]:
         return [a.strip() for a in self.ALERT_EMAIL_TO.split(",") if a.strip()]
+
+    @property
+    def telegram_chat_ids(self) -> List[str]:
+        return [c.strip() for c in self.TELEGRAM_CHAT_ID.split(",") if c.strip()]
+
+    @property
+    def sms_to_list(self) -> List[str]:
+        return [n.strip().replace(" ", "") for n in self.SMS_TO.split(",") if n.strip()]
 
     @property
     def notify_system_channels_list(self) -> List[str]:

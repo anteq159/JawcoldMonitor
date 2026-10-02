@@ -20,6 +20,7 @@ bearer = HTTPBearer(auto_error=False)
 _MUST_CHANGE_ALLOWED_PATHS = {
     "/api/v1/auth/change-password",
     "/api/v1/auth/me",
+    "/api/v1/auth/logout",
 }
 
 

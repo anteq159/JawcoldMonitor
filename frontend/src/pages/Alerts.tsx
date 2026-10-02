@@ -17,6 +17,7 @@ import { format } from 'date-fns'
 import type { AlertRule, AlertEvent } from '../types/alert'
 import { ALERT_CATEGORIES } from '../types/alert'
 import type { Device } from '../types/device'
+import { NotificationChannels } from '../components/Alerts/NotificationChannels'
 
 type TimeRange = '1h' | '6h' | '24h' | '7d' | '30d'
 const RANGES: { label: string; value: TimeRange }[] = [
@@ -50,12 +51,14 @@ export default function Alerts() {
   const canManage = useAuthStore((s) => s.can('alert:manage'))
   const canAcknowledge = useAuthStore((s) => s.can('alert:acknowledge'))
   const canExport = useAuthStore((s) => s.can('export:any'))
+  const canNotify = useAuthStore((s) => s.can('settings:write'))
   const [rules, setRules] = useState<AlertRule[]>([])
   const [events, setEvents] = useState<AlertEvent[]>([])
   const [hwAlarms, setHwAlarms] = useState<HardwareAlarmEvent[]>([])
   const [devices, setDevices] = useState<Device[]>([])
   const [loading, setLoading] = useState(true)
-  const [tab, setTab] = useState<'events' | 'hardware' | 'rules'>('events')
+  const [tab, setTab] = useState<'events' | 'hardware' | 'rules' | 'notifications'>(
+    () => new URLSearchParams(window.location.search).get('zakladka') === 'powiadomienia' ? 'notifications' : 'events')
   const [showAdd, setShowAdd] = useState(false)
   const [editRule, setEditRule] = useState<AlertRule | null>(null)
   const [prefill, setPrefill] = useState<{ deviceId: number; paramName: string } | null>(null)
@@ -125,13 +128,14 @@ export default function Alerts() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-2">
-        <div className="flex gap-1 bg-surface border border-border rounded-lg p-1">
-          {(['events', 'hardware', 'rules'] as const).map(t => (
+        <div className="flex flex-wrap gap-1 bg-surface border border-border rounded-lg p-1">
+          {(['events', 'hardware', 'rules', ...(canNotify ? ['notifications'] as const : [])] as const).map(t => (
             <button key={t} onClick={() => setTab(t)}
-              className={`px-4 py-1.5 text-sm rounded-md transition-colors ${tab === t ? 'bg-accent text-white' : 'text-ink-muted hover:text-ink'}`}>
+              className={`px-3 sm:px-4 py-1.5 text-sm rounded-md whitespace-nowrap transition-colors ${tab === t ? 'bg-accent text-white' : 'text-ink-muted hover:text-ink'}`}>
               {t === 'events' ? `Zdarzenia (${events.filter(e => !e.acknowledged).length})`
                 : t === 'hardware' ? `Alarmy sterowników (${hwAlarms.filter(a => a.active && !a.acknowledged).length})`
-                : `Reguły (${rules.length})`}
+                : t === 'rules' ? `Reguły (${rules.length})`
+                : 'Powiadomienia'}
             </button>
           ))}
         </div>
@@ -238,6 +242,8 @@ export default function Alerts() {
           ))}
         </div>
       )}
+
+      {tab === 'notifications' && <NotificationChannels rules={rules} />}
 
       {tab === 'rules' && (
         <div className="bg-surface border border-border rounded-xl shadow-panel divide-y divide-border">
@@ -513,7 +519,7 @@ function RuleModal({ open, onClose, devices, onSaved, rule, prefill }: {
         <div>
           <label className="block text-xs text-ink-muted mb-1">Powiadomienia</label>
           <div className="flex gap-4">
-            {[['email', 'E-mail'], ['telegram', 'Telegram']].map(([value, lbl]) => (
+            {[['email', 'E-mail'], ['telegram', 'Telegram'], ['sms', 'SMS']].map(([value, lbl]) => (
               <label key={value} className="flex items-center gap-1.5 text-sm text-ink-body">
                 <input type="checkbox" checked={notifyChannels.includes(value)} onChange={() => toggleChannel(value)}
                   className="rounded border-border-strong bg-surface text-accent focus:ring-0" />
@@ -521,7 +527,7 @@ function RuleModal({ open, onClose, devices, onSaved, rule, prefill }: {
               </label>
             ))}
           </div>
-          <p className="text-[11px] text-ink-muted mt-1">Serwer poczty i bot Telegram: Ustawienia → Konfiguracja.</p>
+          <p className="text-[11px] text-ink-muted mt-1">Odbiorców i bramki ustawiasz w zakładce Alerty → Powiadomienia.</p>
         </div>
 
         <div className="flex gap-3 pt-2">

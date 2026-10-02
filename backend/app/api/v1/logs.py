@@ -49,3 +49,64 @@ async def list_audit_logs(
         select(AuditLog).order_by(AuditLog.timestamp.desc()).limit(limit)
     )
     return result.scalars().all()
+
+
+LOGIN_ACTIONS = ("auth.login", "auth.login_failed", "auth.logout", "auth.change_password")
+
+
+@router.get("/logins")
+async def list_logins(
+    before: Optional[datetime] = Query(None, description="Only entries older than this (paging)"),
+    limit: int = Query(100, le=500),
+    failed_only: bool = False,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_permission("user:manage")),
+):
+    """Logi > Logowania: who logged in or out, from where, and every failed
+    attempt (also on accounts that do not exist). Sign-in history is
+    account administration, hence user:manage."""
+    from app.core.config import settings
+    q = (
+        select(AuditLog, User.username)
+        .outerjoin(User, User.id == AuditLog.user_id)
+        .where(AuditLog.action.in_(["auth.login_failed"] if failed_only else LOGIN_ACTIONS))
+        .order_by(AuditLog.timestamp.desc())
+        .limit(limit)
+    )
+    if before:
+        q = q.where(AuditLog.timestamp < before)
+    rows = (await db.execute(q)).all()
+    items = []
+    for entry, account in rows:
+        extra = entry.new_value or {}
+        items.append({
+            "id": entry.id,
+            "action": entry.action.removeprefix("auth."),
+            "username": extra.get("username") or account,
+            "user_exists": entry.user_id is not None,
+            "reason": extra.get("reason"),
+            "user_agent": extra.get("user_agent"),
+            "ip_address": entry.ip_address,
+            "timestamp": entry.timestamp,
+        })
+    return {"enabled": settings.LOG_USER_LOGINS, "items": items}
+
+
+@router.put("/logins/settings")
+async def set_login_logging(
+    body: dict,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_permission("user:manage")),
+):
+    """The "Zapisuj logowania" switch on the Logowania tab."""
+    from app.services.runtime_settings import save_setting
+    enabled = bool(body.get("enabled"))
+    await save_setting(db, "LOG_USER_LOGINS", "true" if enabled else "false")
+    db.add(EventLog(
+        event_type="settings_changed",
+        user_id=current_user.id,
+        message=f"{current_user.username}: zapis logowań użytkowników {'włączony' if enabled else 'wyłączony'}",
+    ))
+    await db.commit()
+    return {"enabled": enabled}
+
