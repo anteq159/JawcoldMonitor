@@ -254,7 +254,7 @@ export function RegisterControlPanel({
                   )}
                 </td>
                 <td className="hidden md:table-cell px-3 py-2 font-mono text-ink-muted align-top">
-                  {r.data_type}{r.scale_factor !== 1 ? ` ×${r.scale_factor}` : ''}
+                  {r.bit != null ? `bit ${r.bit}` : <>{r.data_type}{r.scale_factor !== 1 ? ` ×${r.scale_factor}` : ''}</>}
                   {r.register_type && r.register_type !== 'holding' && (
                     <span className="block text-ink-muted/70">{REGISTER_TYPE_LABELS[r.register_type]}</span>
                   )}

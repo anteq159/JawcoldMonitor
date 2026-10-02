@@ -5,6 +5,7 @@ from app.drivers.manufacturers import (  # noqa: F401,E402
     eliwell_ewpc021, eliwell_idnext,
     carel_mpxone_basic, carel_mpxone_medium, carel_mpxone_advanced,
     danfoss_fc102,
+    schneider_atv320,
 )
 
 __all__ = [
@@ -14,4 +15,5 @@ __all__ = [
     "eliwell_ewpc021", "eliwell_idnext",
     "carel_mpxone_basic", "carel_mpxone_medium", "carel_mpxone_advanced",
     "danfoss_fc102",
+    "schneider_atv320",
 ]

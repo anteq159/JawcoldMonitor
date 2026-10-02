@@ -29,7 +29,7 @@ const CATEGORY_COUNT_FORMS: Record<RegisterCategory, [string, string, string]> =
   alarm: ['alarm', 'alarmy', 'alarmów'],
 }
 
-const TABS = ['Carel', 'Danfoss', 'Eliwell', 'Inne'] as const
+const TABS = ['Carel', 'Danfoss', 'Eliwell', 'Schneider Electric', 'Inne'] as const
 type Tab = typeof TABS[number]
 
 function tabFor(p: DeviceProfileDetail): Tab {
@@ -37,6 +37,7 @@ function tabFor(p: DeviceProfileDetail): Tab {
   if (m.startsWith('Carel')) return 'Carel'
   if (m.startsWith('Danfoss')) return 'Danfoss'
   if (m.startsWith('Eliwell')) return 'Eliwell'
+  if (m.startsWith('Schneider')) return 'Schneider Electric'
   return 'Inne'
 }
 
@@ -66,7 +67,7 @@ export default function Configuration() {
   useEffect(() => { load().finally(() => setLoading(false)) }, [])
 
   const counts = useMemo(() => {
-    const c: Record<Tab, number> = { Carel: 0, Danfoss: 0, Eliwell: 0, Inne: 0 }
+    const c: Record<Tab, number> = { Carel: 0, Danfoss: 0, Eliwell: 0, 'Schneider Electric': 0, Inne: 0 }
     profiles.forEach((p) => { c[tabFor(p)] += 1 })
     return c
   }, [profiles])
@@ -216,7 +217,7 @@ function ManualCreationHelp() {
         <b> Stany</b> lub <b>Alarmy</b>. Od tego zależy, gdzie pojawią się na stronie sterownika i czy trafią na wykres.
       </p>
       <p className="text-sm text-ink-muted">
-        Utworzony profil pojawi się w zakładce „Inne”, dopóki nazwa producenta nie zacznie się od Carel/Danfoss/Eliwell —
+        Utworzony profil pojawi się w zakładce „Inne”, dopóki nazwa producenta nie zacznie się od Carel/Danfoss/Eliwell/Schneider —
         wtedy trafi do właściwej zakładki automatycznie.
       </p>
     </div>
@@ -236,7 +237,7 @@ const EDITOR_TABS: Array<{ category: RegisterCategory; label: string; hint: stri
   { category: 'setpoint', label: 'Nastawy', hint: 'Wartości robocze ustawiane przez użytkownika (St, różnice, progi alarmów). Z zaznaczonym „zapis” można je zmieniać z panelu.' },
   { category: 'parameter', label: 'Parametry', hint: 'Konfiguracja zmieniana rzadko: czasy, tryby pracy, przełączniki.' },
   { category: 'status', label: 'Stany', hint: 'Flagi WŁ./WYŁ. (wyjścia, tryby). Pokazywane jako plakietki, nie trafiają na wykres.' },
-  { category: 'alarm', label: 'Alarmy', hint: 'Flagi alarmów i błędów czujników — plakietki OK / AKTYWNY. „Zbiorczy” = rejestr, z którego czytane są alarmy sprzętowe sterownika.' },
+  { category: 'alarm', label: 'Alarmy', hint: 'Flagi alarmów i błędów czujników — plakietki OK / AKTYWNY, każda aktywna flaga to alarm sterownika (log + powiadomienie). Flaga może być rejestrem Coil albo pojedynczym bitem słowa statusu (kolumna Bit). „Zbiorczy” = rejestr z kodem alarmu dekodowanym przez sterownik.' },
 ]
 
 // Sensible starting point for a register added in a given tab.
@@ -278,10 +279,11 @@ function ProfileModal({ profile, onClose, onSaved }: {
   // almost always a copy/paste slip worth pointing at.
   const locationCount = new Map<string, number>()
   rows.forEach((r) => {
-    const k = `${r.register_type ?? 'holding'}:${r.address}`
+    const k = `${r.register_type ?? 'holding'}:${r.address}:${r.bit ?? ''}`
     locationCount.set(k, (locationCount.get(k) ?? 0) + 1)
   })
-  const isDuplicate = (r: RegisterRow) => (locationCount.get(`${r.register_type ?? 'holding'}:${r.address}`) ?? 0) > 1
+  // Bits of one status word share an address legitimately.
+  const isDuplicate = (r: RegisterRow) => (locationCount.get(`${r.register_type ?? 'holding'}:${r.address}:${r.bit ?? ''}`) ?? 0) > 1
 
   const updateRow = (key: string, patch: Partial<RegisterRow>) =>
     setRows((rs) => rs.map((r) => (r.key === key ? { ...r, ...patch } : r)))
@@ -403,6 +405,7 @@ function ProfileModal({ profile, onClose, onSaved }: {
                       <th className="px-2 py-2 min-w-[180px]">Nazwa</th>
                       <th className="px-2 py-2 w-20">Adres</th>
                       <th className="px-2 py-2 w-32">Typ rejestru</th>
+                      {isFlagTab && <th className="px-2 py-2 w-20" title="Numer bitu w rejestrze Holding/Input (0–15). Puste = cały rejestr albo Coil.">Bit</th>}
                       {!isFlagTab && <th className="px-2 py-2 w-24">Typ danych</th>}
                       {!isFlagTab && <th className="px-2 py-2 w-20">Skala</th>}
                       {!isFlagTab && <th className="px-2 py-2 w-20">Jedn.</th>}
@@ -440,6 +443,14 @@ function ProfileModal({ profile, onClose, onSaved }: {
                             {REGISTER_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
                           </select>
                         </td>
+                        {isFlagTab && (
+                          <td className="px-2 py-1.5">
+                            <input type="number" min={0} max={15} value={r.bit ?? ''} placeholder="—"
+                              disabled={r.register_type === 'coil' || r.register_type === 'discrete_input'}
+                              onChange={(e) => updateRow(r.key, { bit: e.target.value === '' ? null : Number(e.target.value) })}
+                              className={`${cellInput} disabled:opacity-30`} />
+                          </td>
+                        )}
                         {!isFlagTab && (
                           <td className="px-2 py-1.5">
                             <select value={r.data_type} onChange={(e) => updateRow(r.key, { data_type: e.target.value })} className={cellInput}>

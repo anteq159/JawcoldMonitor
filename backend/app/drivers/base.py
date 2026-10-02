@@ -29,6 +29,8 @@ class RegisterMapEntry:
     register_type: str = "holding"
     # Display category (see app.services.register_category); None = derived.
     category: Optional[str] = None
+    # Bit N of a holding/input register as a 0/1 flag (status words).
+    bit: Optional[int] = None
 
 
 @dataclass

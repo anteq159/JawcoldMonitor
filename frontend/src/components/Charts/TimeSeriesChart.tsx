@@ -47,9 +47,21 @@ export function TimeSeriesChart({ data, height = 300, title, hiddenSeries = [], 
   })
   const anyHidden = Object.values(selected).some((v) => !v)
 
+  // One value axis per unit: a 400 V supply on the same scale as 6 A and
+  // 35 Hz flattened every other curve. The first two units get visible
+  // axes (left, right); further units still get their own - hidden -
+  // scale, their values stay readable in the tooltip.
+  // Visible series' units first, so the two labelled axes belong to what
+  // is actually drawn - not to a switched-off setpoint series.
+  const visibleUnits = Array.from(new Set(data.filter((d) => selected[seriesName(d)]).map((d) => d.unit ?? '')))
+  const units = Array.from(new Set([...visibleUnits, ...data.map((d) => d.unit ?? '')]))
+  const axisOf = (d: ParameterReadings) => units.indexOf(d.unit ?? '')
+  const thresholdAxis = Math.max(0, units.indexOf(thresholds[0]?.unit ?? units[0]))
+
   const series = data.map((d, i) => ({
     name: seriesName(d),
     type: 'line',
+    yAxisIndex: axisOf(d),
     smooth: true,
     symbol: 'none',
     data: d.readings.map((r) => [new Date(r.timestamp).getTime(), r.value]),
@@ -63,6 +75,7 @@ export function TimeSeriesChart({ data, height = 300, title, hiddenSeries = [], 
     series.push({
       name: '__thresholds',
       type: 'line',
+      yAxisIndex: thresholdAxis,
       data: [],
       markLine: {
         silent: true,
@@ -128,22 +141,29 @@ export function TimeSeriesChart({ data, height = 300, title, hiddenSeries = [], 
         textStyle: { color: '#7D8E8A' },
       },
     ],
-    grid: { left: 60, right: 20, top: series.length > 1 || anyHidden ? 40 : 16, bottom: 55 },
+    grid: { left: 60, right: visibleUnits.length > 1 ? 60 : 20, top: series.length > 1 || anyHidden ? 48 : 16, bottom: 55 },
     xAxis: {
       type: 'time',
       axisLine: { lineStyle: { color: '#DCE6E4' } },
       axisLabel: { color: '#7D8E8A', fontSize: 10 },
       splitLine: { show: false },
     },
-    yAxis: {
+    yAxis: units.map((unit, i) => ({
       type: 'value',
+      show: i < Math.min(2, visibleUnits.length || 1),
+      position: i === 0 ? 'left' : 'right',
+      name: visibleUnits.length > 1 && i < 2 ? unit : undefined,
+      nameTextStyle: { color: '#7D8E8A', fontSize: 10 },
+      scale: visibleUnits.length > 1,
       // Lines outside the data range would otherwise be drawn off-chart.
-      min: thresholdValues.length ? (v: { min: number }) => Math.floor(Math.min(v.min, ...thresholdValues) - 1) : undefined,
-      max: thresholdValues.length ? (v: { max: number }) => Math.ceil(Math.max(v.max, ...thresholdValues) + 1) : undefined,
+      ...(i === thresholdAxis && thresholdValues.length ? {
+        min: (v: { min: number }) => Math.floor(Math.min(v.min, ...thresholdValues) - 1),
+        max: (v: { max: number }) => Math.ceil(Math.max(v.max, ...thresholdValues) + 1),
+      } : {}),
       axisLine: { lineStyle: { color: '#DCE6E4' } },
       axisLabel: { color: '#7D8E8A', fontSize: 10 },
-      splitLine: { lineStyle: { color: '#EEF3F2' } },
-    },
+      splitLine: { show: i === 0, lineStyle: { color: '#EEF3F2' } },
+    })),
     series,
   }
 

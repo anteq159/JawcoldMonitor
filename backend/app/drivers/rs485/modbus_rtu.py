@@ -77,12 +77,18 @@ def _is_bit_type(reg_type: str) -> bool:
     return reg_type in ("coil", "discrete_input")
 
 
+def _width(reg, reg_type: str) -> int:
+    return 1 if _is_bit_type(reg_type) or getattr(reg, "bit", None) is not None else _register_count(reg.data_type)
+
+
 def _span(batch: list, reg_type: str) -> tuple:
     """(start, count) covering a contiguous batch, in that type's units
-    (bits for coil/discrete_input, 16-bit words otherwise)."""
-    first, last = batch[0], batch[-1]
-    last_width = 1 if _is_bit_type(reg_type) else _register_count(last.data_type)
-    return first.address, last.address + last_width - first.address
+    (bits for coil/discrete_input, 16-bit words otherwise). The end is the
+    furthest-reaching register, not the last one: several bit-variables
+    can share one status word."""
+    start = batch[0].address
+    end = max(r.address + _width(r, reg_type) for r in batch)
+    return start, end - start
 
 
 def _plan_reads(registers, max_gap: int) -> List[dict]:
@@ -119,14 +125,17 @@ def _plan_reads(registers, max_gap: int) -> List[dict]:
         current: list = []
         next_expected = None
         for reg in ordered:
-            width = 1 if is_bit else _register_count(reg.data_type)
-            if current and reg.address == next_expected:
+            width = _width(reg, reg_type)
+            # <= rather than ==: bit-variables of one status word share an
+            # address and must land in the same request, not one each.
+            if current and reg.address <= next_expected:
                 current.append(reg)
+                next_expected = max(next_expected, reg.address + width)
             else:
                 if current:
                     subbatches.append(current)
                 current = [reg]
-            next_expected = reg.address + width
+                next_expected = reg.address + width
         if current:
             subbatches.append(current)
 
@@ -167,8 +176,9 @@ _READ_METHOD = {
 
 
 class ModbusRTUDriver(AbstractRS485Driver):
-    def __init__(self, port: str, baudrate: int, timeout: float, stopbits: int = 1):
+    def __init__(self, port: str, baudrate: int, timeout: float, stopbits: int = 1, parity: str = "N"):
         self._port = port
+        self._parity = parity if parity in ("N", "E", "O") else "N"
         self._baudrate = baudrate
         self._timeout = timeout
         self._stopbits = stopbits
@@ -184,7 +194,7 @@ class ModbusRTUDriver(AbstractRS485Driver):
                 port=self._port,
                 baudrate=self._baudrate,
                 timeout=self._timeout,
-                parity="N",
+                parity=self._parity,
                 stopbits=self._stopbits,
                 bytesize=8,
                 # One retry instead of pymodbus' default 3: every silent
@@ -273,6 +283,8 @@ class ModbusRTUDriver(AbstractRS485Driver):
             try:
                 if is_bit:
                     result[reg.name] = {"value": 1.0 if r.bits[offset] else 0.0, "unit": reg.unit or ""}
+                elif getattr(reg, "bit", None) is not None:
+                    result[reg.name] = {"value": float((r.registers[offset] >> reg.bit) & 1), "unit": reg.unit or ""}
                 else:
                     width = _register_count(reg.data_type)
                     value = _decode(r.registers[offset:offset + width], reg.data_type) * reg.scale_factor

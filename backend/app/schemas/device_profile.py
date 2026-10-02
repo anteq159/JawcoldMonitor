@@ -1,5 +1,5 @@
 from typing import Literal, Optional, List
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class RegisterDefinitionOut(BaseModel):
@@ -15,6 +15,7 @@ class RegisterDefinitionOut(BaseModel):
     is_alarm_register: bool = False
     register_type: str = "holding"
     category: Optional[str] = None
+    bit: Optional[int] = None
 
     model_config = {"from_attributes": True}
 
@@ -30,6 +31,7 @@ class RegisterDefinitionIn(BaseModel):
     is_alarm_register: bool = False
     register_type: str = "holding"
     category: Optional[Literal["measurement", "setpoint", "parameter", "status", "alarm"]] = None
+    bit: Optional[int] = Field(None, ge=0, le=31)
 
 
 class DeviceProfileOut(BaseModel):

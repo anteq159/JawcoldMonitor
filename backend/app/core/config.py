@@ -13,6 +13,10 @@ class Settings(BaseSettings):
     # Carel MPXpro: port supervisor pracuje na sztywno na 19200 8N2 -
     # bez 2 bitów stopu sterownik nie odpowie mimo poprawnego okablowania.
     RS485_STOPBITS: int = 1
+    # N (none) / E (even) / O (odd). Every device on the bus must match:
+    # Carel MPXPRO's supervisor port is 8N2, a Schneider ATV320 ships 8E1
+    # (its [Modbus format] tFO can be switched to 8N1/8N2 to share a bus).
+    RS485_PARITY: str = "N"
     # 0.3 s, not 0.15: a Carel MPXPRO answering a 26-register read at
     # 19200 baud regularly took longer than 0.15 s, and the late reply was
     # then mistaken for the answer to the following request (see

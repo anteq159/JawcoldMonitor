@@ -18,12 +18,14 @@ interface RegisterLike {
   register_type?: string
   writable?: boolean
   is_alarm_register?: boolean
+  // Bit N of a holding/input register as its own 0/1 variable.
+  bit?: number | null
 }
 
 export function registerCategory(reg: RegisterLike): RegisterCategory {
   if (reg.category) return reg.category
   if (reg.is_alarm_register) return 'alarm'
-  if (reg.register_type === 'coil' || reg.register_type === 'discrete_input') return 'status'
+  if (reg.register_type === 'coil' || reg.register_type === 'discrete_input' || reg.bit != null) return 'status'
   if (reg.writable) return 'setpoint'
   return 'measurement'
 }

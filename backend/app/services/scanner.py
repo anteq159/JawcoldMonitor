@@ -24,7 +24,7 @@ from app.services.system_stats import get_system_stats
 from app.services import notifications
 from app.drivers.registry import get_driver
 from app.drivers.base import decode_active_alarms
-from app.services.register_category import register_category, BINARY_TYPES
+from app.services.register_category import register_category, is_binary
 
 logger = logging.getLogger(__name__)
 
@@ -86,7 +86,10 @@ def init_drivers():
         from app.drivers.dallas.w1 import W1DallasDriver
         ports = settings.rs485_port_list
         if ports:
-            _rs485_driver = ModbusRTUDriver(ports[0], settings.RS485_BAUDRATE, settings.MODBUS_TIMEOUT, settings.RS485_STOPBITS)
+            _rs485_driver = ModbusRTUDriver(
+                ports[0], settings.RS485_BAUDRATE, settings.MODBUS_TIMEOUT, settings.RS485_STOPBITS,
+                settings.RS485_PARITY.upper()[:1],
+            )
         _dallas_driver = W1DallasDriver()
 
 
@@ -561,12 +564,17 @@ def _active_device_alarms(device: Device, readings: dict) -> Dict[int, tuple]:
     for reg in profile.registers:
         if reg.is_alarm_register or reg.name in hidden or reg.name not in readings:
             continue
-        if register_category(reg) != "alarm" or reg.register_type not in BINARY_TYPES:
+        if register_category(reg) != "alarm" or not is_binary(reg):
             continue
         if readings[reg.name]["value"]:
-            offset = 50000 if reg.register_type == "discrete_input" else 0
+            # Unique per flag: discrete inputs and bits of a register get
+            # their own code ranges next to plain coils.
+            if reg.bit is not None:
+                code = FLAG_CODE_BASE + 200000 + reg.address * 32 + reg.bit
+            else:
+                code = FLAG_CODE_BASE + (50000 if reg.register_type == "discrete_input" else 0) + reg.address
             label = aliases.get(reg.name, reg.name)
-            active[FLAG_CODE_BASE + offset + reg.address] = (label, "Flaga alarmowa sterownika", "warning")
+            active[code] = (label, "Flaga alarmowa sterownika", "warning")
     return active
 
 

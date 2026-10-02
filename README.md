@@ -14,6 +14,10 @@ całość w Dockerze.
 
 - **Raspberry Pi 4** (min. 2 GB RAM) z kartą microSD **klasy A1/A2, min. 32 GB**
   (jakość karty ma realne znaczenie — to najczęstszy punkt awarii).
+- Obsługiwane sterowniki: Carel (MPXPRO, MPXone, IR33, PJEZ, PicoIR),
+  Danfoss (EKC 202/302, AK-CC, VLT FC 102), Eliwell (EWPC, ID Next),
+  **Schneider Electric Altivar ATV320** (falownik — instrukcja:
+  [`docs/Schneider-ATV320.md`](docs/Schneider-ATV320.md)) oraz własne profile.
 - **Adapter USB ↔ RS485** (np. na układzie CH340 lub FT232). Po podłączeniu
   pojawia się jako `/dev/ttyUSB0`.
 - **Czujniki DS18B20** (opcjonalnie) podłączone do GPIO4 (1-Wire) z rezystorem
@@ -43,7 +47,8 @@ całość w Dockerze.
 - Automatyczne wykrywanie skanuje adresy **1–32** (zmienna
   `DISCOVERY_MAX_ADDRESS`) — trzymaj się tego zakresu albo zwiększ zmienną.
 - Wszystkie urządzenia na jednej magistrali muszą mieć te same parametry
-  transmisji (domyślnie **9600 baud, 8N1**).
+  transmisji (domyślnie **9600 baud, 8N1**; prędkość, bity stopu i
+  parzystość ustawia się w **Ustawienia → Konfiguracja → RS485**).
 
 ---
 

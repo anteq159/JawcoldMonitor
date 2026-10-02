@@ -51,5 +51,8 @@ class RegisterDefinition(Base):
     # measurement | setpoint | parameter | status | alarm; None = derived,
     # see app.services.register_category.
     category: Mapped[Optional[str]] = mapped_column(String(16))
+    # Bit N (0-15) of a holding/input register as its own 0/1 variable -
+    # status words like the ATV320's ETA. None = the whole register.
+    bit: Mapped[Optional[int]] = mapped_column(Integer)
 
     profile: Mapped[DeviceProfile] = relationship("DeviceProfile", back_populates="registers")

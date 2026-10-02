@@ -15,13 +15,18 @@ CATEGORIES = ("measurement", "setpoint", "parameter", "status", "alarm")
 BINARY_TYPES = ("coil", "discrete_input")
 
 
+def is_binary(reg) -> bool:
+    """A 0/1 variable: a coil/discrete input, or one bit of a register."""
+    return getattr(reg, "register_type", "holding") in BINARY_TYPES or getattr(reg, "bit", None) is not None
+
+
 def register_category(reg) -> str:
     explicit = getattr(reg, "category", None)
     if explicit in CATEGORIES:
         return explicit
     if getattr(reg, "is_alarm_register", False):
         return "alarm"
-    if getattr(reg, "register_type", "holding") in BINARY_TYPES:
+    if getattr(reg, "register_type", "holding") in BINARY_TYPES or getattr(reg, "bit", None) is not None:
         return "status"
     if getattr(reg, "writable", False):
         return "setpoint"

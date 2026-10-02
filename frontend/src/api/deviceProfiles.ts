@@ -14,6 +14,7 @@ export interface RegisterDefinition {
   is_alarm_register: boolean
   register_type: 'holding' | 'input' | 'coil' | 'discrete_input'
   category: RegisterCategory | null
+  bit: number | null
 }
 
 export interface RegisterDefinitionInput {
@@ -27,6 +28,7 @@ export interface RegisterDefinitionInput {
   is_alarm_register?: boolean
   register_type?: 'holding' | 'input' | 'coil' | 'discrete_input'
   category?: RegisterCategory | null
+  bit?: number | null
 }
 
 export interface DeviceProfileDetail {

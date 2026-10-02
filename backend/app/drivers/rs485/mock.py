@@ -47,8 +47,16 @@ class MockRS485Driver(AbstractRS485Driver):
     async def read_parameters(self, device) -> Dict[str, dict]:
         await asyncio.sleep(0.02)
         addr = device.modbus_address
+        profile = getattr(device, "profile", None)
         if addr not in MOCK_DEVICES:
-            return {}
+            # A device added by hand in preview mode: simulate it from its
+            # profile's manufacturer driver so any built-in profile can be
+            # tried out without hardware.
+            driver_cls = get_driver(profile.manufacturer) if profile and profile.manufacturer else None
+            if not driver_cls:
+                return {}
+            _counters[addr] = _counters.get(addr, 0) + 0.1
+            return driver_cls().simulate_reading(_counters[addr])
         _counters[addr] = _counters.get(addr, 0) + 0.1
         t = _counters[addr]
         info = MOCK_DEVICES[addr]
