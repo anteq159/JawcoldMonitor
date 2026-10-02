@@ -14,8 +14,9 @@ całość w Dockerze.
 
 - **Raspberry Pi 4** (min. 2 GB RAM) z kartą microSD **klasy A1/A2, min. 32 GB**
   (jakość karty ma realne znaczenie — to najczęstszy punkt awarii).
-- Obsługiwane sterowniki: Carel (MPXPRO, MPXone, IR33, PJEZ, PicoIR),
-  Danfoss (EKC 202/302, AK-CC, VLT FC 102), Eliwell (EWPC, ID Next),
+- Obsługiwane sterowniki: Carel (MPXPRO, MPXone, IR33, PJEZ, PicoIR,
+  zawór EVD evolution), Danfoss (AK-CC55 Compact / Single Coil, AK-CC 250,
+  EKC 202/302, VLT FC 102), Eliwell (IDPlus 974, ID Next, EWPC),
   **Schneider Electric Altivar ATV320** (falownik — instrukcja:
   [`docs/Schneider-ATV320.md`](docs/Schneider-ATV320.md)) oraz własne profile.
 - **Adapter USB ↔ RS485** (np. na układzie CH340 lub FT232). Po podłączeniu

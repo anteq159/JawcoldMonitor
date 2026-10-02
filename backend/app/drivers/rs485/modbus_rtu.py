@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import struct
+import time
 from typing import Dict, List
 from app.core.config import settings
 from app.drivers.base import AbstractRS485Driver
@@ -96,6 +97,13 @@ def _span(batch: list, reg_type: str) -> tuple:
 # 16 registers per request.
 _WORD_LIMITS = (64, 32, 16, 8, 4, 2, 1)
 _DEFAULT_MAX_WORDS = 100
+
+# A register the controller refuses on its own ("illegal data address" -
+# e.g. a Danfoss AK-CC55 readout that its current application mode does not
+# have) is skipped for this long, so it does not cost a rejected request
+# plus a retry of its whole block every cycle. Re-tried afterwards in case
+# the controller's configuration changed.
+UNMAPPED_RETRY_SECONDS = 1800
 
 
 def _plan_reads(registers, max_gap: int, max_words: int = _DEFAULT_MAX_WORDS) -> List[dict]:
@@ -209,6 +217,8 @@ class ModbusRTUDriver(AbstractRS485Driver):
         # one read (see _WORD_LIMITS).
         self._max_words: Dict[int, int] = {}
         self._last_exception_code: int = 0
+        # unit -> {(register_type, address): monotonic time to retry at}
+        self._unmapped: Dict[int, Dict[tuple, float]] = {}
         self._connect()
 
     def _connect(self):
@@ -332,8 +342,13 @@ class ModbusRTUDriver(AbstractRS485Driver):
                 return result
             unit = device.modbus_address
             max_words = self._max_words.get(unit) or _driver_max_words(profile) or _DEFAULT_MAX_WORDS
+            now = time.monotonic()
+            unmapped = self._unmapped.setdefault(unit, {})
+            for key in [k for k, until in unmapped.items() if until <= now]:
+                del unmapped[key]
+            registers = [r for r in profile.registers if (r.register_type, r.address) not in unmapped]
             answered = False
-            for group in _plan_reads(profile.registers, max_gap, max_words):
+            for group in _plan_reads(registers, max_gap, max_words):
                 outcome = await self._read_span(
                     unit, group["type"], group["start"], group["count"], group["regs"], result,
                 )
@@ -358,15 +373,46 @@ class ModbusRTUDriver(AbstractRS485Driver):
                     logger.info("Urządzenie %d: maks. %d rejestrów w zapytaniu", unit, self._max_words[unit])
                     for piece in _plan_reads(group["regs"], max_gap, self._max_words[unit]):
                         for sub in piece["subbatches"]:
-                            start, count = _span(sub, group["type"])
-                            await self._read_span(unit, group["type"], start, count, sub, result)
-                elif len(group["subbatches"]) > 1:
+                            await self._read_block(unit, group["type"], sub, result)
+                else:
                     # The controller may reject a span crossing unmapped
-                    # addresses - retry as the strictly contiguous blocks.
+                    # addresses - retry as the strictly contiguous blocks,
+                    # and a rejected block register by register.
+                    single = len(group["subbatches"]) == 1
                     for sub in group["subbatches"]:
-                        start, count = _span(sub, group["type"])
-                        await self._read_span(unit, group["type"], start, count, sub, result)
+                        await self._read_block(unit, group["type"], sub, result, already_rejected=single)
         return result
+
+    async def _read_block(
+        self, unit: int, reg_type: str, regs: list, result: Dict[str, dict], already_rejected: bool = False,
+    ) -> None:
+        """Read one contiguous block; if the controller rejects it, read
+        each address alone so one unmapped register does not hide its
+        neighbours, and remember the ones it refuses on their own.
+        Must be called while holding self._lock."""
+        start, count = _span(regs, reg_type)
+        if not already_rejected and await self._read_span(unit, reg_type, start, count, regs, result) != READ_REJECTED:
+            return
+        by_address: Dict[int, list] = {}
+        for reg in regs:
+            by_address.setdefault(reg.address, []).append(reg)
+        # address -> exception code of the request that refused it alone
+        refused: Dict[int, int] = {}
+        if len(by_address) == 1:
+            refused[start] = self._last_exception_code
+        else:
+            for address, same in by_address.items():
+                s, c = _span(same, reg_type)
+                outcome = await self._read_span(unit, reg_type, s, c, same, result)
+                if outcome == READ_NO_RESPONSE:
+                    return
+                if outcome == READ_REJECTED:
+                    refused[address] = self._last_exception_code
+        for address, code in refused.items():
+            if code == 2:  # illegal data address
+                self._unmapped.setdefault(unit, {})[(reg_type, address)] = time.monotonic() + UNMAPPED_RETRY_SECONDS
+                logger.info("Urządzenie %d: rejestr %s %d niedostępny - pomijany przez %d min",
+                            unit, reg_type, address, UNMAPPED_RETRY_SECONDS // 60)
 
     async def scan_range(self, start: int, end: int, known_addresses: set) -> List[int]:
         # No retries while sweeping: almost every address is silent, and a

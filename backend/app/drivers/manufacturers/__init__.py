@@ -6,6 +6,7 @@ from app.drivers.manufacturers import (  # noqa: F401,E402
     carel_mpxone_basic, carel_mpxone_medium, carel_mpxone_advanced,
     danfoss_fc102,
     schneider_atv320,
+    danfoss_akcc55, carel_evd,
 )
 
 __all__ = [
@@ -16,4 +17,5 @@ __all__ = [
     "carel_mpxone_basic", "carel_mpxone_medium", "carel_mpxone_advanced",
     "danfoss_fc102",
     "schneider_atv320",
+    "danfoss_akcc55", "carel_evd",
 ]

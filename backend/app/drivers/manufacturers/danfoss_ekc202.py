@@ -4,6 +4,7 @@ from typing import Dict, List, Optional
 
 from app.drivers.base import AbstractControllerDriver, RegisterMapEntry, ControllerModel, AlarmDescription
 from app.drivers.registry import register_driver
+from app.drivers.manufacturers.danfoss_akcc55 import pnu
 
 
 @register_driver("Danfoss EKC 202")
@@ -21,26 +22,32 @@ class DanfossEkc202Driver(AbstractControllerDriver):
     selection as EKC 302 for that reason, rather than inventing an
     artificial difference the source doesn't support - see that driver's
     docstring for the same caveat on Danfoss's "Float" type meaning a
-    scaled 16-bit integer here, not a 32-bit IEEE float."""
+    scaled 16-bit integer here, not a 32-bit IEEE float.
+
+    Addresses: the tables list PNUs, and Danfoss defines PNU as "the
+    modbus register no. (modbus address + 1)", so every address goes
+    through pnu() - until v1.31 the PNU itself was sent and each read
+    landed one register too far. On/off variables (relays, DI, alarms)
+    are whole 0/1 registers, read as bit 0 so they show as flags."""
 
     manufacturer = "Danfoss EKC 202"
 
     def default_register_map(self) -> List[RegisterMapEntry]:
         return [
-            RegisterMapEntry(address=100, name="Nastawa (Cutout)", unit="°C", data_type="int16", scale_factor=0.1, writable=True),
-            RegisterMapEntry(address=101, name="Różnica załączania (r01)", unit="°C", data_type="int16", scale_factor=0.1, writable=True),
-            RegisterMapEntry(address=2530, name="Temperatura S3", unit="°C", data_type="int16", scale_factor=0.1),
-            RegisterMapEntry(address=2531, name="Temperatura S4", unit="°C", data_type="int16", scale_factor=0.1),
-            RegisterMapEntry(address=1011, name="Temperatura S5 (parownik)", unit="°C", data_type="int16", scale_factor=0.1),
-            RegisterMapEntry(address=2002, name="Wejście cyfrowe DI1", data_type="uint16"),
-            RegisterMapEntry(address=1036, name="Stan odszraniania", data_type="uint16"),
-            RegisterMapEntry(address=2510, name="Sprężarka (Comp1/LLSV)", data_type="uint16"),
-            RegisterMapEntry(address=2511, name="Wentylator parownika", data_type="uint16"),
-            RegisterMapEntry(address=2512, name="Przekaźnik odszraniania", data_type="uint16"),
-            RegisterMapEntry(address=20006, name="Alarm wysokiej temperatury", data_type="uint16"),
-            RegisterMapEntry(address=20007, name="Alarm niskiej temperatury", data_type="uint16"),
-            RegisterMapEntry(address=20010, name="Alarm drzwi", data_type="uint16"),
-            RegisterMapEntry(address=2541, name="Błąd sterownika (EKC Error)", data_type="uint16", is_alarm_register=True),
+            RegisterMapEntry(address=pnu(100), name="Nastawa (Cutout)", unit="°C", data_type="int16", scale_factor=0.1, writable=True),
+            RegisterMapEntry(address=pnu(101), name="Różnica załączania (r01)", unit="°C", data_type="int16", scale_factor=0.1, writable=True),
+            RegisterMapEntry(address=pnu(2530), name="Temperatura S3", unit="°C", data_type="int16", scale_factor=0.1),
+            RegisterMapEntry(address=pnu(2531), name="Temperatura S4", unit="°C", data_type="int16", scale_factor=0.1),
+            RegisterMapEntry(address=pnu(1011), name="Temperatura S5 (parownik)", unit="°C", data_type="int16", scale_factor=0.1),
+            RegisterMapEntry(address=pnu(2002), name="Wejście cyfrowe DI1", data_type="uint16", bit=0, category="status"),
+            RegisterMapEntry(address=pnu(1036), name="Stan odszraniania", data_type="uint16", category="parameter"),
+            RegisterMapEntry(address=pnu(2510), name="Sprężarka (Comp1/LLSV)", data_type="uint16", bit=0, category="status"),
+            RegisterMapEntry(address=pnu(2511), name="Wentylator parownika", data_type="uint16", bit=0, category="status"),
+            RegisterMapEntry(address=pnu(2512), name="Przekaźnik odszraniania", data_type="uint16", bit=0, category="status"),
+            RegisterMapEntry(address=pnu(20006), name="Alarm wysokiej temperatury", data_type="uint16", bit=0, category="alarm"),
+            RegisterMapEntry(address=pnu(20007), name="Alarm niskiej temperatury", data_type="uint16", bit=0, category="alarm"),
+            RegisterMapEntry(address=pnu(20010), name="Alarm drzwi", data_type="uint16", bit=0, category="alarm"),
+            RegisterMapEntry(address=pnu(2541), name="Błąd sterownika (EKC Error)", data_type="uint16", is_alarm_register=True),
         ]
 
     def identify(self, model_hint: Optional[str] = None) -> ControllerModel:
