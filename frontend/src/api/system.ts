@@ -59,3 +59,14 @@ export const getNotificationStatus = (): Promise<NotificationStatus> =>
   api.get('/system/notifications/status').then((r) => r.data)
 export const testNotification = (channel: NotifyChannel): Promise<{ message: string }> =>
   api.post('/system/notifications/test', null, { params: { channel }, timeout: 30000 }).then((r) => r.data)
+
+export interface ModemStatus {
+  sim: string
+  model: string | null
+  signal_percent: number | null
+  registered: boolean
+  network: string
+  operator: string | null
+}
+export const checkModem = (): Promise<ModemStatus> =>
+  api.post('/system/notifications/modem-check', null, { timeout: 60000 }).then((r) => r.data)

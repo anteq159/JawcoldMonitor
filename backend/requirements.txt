@@ -7,6 +7,8 @@ psycopg2-binary>=2.9.0
 bcrypt>=4.0.0
 pydantic-settings>=2.2.0
 pymodbus[serial]>=3.13.0,<4
+# GSM modem for SMS alarms (AT commands); also pulled in by pymodbus[serial]
+pyserial>=3.5
 python-jose[cryptography]>=3.3.0
 python-multipart>=0.0.9
 psutil>=5.9.0

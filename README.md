@@ -267,8 +267,14 @@ Konfiguracja w panelu: **Alerty → Powiadomienia** — dla każdego kanału
 włącznik, ustawienia, stan („gotowy" / „do uzupełnienia") i przycisk
 wiadomości testowej; tam też wybiera się kanały dla alarmów systemowych.
 Działa od razu, bez restartu. SMS idą przez bramkę **SMSAPI.pl** (token
-z panelu SMSAPI) albo **Twilio**, z dziennym limitem `SMS_DAILY_LIMIT`
-(domyślnie 30), żeby zapętlony alarm nie wyczerpał konta. Te same wartości
+z panelu SMSAPI), **Twilio** albo **modem GSM/LTE wpięty w USB Raspberry**
+(np. SIM800, SIM7600, Huawei w trybie modemu) — ta opcja działa bez
+internetu, wystarczy karta SIM. Przy modemie przycisk „Sprawdź modem"
+pokazuje stan karty SIM, operatora i zasięg bez wysyłania SMS-a. Modem
+musi mieć inny port niż RS485; jeśli na Raspberry działa ModemManager,
+wyłącz go (`sudo systemctl disable --now ModemManager`), bo zajmuje port.
+Każda bramka ma dzienny limit `SMS_DAILY_LIMIT` (domyślnie 30), żeby
+zapętlony alarm nie wyczerpał konta. Te same wartości
 można podać z góry w `.env` jako wartości startowe:
 
 ```bash

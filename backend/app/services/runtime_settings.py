@@ -78,6 +78,9 @@ EDITABLE_SETTINGS: Dict[str, SettingMeta] = {
     "SMS_API_TOKEN": SettingMeta("Token API (SMSAPI) / Auth Token (Twilio)", "Powiadomienia SMS", "str", secret=True),
     "SMS_ACCOUNT_SID": SettingMeta("Account SID (tylko Twilio)", "Powiadomienia SMS", "str"),
     "SMS_SENDER": SettingMeta("Nadawca (pole nadawcy SMSAPI lub numer Twilio)", "Powiadomienia SMS", "str"),
+    "SMS_MODEM_PORT": SettingMeta("Port modemu (np. /dev/ttyUSB2)", "Powiadomienia SMS", "str"),
+    "SMS_MODEM_BAUDRATE": SettingMeta("Prędkość portu modemu", "Powiadomienia SMS", "int"),
+    "SMS_MODEM_PIN": SettingMeta("PIN karty SIM (puste = bez PIN)", "Powiadomienia SMS", "str", secret=True),
     "SMS_TO": SettingMeta("Numery odbiorców (po przecinku, np. +48600100200)", "Powiadomienia SMS", "str"),
     "SMS_DAILY_LIMIT": SettingMeta("Limit SMS na dobę (0 = bez limitu)", "Powiadomienia SMS", "int"),
     # Logi

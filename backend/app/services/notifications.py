@@ -106,12 +106,15 @@ def sms_sent_today() -> int:
 
 def _send_sms_sync(text: str, respect_limit: bool = True) -> None:
     recipients = settings.sms_to_list
-    if not settings.SMS_API_TOKEN or not recipients:
+    if not channel_configured("sms"):
         return
     if respect_limit and not _sms_quota(len(recipients)):
         return
     provider = (settings.SMS_PROVIDER or "smsapi").strip().lower()
-    if provider == "smsapi":
+    if provider == "modem":
+        from app.services import gsm_modem
+        gsm_modem.send_sms(recipients, text)
+    elif provider == "smsapi":
         # SMSAPI.pl: one request for all numbers; normalize=1 replaces
         # Polish letters so a message fits in 160-char GSM parts.
         fields = {"to": ",".join(recipients), "message": text, "format": "json", "encoding": "utf-8", "normalize": "1"}
@@ -144,7 +147,7 @@ def _send_sms_sync(text: str, respect_limit: bool = True) -> None:
         if errors:
             raise RuntimeError("Twilio: " + "; ".join(errors))
     else:
-        raise ValueError(f"Nieznana bramka SMS: {provider} (dostępne: smsapi, twilio)")
+        raise ValueError(f"Nieznana bramka SMS: {provider} (dostępne: smsapi, twilio, modem)")
 
 
 CHANNELS = ("email", "telegram", "sms")
@@ -164,10 +167,14 @@ def channel_configured(channel: str) -> bool:
     if channel == "telegram":
         return bool(settings.TELEGRAM_BOT_TOKEN and settings.telegram_chat_ids)
     if channel == "sms":
-        base = bool(settings.SMS_API_TOKEN and settings.sms_to_list)
-        if (settings.SMS_PROVIDER or "").lower() == "twilio":
-            return base and bool(settings.SMS_ACCOUNT_SID and settings.SMS_SENDER)
-        return base
+        provider = (settings.SMS_PROVIDER or "smsapi").lower()
+        if not settings.sms_to_list:
+            return False
+        if provider == "modem":
+            return bool(settings.SMS_MODEM_PORT)
+        if provider == "twilio":
+            return bool(settings.SMS_API_TOKEN and settings.SMS_ACCOUNT_SID and settings.SMS_SENDER)
+        return bool(settings.SMS_API_TOKEN)
     return False
 
 
@@ -211,7 +218,11 @@ async def send_test(channel: str) -> None:
         await asyncio.to_thread(_send_telegram_sync, f"{subject}\n{body}")
     elif channel == "sms":
         if not channel_configured("sms"):
-            raise ValueError("Uzupełnij token bramki i numery odbiorców (dla Twilio także Account SID i nadawcę)")
+            raise ValueError(
+                "Uzupełnij port modemu i numery odbiorców"
+                if (settings.SMS_PROVIDER or "").lower() == "modem"
+                else "Uzupełnij token bramki i numery odbiorców (dla Twilio także Account SID i nadawcę)"
+            )
         # A test is a deliberate click - not counted against the daily limit.
         await asyncio.to_thread(_send_sms_sync, sms_text(subject, "Test powiadomień SMS z panelu."), False)
     else:

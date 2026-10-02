@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
-import { Mail, Send, MessageSquare, ServerCog } from 'lucide-react'
+import { Mail, Send, MessageSquare, ServerCog, Radio } from 'lucide-react'
 import {
-  getRuntimeSettings, updateRuntimeSettings, getNotificationStatus, testNotification,
-  type RuntimeSetting, type NotificationStatus, type NotifyChannel,
+  getRuntimeSettings, updateRuntimeSettings, getNotificationStatus, testNotification, checkModem, getSerialPorts,
+  type RuntimeSetting, type NotificationStatus, type NotifyChannel, type ModemStatus,
 } from '../../api/system'
 import { Badge } from '../UI/Badge'
 import { PageSpinner } from '../UI/Spinner'
@@ -30,9 +30,23 @@ const CHANNELS: Array<{
   },
   {
     id: 'sms', title: 'SMS', icon: MessageSquare, category: 'Powiadomienia SMS', enabledKey: 'SMS_ENABLED',
-    help: 'Przez bramkę SMSAPI.pl (token z panelu SMSAPI) albo Twilio. Nadawcę SMSAPI trzeba wcześniej zarejestrować — puste pole = domyślny nadawca. Polskie znaki są zamieniane, żeby SMS był tańszy.',
+    help: '',
   },
 ]
+
+// SMS fields per gateway - the rest of the SMS settings belong to the
+// other gateways and would only confuse.
+const SMS_FIELDS: Record<string, string[]> = {
+  smsapi: ['SMS_API_TOKEN', 'SMS_SENDER'],
+  twilio: ['SMS_API_TOKEN', 'SMS_ACCOUNT_SID', 'SMS_SENDER'],
+  modem: ['SMS_MODEM_PORT', 'SMS_MODEM_BAUDRATE', 'SMS_MODEM_PIN'],
+}
+const SMS_PROVIDER_FIELDS = new Set(Object.values(SMS_FIELDS).flat())
+const SMS_HELP: Record<string, string> = {
+  smsapi: 'Token z panelu SMSAPI.pl (Ustawienia API). Nadawcę trzeba wcześniej zarejestrować w SMSAPI — puste pole = domyślny nadawca. Polskie znaki są zamieniane, żeby SMS był tańszy.',
+  twilio: 'Account SID i Auth Token z konsoli Twilio, nadawca = numer kupiony w Twilio (+48… lub inny).',
+  modem: 'Modem GSM/LTE z kartą SIM wpięty w USB Raspberry (np. SIM800, SIM7600, Huawei w trybie modemu). Działa bez internetu. Port modemu musi być inny niż port RS485; jeśli modem ma kilka portów, zwykle działa drugi lub trzeci (ttyUSB2). SMS idzie bez polskich znaków, maks. 160 znaków.',
+}
 
 const SYSTEM_CATEGORY = 'Alarmy systemowe'
 
@@ -42,10 +56,27 @@ export function NotificationChannels({ rules }: { rules: AlertRule[] }) {
   const [dirty, setDirty] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState<string | null>(null)
+  const [ports, setPorts] = useState<string[]>([])
+  const [modem, setModem] = useState<ModemStatus | null>(null)
 
   const load = () => Promise.all([getRuntimeSettings(), getNotificationStatus()])
     .then(([s, st]) => { setSettings(s); setStatus(st) })
-  useEffect(() => { load().finally(() => setLoading(false)) }, [])
+  useEffect(() => {
+    load().finally(() => setLoading(false))
+    getSerialPorts().then((r) => setPorts(r.ports)).catch(() => {})
+  }, [])
+
+  const runModemCheck = async () => {
+    setBusy('modem')
+    setModem(null)
+    try {
+      setModem(await checkModem())
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail ?? 'Nie udało się połączyć z modemem', { duration: 10000 })
+    } finally {
+      setBusy(null)
+    }
+  }
 
   const byKey = (key: string) => settings.find((s) => s.key === key)
   const value = (key: string) => dirty[key] ?? byKey(key)?.value ?? ''
@@ -162,12 +193,34 @@ export function NotificationChannels({ rules }: { rules: AlertRule[] }) {
 
               <div className={`space-y-3 ${st.enabled ? '' : 'opacity-60'}`}>
                 {fields
-                  .filter((f) => !(f.key === 'SMS_ACCOUNT_SID' && value('SMS_PROVIDER') !== 'twilio'))
+                  .filter((f) => !SMS_PROVIDER_FIELDS.has(f.key) || SMS_FIELDS[value('SMS_PROVIDER') || 'smsapi']?.includes(f.key))
                   .map((f) => (
-                    <Field key={f.key} setting={f} value={value(f.key)} onChange={(v) => setValue(f.key, v)} />
+                    <Field key={f.key} setting={f} value={value(f.key)} onChange={(v) => setValue(f.key, v)}
+                      list={f.key === 'SMS_MODEM_PORT' ? 'modem-ports' : undefined} />
                   ))}
               </div>
-              <p className="text-[11px] leading-snug text-ink-muted">{c.help}</p>
+              <p className="text-[11px] leading-snug text-ink-muted">{c.id === 'sms' ? SMS_HELP[value('SMS_PROVIDER') || 'smsapi'] : c.help}</p>
+              {c.id === 'sms' && value('SMS_PROVIDER') === 'modem' && (
+                <div className="space-y-2">
+                  <button onClick={runModemCheck} disabled={busy !== null || pending > 0}
+                    title={pending ? 'Najpierw zapisz zmiany' : 'Sprawdza SIM, zasięg i operatora — bez wysyłania SMS'}
+                    className="flex items-center gap-1.5 border border-border text-sm text-ink-body hover:border-accent hover:text-accent disabled:opacity-50 px-3 py-2 rounded-lg transition-colors">
+                    <Radio size={13} /> {busy === 'modem' ? 'Sprawdzanie…' : 'Sprawdź modem'}
+                  </button>
+                  {modem && (
+                    <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs bg-surface-2 rounded-lg p-3">
+                      <dt className="text-ink-muted">Modem</dt><dd className="text-ink">{modem.model ?? '—'}</dd>
+                      <dt className="text-ink-muted">Karta SIM</dt><dd className="text-ink">{modem.sim}</dd>
+                      <dt className="text-ink-muted">Sieć</dt>
+                      <dd className={modem.registered ? 'text-good' : 'text-crit'}>{modem.network}{modem.operator ? ` · ${modem.operator}` : ''}</dd>
+                      <dt className="text-ink-muted">Zasięg</dt>
+                      <dd className={modem.signal_percent == null ? 'text-ink-muted' : modem.signal_percent < 20 ? 'text-warn' : 'text-ink'}>
+                        {modem.signal_percent == null ? 'nieznany' : `${modem.signal_percent}%`}
+                      </dd>
+                    </dl>
+                  )}
+                </div>
+              )}
 
               <div className="flex flex-wrap gap-2 mt-auto pt-1">
                 <SaveButton dirty={pending} busy={busy === c.id} onClick={() => save(keys, c.id)} />
@@ -181,11 +234,14 @@ export function NotificationChannels({ rules }: { rules: AlertRule[] }) {
           )
         })}
       </div>
+      <datalist id="modem-ports">
+        {ports.map((p) => <option key={p} value={p} />)}
+      </datalist>
     </div>
   )
 }
 
-function Field({ setting: s, value, onChange }: { setting: RuntimeSetting; value: string; onChange: (v: string) => void }) {
+function Field({ setting: s, value, onChange, list }: { setting: RuntimeSetting; value: string; onChange: (v: string) => void; list?: string }) {
   return (
     <div>
       <label className="block text-xs text-ink-muted mb-1">{s.label}</label>
@@ -193,6 +249,7 @@ function Field({ setting: s, value, onChange }: { setting: RuntimeSetting; value
         <select value={value || 'smsapi'} onChange={(e) => onChange(e.target.value)} className="input">
           <option value="smsapi">SMSAPI.pl</option>
           <option value="twilio">Twilio</option>
+          <option value="modem">Modem GSM w Raspberry (USB)</option>
         </select>
       ) : s.type === 'bool' ? (
         <select value={value} onChange={(e) => onChange(e.target.value)} className="input">
@@ -206,6 +263,7 @@ function Field({ setting: s, value, onChange }: { setting: RuntimeSetting; value
           onChange={(e) => onChange(e.target.value)}
           placeholder={s.secret ? (s.is_set ? '••••••• (ustawione — wpisz, aby zmienić)' : 'nie ustawione') : undefined}
           autoComplete="off"
+          list={list}
           className="input"
         />
       )}

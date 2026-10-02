@@ -67,8 +67,13 @@ class Settings(BaseSettings):
     TELEGRAM_BOT_TOKEN: str = ""
     TELEGRAM_CHAT_ID: str = ""
     # SMS through a gateway's HTTP API: "smsapi" (SMSAPI.pl, Bearer token)
-    # or "twilio" (Account SID + Auth Token, sender = a Twilio number).
+    # or "twilio" (Account SID + Auth Token, sender = a Twilio number), or
+    # "modem": a GSM/LTE modem plugged into the Raspberry (AT commands over
+    # its USB serial port) - works without internet access.
     SMS_PROVIDER: str = "smsapi"
+    SMS_MODEM_PORT: str = ""
+    SMS_MODEM_BAUDRATE: int = 115200
+    SMS_MODEM_PIN: str = ""
     SMS_API_TOKEN: str = ""
     SMS_ACCOUNT_SID: str = ""
     SMS_SENDER: str = ""

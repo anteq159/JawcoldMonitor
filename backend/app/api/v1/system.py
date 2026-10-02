@@ -314,3 +314,16 @@ async def notification_status(_: User = Depends(require_permission("settings:wri
         "sms_daily_limit": settings.SMS_DAILY_LIMIT,
     }
 
+
+@router.post("/notifications/modem-check")
+async def modem_check(_: User = Depends(require_permission("settings:write"))):
+    """Alerty > Powiadomienia > SMS przez modem: SIM, zasięg, operator -
+    checks the setup without sending (and paying for) an SMS."""
+    import asyncio
+    from fastapi import HTTPException
+    from app.services import gsm_modem
+    try:
+        return await asyncio.to_thread(gsm_modem.status)
+    except gsm_modem.ModemError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
