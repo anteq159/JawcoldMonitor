@@ -4,6 +4,7 @@ import toast from 'react-hot-toast'
 import { useDeviceStore } from '../../store/devices'
 import { useAuthStore } from '../../store/auth'
 import { writeDeviceRegister } from '../../api/devices'
+import { ConfirmDialog } from '../UI/ConfirmDialog'
 import { useFavoriteParameters } from '../../hooks/useFavoriteParameters'
 import type { RegisterDefinition } from '../../api/deviceProfiles'
 import { registerCategory, isBinaryCategory, formatValue, type RegisterCategory } from '../../utils/registers'
@@ -86,16 +87,34 @@ export function RegisterControlPanel({
 
   const cancelEdit = () => setEditing(null)
 
-  const save = async (register: RegisterDefinition) => {
-    const value = parseFloat(inputValue)
+  // Writes go to a real controller running a cold room - ask once, showing
+  // old -> new, instead of writing on the first Enter.
+  const [pendingWrite, setPendingWrite] = useState<{ register: RegisterDefinition; value: number } | null>(null)
+
+  const save = (register: RegisterDefinition) => {
+    const value = parseFloat(inputValue.replace(',', '.'))
     if (Number.isNaN(value)) {
       toast.error('Nieprawidłowa wartość')
       return
     }
+    const current = liveReadings[register.name]?.value
+    if (current !== undefined && current === value) {
+      setEditing(null)
+      return
+    }
+    setPendingWrite({ register, value })
+  }
+
+  const confirmWrite = async () => {
+    if (!pendingWrite) return
+    const { register, value } = pendingWrite
+    setPendingWrite(null)
     setSaving(true)
     try {
       await writeDeviceRegister(deviceId, register.name, value)
-      toast.success(`Zapisano „${register.name}” = ${value}`)
+      toast.success(`Zapisano „${aliases[register.name] ?? register.name}” = ${value}`)
+      // Lets "Historia zdarzeń" show the change right away.
+      window.dispatchEvent(new CustomEvent('jawcold:device-events', { detail: deviceId }))
       setEditing(null)
     } catch (err: any) {
       toast.error(err.response?.data?.detail ?? 'Błąd zapisu')
@@ -259,6 +278,21 @@ export function RegisterControlPanel({
           })}
         </tbody>
       </table>
+      <ConfirmDialog
+        open={!!pendingWrite}
+        title="Zapisać nową wartość w sterowniku?"
+        message={pendingWrite ? (() => {
+          const r = pendingWrite.register
+          const unit = units[r.name] ?? r.unit ?? ''
+          const current = liveReadings[r.name]?.value
+          const label = aliases[r.name] ?? r.name
+          return `„${label}”: ${current !== undefined ? `${formatValue(current, r.scale_factor)} ${unit} → ` : ''}${pendingWrite.value} ${unit}. Sterownik zacznie pracować z nową wartością od razu.`
+        })() : ''}
+        confirmLabel="Zapisz w sterowniku"
+        danger={false}
+        onConfirm={confirmWrite}
+        onClose={() => setPendingWrite(null)}
+      />
       <p className="px-5 py-3 text-xs text-ink-muted border-t border-border">
         Profil {profileName}. Wartości z ikoną ołówka zapisywane są bezpośrednio do sterownika i weryfikowane
         ponownym odczytem. Tryb edycji (ikona ołówka w nagłówku karty) pozwala ukrywać zmienne oraz zmieniać ich nazwy i jednostki

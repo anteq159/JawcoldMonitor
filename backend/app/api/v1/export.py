@@ -11,7 +11,10 @@ from sqlalchemy import select
 
 from app.core.database import get_db
 from app.models.reading import Reading
+from app.models.sensor import Sensor
+from app.models.device import Device
 from app.models.alert import AlertEvent
+from app.models.hardware_alarm import HardwareAlarmEvent
 from app.models.user import User
 from app.api.deps import require_permission
 from app.services.report_export import build_xlsx, build_pdf
@@ -92,10 +95,21 @@ async def export_readings(
     if len(rows) > cap:
         raise _too_many(len(rows), cap, format)
 
+    # Names instead of bare ids - "device_id 16" meant nothing to whoever
+    # opened the spreadsheet.
+    device_names = dict((await db.execute(select(Device.id, Device.name))).all())
+    sensor_names = dict((await db.execute(select(Sensor.id, Sensor.name))).all())
+
+    def source(dev_id, sens_id):
+        if dev_id is not None:
+            return device_names.get(dev_id, f"Urządzenie #{dev_id}")
+        return sensor_names.get(sens_id, f"Czujnik #{sens_id}")
+
     if format == "json":
         data = [
             {
                 "timestamp": ts.isoformat(),
+                "source": source(dev_id, sens_id),
                 "device_id": dev_id,
                 "sensor_id": sens_id,
                 "parameter": param,
@@ -107,9 +121,9 @@ async def export_readings(
         content = json.dumps(data, ensure_ascii=False, indent=2).encode()
         return _file_response(content, "application/json", f"readings_{range}.json")
 
-    headers = ["timestamp", "device_id", "sensor_id", "parameter", "value", "unit"]
+    headers = ["Czas", "Urządzenie / czujnik", "Parametr", "Wartość", "Jednostka"]
     table_rows = [
-        [ts.isoformat(), dev_id, sens_id, param, value, unit]
+        [ts.isoformat(), source(dev_id, sens_id), param, value, unit]
         for ts, dev_id, sens_id, param, value, unit in rows
     ]
 
@@ -123,8 +137,8 @@ async def export_readings(
 
     if format == "pdf":
         by_param: dict = defaultdict(list)
-        for _ts, _dev, _sens, param, value, _unit in rows:
-            by_param[param].append(value)
+        for _ts, dev_id, sens_id, param, value, _unit in rows:
+            by_param[f"{source(dev_id, sens_id)} · {param}"].append(value)
         summary = [("Liczba odczytów", str(len(rows))), ("Zakres czasowy", range)]
         for name, values in by_param.items():
             summary.append((f"{name} (min / śr. / max)", f"{min(values):.2f} / {sum(values)/len(values):.2f} / {max(values):.2f}"))
@@ -165,37 +179,73 @@ async def export_alerts(
         q = q.where(AlertEvent.device_id == device_id)
     if unacknowledged_only:
         q = q.where(AlertEvent.acknowledged == False)
-    result = await db.execute(q)
-    rows = result.scalars().all()
-    if len(rows) > cap:
-        raise _too_many(len(rows), cap, format)
+    rule_events = (await db.execute(q)).scalars().all()
+
+    # Controller-reported alarms (sensor faults, LO/HI, alarm relay) belong
+    # in the same report - they used to be missing from it entirely.
+    hq = (
+        select(HardwareAlarmEvent)
+        .where(HardwareAlarmEvent.triggered_at >= since)
+        .order_by(HardwareAlarmEvent.triggered_at.desc())
+        .limit(cap + 1)
+    )
+    if device_id:
+        hq = hq.where(HardwareAlarmEvent.device_id == device_id)
+    if unacknowledged_only:
+        hq = hq.where(HardwareAlarmEvent.acknowledged == False)
+    hw_events = (await db.execute(hq)).scalars().all()
+
+    if len(rule_events) + len(hw_events) > cap:
+        raise _too_many(len(rule_events) + len(hw_events), cap, format)
+
+    device_names = dict((await db.execute(select(Device.id, Device.name))).all())
+    sensor_names = dict((await db.execute(select(Sensor.id, Sensor.name))).all())
+    severity_pl = {"critical": "krytyczny", "warning": "ostrzeżenie", "info": "informacja"}
+
+    def source(dev_id, sens_id):
+        if dev_id is not None:
+            return device_names.get(dev_id, f"Urządzenie #{dev_id}")
+        if sens_id is not None:
+            return sensor_names.get(sens_id, f"Czujnik #{sens_id}")
+        return ""
+
+    events = [
+        {
+            "timestamp": r.timestamp, "kind": "Reguła progowa", "source": source(r.device_id, r.sensor_id),
+            "severity": r.severity, "category": r.category, "message": r.message, "value": r.value,
+            "acknowledged": r.acknowledged, "resolved_at": r.resolved_at,
+        }
+        for r in rule_events
+    ] + [
+        {
+            "timestamp": h.triggered_at, "kind": "Alarm sterownika", "source": source(h.device_id, None),
+            "severity": h.severity, "category": "Sprzęt",
+            "message": f"{h.name}" + (f" — {h.description}" if h.description else ""), "value": None,
+            "acknowledged": h.acknowledged, "resolved_at": h.resolved_at,
+        }
+        for h in hw_events
+    ]
+    events.sort(key=lambda e: e["timestamp"], reverse=True)
 
     if format == "json":
         data = [
-            {
-                "timestamp": r.timestamp.isoformat(),
-                "severity": r.severity,
-                "category": r.category,
-                "message": r.message,
-                "device_id": r.device_id,
-                "sensor_id": r.sensor_id,
-                "value": r.value,
-                "acknowledged": r.acknowledged,
-                "resolved_at": r.resolved_at.isoformat() if r.resolved_at else None,
-            }
-            for r in rows
+            {**e, "timestamp": e["timestamp"].isoformat(),
+             "resolved_at": e["resolved_at"].isoformat() if e["resolved_at"] else None}
+            for e in events
         ]
         content = json.dumps(data, ensure_ascii=False, indent=2).encode()
         return _file_response(content, "application/json", f"alerts_{range}.json")
 
-    headers = ["timestamp", "severity", "category", "message", "device_id", "sensor_id", "value", "acknowledged", "resolved_at"]
+    headers = ["Czas", "Rodzaj", "Urządzenie / czujnik", "Ważność", "Kategoria", "Opis", "Wartość", "Potwierdzony", "Zakończony"]
     table_rows = [
         [
-            r.timestamp.isoformat(), r.severity, r.category, r.message, r.device_id, r.sensor_id, r.value,
-            "tak" if r.acknowledged else "nie", r.resolved_at.isoformat() if r.resolved_at else "",
+            e["timestamp"].isoformat(), e["kind"], e["source"], severity_pl.get(e["severity"], e["severity"]),
+            e["category"], e["message"], e["value"] if e["value"] is not None else "",
+            "tak" if e["acknowledged"] else "nie", e["resolved_at"].isoformat() if e["resolved_at"] else "trwa",
         ]
-        for r in rows
+        for e in events
     ]
+    rows = events  # for the PDF summary below
 
     if format == "xlsx":
         content = build_xlsx(headers, table_rows, sheet_title="Alarmy")
@@ -207,9 +257,9 @@ async def export_alerts(
 
     if format == "pdf":
         by_severity: dict = defaultdict(int)
-        for r in rows:
-            by_severity[r.severity] += 1
-        unacked = sum(1 for r in rows if not r.acknowledged)
+        for e in rows:
+            by_severity[severity_pl.get(e["severity"], e["severity"])] += 1
+        unacked = sum(1 for e in rows if not e["acknowledged"])
         summary = [("Liczba zdarzeń", str(len(rows))), ("Niepotwierdzone", str(unacked)), ("Zakres czasowy", range)]
         for sev, count in by_severity.items():
             summary.append((f"Ważność: {sev}", str(count)))

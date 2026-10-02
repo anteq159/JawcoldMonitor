@@ -25,7 +25,8 @@ export default function Logs() {
   const [logs, setLogs] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [group, setGroup] = useState(0)
-  const [deviceId, setDeviceId] = useState('')
+  // ?urzadzenie=ID: opened from a device's "Historia zdarzeń".
+  const [deviceId, setDeviceId] = useState(() => new URLSearchParams(window.location.search).get('urzadzenie') ?? '')
   const [hasMore, setHasMore] = useState(false)
   const [loadingMore, setLoadingMore] = useState(false)
 

@@ -286,3 +286,14 @@ async def power_action(
     except Exception as e:
         raise HTTPException(status_code=501, detail=f"Nie udało się: {labels[action]} — {e}")
     return {"message": f"Wykonuję: {labels[action]}…"}
+
+
+@router.post("/notifications/test")
+async def test_notification(channel: str, _: User = Depends(require_role("Admin"))):
+    from fastapi import HTTPException
+    from app.services.notifications import send_test
+    try:
+        await send_test(channel)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Nie udało się wysłać: {e}")
+    return {"message": "Wysłano wiadomość testową"}

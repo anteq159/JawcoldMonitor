@@ -7,6 +7,7 @@ import { getDeviceProfile, type DeviceProfileDetail } from '../api/deviceProfile
 import type { Device } from '../types/device'
 import type { ParameterReadings } from '../types/reading'
 import { LiveOverview } from '../components/Devices/LiveOverview'
+import { DeviceEventsCard } from '../components/Devices/DeviceEventsCard'
 import { registerCategory, isBinaryCategory, isChartedByDefault, type RegisterCategory } from '../utils/registers'
 import { TimeSeriesChart } from '../components/Charts/TimeSeriesChart'
 import { DeviceStatusBadge } from '../components/Devices/DeviceStatusBadge'
@@ -45,6 +46,7 @@ export default function DeviceDetail() {
 
   const updateDeviceInStore = useDeviceStore(s => s.updateDeviceStatus)
   const canWrite = useAuthStore((s) => s.can('device:write'))
+  const canReadLogs = useAuthStore((s) => s.can('log:read'))
 
   const loadDevice = () => {
     return getDevice(deviceId).then(d => {
@@ -400,6 +402,7 @@ export default function DeviceDetail() {
           />
         </Card>
       )}
+      {canReadLogs && <DeviceEventsCard deviceId={device.id} />}
     </div>
   )
 }

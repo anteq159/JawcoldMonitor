@@ -1,7 +1,9 @@
 import { downloadFile } from '../utils/download'
 
-export const downloadReadings = (format: string, range: string) =>
-  downloadFile(`/export/readings?format=${format}&range=${range}`, `readings_${range}.${format}`)
+const deviceParam = (deviceId?: number) => (deviceId ? `&device_id=${deviceId}` : '')
 
-export const downloadAlerts = (format: string, range: string) =>
-  downloadFile(`/export/alerts?format=${format}&range=${range}`, `alerts_${range}.${format}`)
+export const downloadReadings = (format: string, range: string, deviceId?: number) =>
+  downloadFile(`/export/readings?format=${format}&range=${range}${deviceParam(deviceId)}`, `readings_${range}.${format}`)
+
+export const downloadAlerts = (format: string, range: string, deviceId?: number) =>
+  downloadFile(`/export/alerts?format=${format}&range=${range}${deviceParam(deviceId)}`, `alerts_${range}.${format}`)

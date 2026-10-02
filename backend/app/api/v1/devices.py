@@ -190,6 +190,15 @@ async def write_register(
     if not driver:
         raise HTTPException(status_code=503, detail="Sterownik komunikacji RS485 nie jest zainicjalizowany")
 
+    # Value before the change, for the event log ("2.0 → 5.0") - the newest
+    # stored reading of this register.
+    previous = await db.scalar(
+        select(Reading.value)
+        .where(Reading.device_id == device.id, Reading.parameter_name == body.name)
+        .order_by(Reading.timestamp.desc())
+        .limit(1)
+    )
+
     try:
         await driver.write_register(
             device.modbus_address, register.address, body.name, body.value,
@@ -205,7 +214,11 @@ async def write_register(
         event_type="register_written",
         device_id=device.id,
         user_id=current_user.id,
-        message=f"Zmieniono '{body.name}' na {body.value} na urządzeniu {device.name}",
+        message=(
+            f"{current_user.username}: {(device.parameter_aliases or {}).get(body.name, body.name)} "
+            f"{'' if previous is None else f'{previous:g} → '}{body.value:g}"
+            f"{' ' + register.unit if register.unit else ''} ({device.name})"
+        ),
     ))
     await db.commit()
 

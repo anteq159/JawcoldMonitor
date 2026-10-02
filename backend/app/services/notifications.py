@@ -77,3 +77,21 @@ async def notify_system(subject: str, body: str) -> None:
     """System alarms (device offline, disk, hardware alarm codes) go to the
     channels configured globally in NOTIFY_SYSTEM_CHANNELS."""
     await notify(settings.notify_system_channels_list, subject, body)
+
+
+async def send_test(channel: str) -> None:
+    """Send a test message through one channel and RAISE on failure - the
+    opposite of notify(), so the settings page can show what is wrong
+    (bad SMTP password, wrong chat id) before a real alarm depends on it."""
+    subject = "[JawcoldMonitor] Test powiadomień"
+    body = "To jest wiadomość testowa. Jeśli ją widzisz, alarmy z panelu dotrą tym kanałem."
+    if channel == "email":
+        if not settings.SMTP_HOST or not settings.alert_email_to_list:
+            raise ValueError("Uzupełnij serwer SMTP i odbiorców alarmów")
+        await asyncio.to_thread(_send_email_sync, subject, body)
+    elif channel == "telegram":
+        if not settings.TELEGRAM_BOT_TOKEN or not settings.TELEGRAM_CHAT_ID:
+            raise ValueError("Uzupełnij token bota i Chat ID")
+        await asyncio.to_thread(_send_telegram_sync, f"{subject}\n{body}")
+    else:
+        raise ValueError("Nieznany kanał")

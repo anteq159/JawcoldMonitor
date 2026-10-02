@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
 import { useSearchParams } from 'react-router-dom'
-import { Download, Upload, Wand2, Bell } from 'lucide-react'
+import { Download, Upload, Wand2, Bell, Send } from 'lucide-react'
 import { Card } from '../components/UI/Card'
 import { ConfirmDialog } from '../components/UI/ConfirmDialog'
 import { downloadReadings, downloadAlerts } from '../api/export'
 import { downloadBackup, restoreBackup } from '../api/backup'
-import { getUpdateInfo, getRuntimeSettings, getSerialPorts, updateRuntimeSettings, powerAction, type UpdateInfo, type RuntimeSetting, type PowerAction } from '../api/system'
+import { getUpdateInfo, testNotification, getRuntimeSettings, getSerialPorts, updateRuntimeSettings, powerAction, type UpdateInfo, type RuntimeSetting, type PowerAction } from '../api/system'
 import { useDeviceStore } from '../store/devices'
 import { useAuthStore } from '../store/auth'
 import { isNotificationSupported, getNotificationPermission, requestNotificationPermission } from '../utils/notifications'
@@ -49,6 +49,7 @@ export default function Settings() {
 
       {tab === 'system' && <SystemSettingsSection />}
       {tab === 'notifications' && <NotificationsSection />}
+      {tab === 'notifications' && isAdmin && <AlarmChannelsTestCard onConfigure={() => setParams({ tab: 'system' }, { replace: true })} />}
       {tab === 'export' && (
         <>
           <ExportCard title="Eksport odczytów" download={downloadReadings} />
@@ -240,6 +241,42 @@ function PowerSection() {
   )
 }
 
+// E-mail/Telegram are configured in "Konfiguracja"; this is where you
+// find out whether they actually work - before a real alarm depends on it.
+function AlarmChannelsTestCard({ onConfigure }: { onConfigure: () => void }) {
+  const [busy, setBusy] = useState<string | null>(null)
+  const test = async (channel: 'email' | 'telegram') => {
+    setBusy(channel)
+    try {
+      const r = await testNotification(channel)
+      toast.success(`${r.message} — sprawdź ${channel === 'email' ? 'skrzynkę' : 'Telegram'}`)
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail ?? 'Nie udało się wysłać wiadomości testowej')
+    } finally {
+      setBusy(null)
+    }
+  }
+  return (
+    <Card title="Alarmy e-mail i Telegram">
+      <div className="p-5 space-y-3">
+        <p className="text-sm text-ink-muted">
+          Wyślij wiadomość testową, żeby sprawdzić ustawienia zapisane w zakładce{' '}
+          <button onClick={onConfigure} className="text-accent hover:underline">Konfiguracja</button>{' '}
+          (serwer SMTP, odbiorcy, bot Telegram).
+        </p>
+        <div className="flex flex-wrap gap-2">
+          {(['email', 'telegram'] as const).map((ch) => (
+            <button key={ch} onClick={() => test(ch)} disabled={busy !== null}
+              className="flex items-center gap-2 border border-border text-sm text-ink-body hover:border-accent hover:text-accent disabled:opacity-50 px-4 py-2 rounded-lg transition-colors">
+              <Send size={14} /> {busy === ch ? 'Wysyłanie…' : ch === 'email' ? 'Testowy e-mail' : 'Testowa wiadomość Telegram'}
+            </button>
+          ))}
+        </div>
+      </div>
+    </Card>
+  )
+}
+
 function NotificationsSection() {
   const supported = isNotificationSupported()
   const [permission, setPermission] = useState(getNotificationPermission())
@@ -286,17 +323,19 @@ function NotificationsSection() {
   )
 }
 
-function ExportCard({ title, download }: { title: string; download: (format: string, range: string) => Promise<void> }) {
+function ExportCard({ title, download }: { title: string; download: (format: string, range: string, deviceId?: number) => Promise<void> }) {
   const [fmt, setFmt] = useState('csv')
   const [range, setRange] = useState('24h')
+  const [deviceId, setDeviceId] = useState('')
   const [downloading, setDownloading] = useState(false)
+  const devices = useDeviceStore((s) => s.devices)
 
   const run = async () => {
     setDownloading(true)
     try {
-      await download(fmt, range)
-    } catch {
-      toast.error('Błąd pobierania pliku')
+      await download(fmt, range, deviceId ? Number(deviceId) : undefined)
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail ?? 'Błąd pobierania pliku')
     } finally {
       setDownloading(false)
     }
@@ -305,7 +344,14 @@ function ExportCard({ title, download }: { title: string; download: (format: str
   return (
     <Card title={title}>
       <div className="p-5 space-y-4">
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid sm:grid-cols-3 gap-4">
+          <div>
+            <label className="block text-xs text-ink-muted mb-1.5">Urządzenie</label>
+            <select value={deviceId} onChange={(e) => setDeviceId(e.target.value)} className="input">
+              <option value="">Wszystkie</option>
+              {devices.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+            </select>
+          </div>
           <div>
             <label className="block text-xs text-ink-muted mb-1.5">Format</label>
             <select value={fmt} onChange={(e) => setFmt(e.target.value)} className="input">

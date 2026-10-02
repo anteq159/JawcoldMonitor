@@ -596,7 +596,9 @@ async def _check_hardware_alarms(db: AsyncSession, device: Device, readings: dic
             # - separate from EventLog, which is an append-only audit trail
             # with no notion of "currently active" or "dealt with".
             db.add(HardwareAlarmEvent(
-                device_id=device.id, code=code, name=name,
+                # name is VARCHAR(32); an aliased flag name can be longer
+                # and would make the whole insert (and alarm) fail.
+                device_id=device.id, code=code, name=name[:32],
                 description=description, severity=severity,
             ))
             await ws_manager.broadcast(ws_events.hardware_alarm(

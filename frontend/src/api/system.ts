@@ -47,3 +47,6 @@ export const updateRuntimeSettings = (
 export type PowerAction = 'restart-app' | 'reboot' | 'shutdown'
 export const powerAction = (action: PowerAction): Promise<{ message: string }> =>
   api.post(`/system/power/${action}`).then((r) => r.data)
+
+export const testNotification = (channel: 'email' | 'telegram'): Promise<{ message: string }> =>
+  api.post('/system/notifications/test', null, { params: { channel }, timeout: 30000 }).then((r) => r.data)
