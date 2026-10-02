@@ -84,6 +84,9 @@ class CarelMPXDriver(AbstractControllerDriver):
     """
 
     manufacturer = "Carel MPX"
+    # Reads of more than 16 registers are refused with exception 3 (probed
+    # on the live controller 2026-10-02).
+    max_read_words = 16
 
     def default_register_map(self) -> List[RegisterMapEntry]:
         return [

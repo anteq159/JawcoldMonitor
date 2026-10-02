@@ -91,7 +91,14 @@ def _span(batch: list, reg_type: str) -> tuple:
     return start, end - start
 
 
-def _plan_reads(registers, max_gap: int) -> List[dict]:
+# Request sizes tried when a device refuses a read as too long (Modbus
+# exception 3, "illegal data value"). Carel MPXPRO, for one, answers at most
+# 16 registers per request.
+_WORD_LIMITS = (64, 32, 16, 8, 4, 2, 1)
+_DEFAULT_MAX_WORDS = 100
+
+
+def _plan_reads(registers, max_gap: int, max_words: int = _DEFAULT_MAX_WORDS) -> List[dict]:
     """Turn a register map into as few Modbus requests as possible.
 
     Two levels of grouping, never mixing register_type (each type is a
@@ -118,7 +125,7 @@ def _plan_reads(registers, max_gap: int) -> List[dict]:
     for reg_type, group in by_type.items():
         is_bit = _is_bit_type(reg_type)
         # Stay well under protocol frame limits (125 words / 2000 bits).
-        span_cap = 256 if is_bit else 100
+        span_cap = 256 if is_bit else max_words
         ordered = sorted(group, key=lambda r: r.address)
 
         subbatches: List[list] = []
@@ -128,7 +135,9 @@ def _plan_reads(registers, max_gap: int) -> List[dict]:
             width = _width(reg, reg_type)
             # <= rather than ==: bit-variables of one status word share an
             # address and must land in the same request, not one each.
-            if current and reg.address <= next_expected:
+            if current and reg.address <= next_expected and (
+                is_bit or reg.address + width - current[0].address <= span_cap
+            ):
                 current.append(reg)
                 next_expected = max(next_expected, reg.address + width)
             else:
@@ -175,6 +184,17 @@ _READ_METHOD = {
 }
 
 
+def _driver_max_words(profile) -> int:
+    """Request-size limit a manufacturer driver declares up front, so the
+    first cycles don't have to discover it."""
+    manufacturer = getattr(profile, "manufacturer", None)
+    if not manufacturer:
+        return 0
+    from app.drivers.registry import get_driver
+    driver_cls = get_driver(manufacturer)
+    return getattr(driver_cls, "max_read_words", 0) if driver_cls else 0
+
+
 class ModbusRTUDriver(AbstractRS485Driver):
     def __init__(self, port: str, baudrate: int, timeout: float, stopbits: int = 1, parity: str = "N"):
         self._port = port
@@ -185,6 +205,10 @@ class ModbusRTUDriver(AbstractRS485Driver):
         self._client = None
         self._lock = asyncio.Lock()
         self._port_ok = True  # for logging connect failures once, not per request
+        # Learned per unit: largest register count the device accepts in
+        # one read (see _WORD_LIMITS).
+        self._max_words: Dict[int, int] = {}
+        self._last_exception_code: int = 0
         self._connect()
 
     def _connect(self):
@@ -268,6 +292,7 @@ class ModbusRTUDriver(AbstractRS485Driver):
             return READ_NO_RESPONSE
         if r.isError():
             logger.debug("Read error addr=%d start=%d type=%s: %s", unit, start, reg_type, r)
+            self._last_exception_code = getattr(r, "exception_code", 0) or 0
             return READ_REJECTED
         # RTU frames carry no transaction id: a reply that arrives after its
         # request timed out is taken as the answer to the NEXT request with
@@ -305,10 +330,12 @@ class ModbusRTUDriver(AbstractRS485Driver):
         async with self._lock:
             if not await self._ensure_connected():
                 return result
+            unit = device.modbus_address
+            max_words = self._max_words.get(unit) or _driver_max_words(profile) or _DEFAULT_MAX_WORDS
             answered = False
-            for group in _plan_reads(profile.registers, max_gap):
+            for group in _plan_reads(profile.registers, max_gap, max_words):
                 outcome = await self._read_span(
-                    device.modbus_address, group["type"], group["start"], group["count"], group["regs"], result,
+                    unit, group["type"], group["start"], group["count"], group["regs"], result,
                 )
                 if outcome == READ_NO_RESPONSE:
                     if not answered:
@@ -320,12 +347,25 @@ class ModbusRTUDriver(AbstractRS485Driver):
                         break
                     continue
                 answered = True
-                if outcome == READ_REJECTED and len(group["subbatches"]) > 1:
+                if outcome != READ_REJECTED:
+                    continue
+                if self._last_exception_code == 3 and not _is_bit_type(group["type"]) and group["count"] > 1:
+                    # "Illegal data value": the request was too long for
+                    # this device. Remember a smaller limit for every
+                    # following cycle and read this group in pieces now.
+                    limit = next((w for w in _WORD_LIMITS if w < group["count"]), 1)
+                    self._max_words[unit] = min(self._max_words.get(unit, max_words), limit)
+                    logger.info("Urządzenie %d: maks. %d rejestrów w zapytaniu", unit, self._max_words[unit])
+                    for piece in _plan_reads(group["regs"], max_gap, self._max_words[unit]):
+                        for sub in piece["subbatches"]:
+                            start, count = _span(sub, group["type"])
+                            await self._read_span(unit, group["type"], start, count, sub, result)
+                elif len(group["subbatches"]) > 1:
                     # The controller may reject a span crossing unmapped
                     # addresses - retry as the strictly contiguous blocks.
                     for sub in group["subbatches"]:
                         start, count = _span(sub, group["type"])
-                        await self._read_span(device.modbus_address, group["type"], start, count, sub, result)
+                        await self._read_span(unit, group["type"], start, count, sub, result)
         return result
 
     async def scan_range(self, start: int, end: int, known_addresses: set) -> List[int]:
