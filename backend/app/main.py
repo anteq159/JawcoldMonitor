@@ -48,16 +48,25 @@ class _RedactTokenFilter(logging.Filter):
 for _name in ("uvicorn.access", "uvicorn.error"):
     logging.getLogger(_name).addFilter(_RedactTokenFilter())
 
+# Everything a logged-in user can do without a permission is read-only:
+# dashboard, devices, charts, map, alarms list. Each permission below
+# unlocks one area of changes; the Roles page groups them by these names.
 DEFAULT_PERMISSIONS = [
-    ("device:read", "Odczyt urządzeń"),
-    ("device:write", "Zapis urządzeń"),
-    ("user:manage", "Zarządzanie użytkownikami"),
-    ("alert:manage", "Zarządzanie alertami"),
-    ("alert:acknowledge", "Potwierdzanie alarmów"),
-    ("log:read", "Odczyt logów"),
-    ("config:write", "Zapis konfiguracji"),
-    ("export:any", "Eksport danych"),
+    ("device:write", "Dodawanie i edycja sterowników oraz czujników, zmiana nastaw"),
+    ("alert:acknowledge", "Oznaczanie aktywnych alarmów jako przyjętych do wiadomości"),
+    ("alert:manage", "Tworzenie i edycja reguł alarmowych"),
+    ("log:read", "Przeglądanie historii zdarzeń, alarmów i zmian nastaw"),
+    ("export:any", "Pobieranie odczytów i alarmów jako CSV, Excel lub PDF"),
+    ("config:write", "Edycja map rejestrów sterowników, plany obiektu i rozmieszczenie urządzeń na mapie"),
+    ("settings:write", "Port RS485, kanały powiadomień, czas przechowywania danych"),
+    ("user:manage", "Dodawanie i blokowanie kont, przypisywanie i tworzenie ról"),
+    ("system:manage", "Diagnostyka, kopie zapasowe, aktualizacje, restart Raspberry"),
 ]
+
+# Permissions that existed in earlier versions and are gone: "device:read"
+# was never checked anywhere (viewing needs only a login), so it was a
+# checkbox that changed nothing.
+RETIRED_PERMISSIONS = ["device:read"]
 
 # Seeded on every boot; the permission sets of the roles listed here are
 # RESET to these values at startup (custom roles created in the Roles page
@@ -67,7 +76,11 @@ DEFAULT_PERMISSIONS = [
 # updates, profile/map configuration).
 DEFAULT_ROLES = {
     "Admin": [p[0] for p in DEFAULT_PERMISSIONS],
-    "Serwisant": ["device:read", "device:write", "alert:manage", "alert:acknowledge", "log:read", "export:any"],
+    "Serwisant": ["device:write", "alert:manage", "alert:acknowledge", "log:read", "export:any"],
+}
+DEFAULT_ROLE_DESCRIPTIONS = {
+    "Admin": "Pełny dostęp do wszystkich funkcji",
+    "Serwisant": "Obsługa na co dzień: sterowniki, nastawy, alarmy, logi, eksport - bez administracji",
 }
 
 
@@ -82,7 +95,12 @@ async def _init_defaults():
                 perm = Permission(name=perm_name, description=perm_desc)
                 db.add(perm)
                 await db.flush()
+            perm.description = perm_desc
             perm_map[perm_name] = perm
+        retired = (await db.execute(select(Permission.id).where(Permission.name.in_(RETIRED_PERMISSIONS)))).scalars().all()
+        if retired:
+            await db.execute(role_permissions.delete().where(role_permissions.c.permission_id.in_(retired)))
+            await db.execute(Permission.__table__.delete().where(Permission.id.in_(retired)))
 
         # Upsert roles — avoid lazy-load by using the association table directly
         role_map: dict[str, Role] = {}
@@ -94,6 +112,7 @@ async def _init_defaults():
                 db.add(role)
                 await db.flush()
 
+            role.description = DEFAULT_ROLE_DESCRIPTIONS.get(role_name, role.description)
             role_map[role_name] = role
 
             # Set permissions via association table to avoid lazy-load in async context

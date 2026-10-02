@@ -18,7 +18,7 @@ export function Modal({ open, onClose, title, children, className = '', size = '
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className={`bg-surface border border-border rounded-xl shadow-xl w-full ${size === 'xl' ? 'max-w-5xl max-h-[92vh] flex flex-col' : 'max-w-lg'} animate-modal-in ${className}`}
+        className={`bg-surface border border-border rounded-xl shadow-xl w-full max-h-[92vh] flex flex-col ${size === 'xl' ? 'max-w-5xl' : 'max-w-lg'} animate-modal-in ${className}`}
       >
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
           <h3 className="font-semibold text-ink">{title}</h3>
@@ -26,7 +26,8 @@ export function Modal({ open, onClose, title, children, className = '', size = '
             <X size={18} />
           </button>
         </div>
-        <div className={size === 'xl' ? 'p-5 overflow-y-auto min-h-0' : 'p-5'}>{children}</div>
+        {/* Scrolls inside the dialog so a long form stays reachable on a phone. */}
+        <div className="p-5 overflow-y-auto min-h-0">{children}</div>
       </div>
     </div>
   )

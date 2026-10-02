@@ -10,6 +10,8 @@ export interface Role {
   description: string | null
   is_custom: boolean
   permissions?: Permission[]
+  // Roles page only: number of accounts with this role.
+  user_count?: number | null
 }
 
 export interface User {

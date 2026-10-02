@@ -22,17 +22,18 @@ const RANGES = ['1h', '6h', '24h', '7d', '30d']
 export default function Settings() {
   const setWizardOpen = useDeviceStore((s) => s.setWizardOpen)
   const canExport = useAuthStore((s) => s.can('export:any'))
-  const isAdmin = useAuthStore((s) => s.isAdmin())
+  const canSettings = useAuthStore((s) => s.can('settings:write'))
+  const canSystem = useAuthStore((s) => s.can('system:manage'))
 
   // One long page of unrelated forms became tabs; the active one lives in
   // the URL (?tab=) so a link or a reload lands on the same section.
   const [params, setParams] = useSearchParams()
   const tabs = [
-    isAdmin && { id: 'system', label: 'Konfiguracja' },
+    canSettings && { id: 'system', label: 'Konfiguracja' },
     { id: 'notifications', label: 'Powiadomienia' },
     canExport && { id: 'export', label: 'Eksport danych' },
-    isAdmin && { id: 'backup', label: 'Kopie zapasowe' },
-    { id: 'about', label: isAdmin ? 'Aktualizacje i Raspberry' : 'O systemie' },
+    canSystem && { id: 'backup', label: 'Kopie zapasowe' },
+    { id: 'about', label: canSystem ? 'Aktualizacje i Raspberry' : 'O systemie' },
   ].filter(Boolean) as Array<{ id: string; label: string }>
   const tab = tabs.find((t) => t.id === params.get('tab'))?.id ?? tabs[0].id
 
@@ -49,7 +50,7 @@ export default function Settings() {
 
       {tab === 'system' && <SystemSettingsSection />}
       {tab === 'notifications' && <NotificationsSection />}
-      {tab === 'notifications' && isAdmin && <AlarmChannelsTestCard onConfigure={() => setParams({ tab: 'system' }, { replace: true })} />}
+      {tab === 'notifications' && canSettings && <AlarmChannelsTestCard onConfigure={() => setParams({ tab: 'system' }, { replace: true })} />}
       {tab === 'export' && (
         <>
           <ExportCard title="Eksport odczytów" download={downloadReadings} />
@@ -57,8 +58,8 @@ export default function Settings() {
         </>
       )}
       {tab === 'backup' && <BackupSection />}
-      {tab === 'about' && isAdmin && <UpdatesSection />}
-      {tab === 'about' && isAdmin && <PowerSection />}
+      {tab === 'about' && canSystem && <UpdatesSection />}
+      {tab === 'about' && canSystem && <PowerSection />}
 
       {tab === 'about' && <Card title="Informacje o systemie">
         <div className="p-5 space-y-3 text-sm text-ink-muted">

@@ -72,3 +72,18 @@ def require_permission(perm_name: str):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
         return current_user
     return checker
+
+
+def granted_permissions(user: User) -> set:
+    """Permission names a user holds; Admin implicitly holds every one."""
+    return {p.name for r in user.roles for p in r.permissions}
+
+
+def can_grant(user: User, permission_names) -> bool:
+    """No privilege escalation through the Roles/Users pages: someone with
+    user:manage who is not an Admin may only hand out permissions they hold
+    themselves - otherwise "user:manage" alone would be a way to Admin."""
+    if user.has_role("Admin"):
+        return True
+    return set(permission_names) <= granted_permissions(user)
+

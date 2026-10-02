@@ -5,5 +5,6 @@ export const getRoles = (): Promise<Role[]> => api.get('/roles/').then((r) => r.
 export const getPermissions = (): Promise<Permission[]> => api.get('/roles/permissions').then((r) => r.data)
 export const createRole = (data: { name: string; description?: string; permission_ids?: number[] }) =>
   api.post('/roles/', data).then((r) => r.data)
-export const updateRole = (id: number, data: Partial<{ description: string; permission_ids: number[] }>) =>
+export const updateRole = (id: number, data: Partial<{ name: string; description: string; permission_ids: number[] }>) =>
   api.put(`/roles/${id}`, data).then((r) => r.data)
+export const deleteRole = (id: number) => api.delete(`/roles/${id}`)

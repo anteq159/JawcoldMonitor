@@ -11,7 +11,7 @@ from app.core.uploads import read_upload_limited
 from app.models.user import User
 from app.schemas.backup import BackupPayload, RestoreSummary
 from app.services.backup import export_backup, import_backup
-from app.api.deps import require_role
+from app.api.deps import require_permission
 
 router = APIRouter(prefix="/backup", tags=["backup"])
 
@@ -19,7 +19,7 @@ router = APIRouter(prefix="/backup", tags=["backup"])
 @router.get("/", response_model=BackupPayload)
 async def get_backup(
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(require_role("Admin")),
+    _: User = Depends(require_permission("system:manage")),
 ):
     return await export_backup(db)
 
@@ -27,7 +27,7 @@ async def get_backup(
 @router.get("/download")
 async def download_backup(
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(require_role("Admin")),
+    _: User = Depends(require_permission("system:manage")),
 ):
     payload = await export_backup(db)
     content = payload.model_dump_json(indent=2).encode()
@@ -43,7 +43,7 @@ async def download_backup(
 async def restore_backup(
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(require_role("Admin")),
+    _: User = Depends(require_permission("system:manage")),
 ):
     raw = await read_upload_limited(file, 50 * 1024 * 1024)
     try:

@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 import { Plus, Trash2, UserCheck, UserX, Pencil } from 'lucide-react'
 import { getUsers, createUser, updateUser, deleteUser } from '../api/users'
@@ -141,9 +142,10 @@ function AddUserModal({ open, onClose, roles, onAdded }: {
         <div>
           <label className="block text-xs text-ink-muted mb-1">Rola</label>
           <select value={roleId} onChange={e => setRoleId(e.target.value)} className="input">
-            <option value="">Bez roli</option>
+            <option value="">Bez roli (tylko podgląd)</option>
             {roles.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
           </select>
+          <Link to="/roles" className="inline-block text-xs text-accent hover:underline mt-1">Co może każda rola? Role i uprawnienia</Link>
         </div>
         <div className="flex gap-3 pt-2">
           <button type="submit" className="flex-1 bg-accent hover:bg-accent-strong text-white text-sm py-2 rounded-lg">Dodaj</button>
@@ -188,9 +190,10 @@ function EditUserModal({ user, roles, onClose, onSaved }: {
         <div>
           <label className="block text-xs text-ink-muted mb-1">Rola</label>
           <select value={roleId} onChange={e => setRoleId(e.target.value)} className="input">
-            <option value="">Brak roli</option>
+            <option value="">Bez roli (tylko podgląd)</option>
             {roles.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
           </select>
+          <Link to="/roles" className="inline-block text-xs text-accent hover:underline mt-1">Co może każda rola? Role i uprawnienia</Link>
         </div>
         <div>
           <label className="block text-xs text-ink-muted mb-1">E-mail</label>

@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends
 
 from app.core.version import get_current_version
 from app.models.user import User
-from app.api.deps import require_role
+from app.api.deps import require_permission
 
 router = APIRouter(prefix="/system/update", tags=["update"])
 
@@ -43,7 +43,7 @@ def _newer(a: Optional[str], b: str) -> bool:
 
 
 @router.get("/info")
-async def update_info(_: User = Depends(require_role("Admin"))):
+async def update_info(_: User = Depends(require_permission("system:manage"))):
     current = get_current_version()
     latest = await _latest_version()
     return {

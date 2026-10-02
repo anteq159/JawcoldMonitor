@@ -9,16 +9,34 @@ from app.core.limiter import client_ip
 from app.core.security import hash_password
 from app.models.user import User, Role
 from app.schemas.user import UserOut, UserCreate, UserUpdate
-from app.api.deps import require_role
+from app.api.deps import require_permission, can_grant
 from app.services.audit import record_audit
 
 router = APIRouter(prefix="/users", tags=["users"])
 
 
+async def _check_assignable(db: AsyncSession, current_user: User, role_ids) -> None:
+    """A non-Admin user manager may only hand out roles whose permissions
+    they hold themselves (so never Admin) - see deps.can_grant."""
+    if not role_ids or current_user.has_role("Admin"):
+        return
+    roles = (await db.execute(
+        select(Role).options(selectinload(Role.permissions)).where(Role.id.in_(role_ids))
+    )).scalars().all()
+    for role in roles:
+        if role.name == "Admin" or not can_grant(current_user, [p.name for p in role.permissions]):
+            raise HTTPException(status_code=403, detail=f"Nie możesz nadać roli „{role.name}” - ma uprawnienia, których nie posiadasz")
+
+
+def _check_manageable(current_user: User, target: User) -> None:
+    if not current_user.has_role("Admin") and any(r.name == "Admin" for r in target.roles):
+        raise HTTPException(status_code=403, detail="Konto administratora może zmieniać tylko administrator")
+
+
 @router.get("/", response_model=List[UserOut])
 async def list_users(
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(require_role("Admin")),
+    _: User = Depends(require_permission("user:manage")),
 ):
     result = await db.execute(
         select(User).options(selectinload(User.roles).selectinload(Role.permissions)).order_by(User.username)
@@ -31,8 +49,9 @@ async def create_user(
     request: Request,
     body: UserCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_role("Admin")),
+    current_user: User = Depends(require_permission("user:manage")),
 ):
+    await _check_assignable(db, current_user, body.role_ids)
     existing = await db.execute(select(User).where(User.username == body.username))
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="Nazwa użytkownika zajęta")
@@ -74,7 +93,7 @@ async def update_user(
     user_id: int,
     body: UserUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_role("Admin")),
+    current_user: User = Depends(require_permission("user:manage")),
 ):
     result = await db.execute(
         select(User).options(selectinload(User.roles).selectinload(Role.permissions)).where(User.id == user_id)
@@ -83,6 +102,9 @@ async def update_user(
     if not user:
         raise HTTPException(status_code=404, detail="Użytkownik nie znaleziony")
     old_value = {"email": user.email, "is_active": user.is_active, "role_ids": [r.id for r in user.roles]}
+    _check_manageable(current_user, user)
+    if body.role_ids is not None and set(body.role_ids) != {r.id for r in user.roles}:
+        await _check_assignable(db, current_user, body.role_ids)
 
     # Lock-out guards: an admin switching off their own account, or the
     # last active admin losing the role, left nobody able to administer
@@ -139,14 +161,15 @@ async def delete_user(
     request: Request,
     user_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_role("Admin")),
+    current_user: User = Depends(require_permission("user:manage")),
 ):
     if user_id == current_user.id:
         raise HTTPException(status_code=400, detail="Nie można usunąć własnego konta")
-    result = await db.execute(select(User).where(User.id == user_id))
+    result = await db.execute(select(User).options(selectinload(User.roles)).where(User.id == user_id))
     user = result.scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=404, detail="Użytkownik nie znaleziony")
+    _check_manageable(current_user, user)
     await record_audit(
         db, current_user.id, "user.delete", "user", user_id,
         old_value={"username": user.username},

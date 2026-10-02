@@ -17,7 +17,7 @@ from app.schemas.system import SystemStats, RS485Stats, RS485PortStats, ServiceS
 from app.services.system_stats import get_system_stats
 from app.services import scanner
 from app.core.diagnostics import get_recent, DiagnosticEntry
-from app.api.deps import get_current_user, require_role
+from app.api.deps import get_current_user, require_permission
 
 router = APIRouter(prefix="/system", tags=["system"])
 
@@ -50,7 +50,7 @@ async def rs485_status(
 @router.get("/diagnostics", response_model=List[DiagnosticEntry])
 async def diagnostics(
     limit: int = 100,
-    _: User = Depends(require_role("Admin")),
+    _: User = Depends(require_permission("system:manage")),
 ):
     """Recent WARNING+ log records from the app's own loggers (scanner
     errors, driver failures, etc.) that previously only existed in the
@@ -130,7 +130,7 @@ async def dashboard_summary(
 @router.get("/settings")
 async def list_runtime_settings(
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(require_role("Admin")),
+    _: User = Depends(require_permission("settings:write")),
 ):
     """All web-editable operational settings with their CURRENT effective
     values (env bootstrap or DB override, whichever applies). Secrets are
@@ -173,7 +173,7 @@ async def list_runtime_settings(
 async def update_runtime_settings(
     body: dict,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_role("Admin")),
+    current_user: User = Depends(require_permission("settings:write")),
 ):
     """Persist and immediately apply the submitted subset of settings.
     Body: {"values": {"KEY": "value", ...}}. Validation errors abort the
@@ -234,7 +234,7 @@ async def update_runtime_settings(
 async def power_action(
     action: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_role("Admin")),
+    current_user: User = Depends(require_permission("system:manage")),
 ):
     """Device management from the panel: restart the application, reboot
     or shut down the Raspberry. App restart reuses the update mechanism's
@@ -289,7 +289,7 @@ async def power_action(
 
 
 @router.post("/notifications/test")
-async def test_notification(channel: str, _: User = Depends(require_role("Admin"))):
+async def test_notification(channel: str, _: User = Depends(require_permission("settings:write"))):
     from fastapi import HTTPException
     from app.services.notifications import send_test
     try:

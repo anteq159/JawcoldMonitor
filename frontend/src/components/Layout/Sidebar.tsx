@@ -5,13 +5,15 @@ import {
   LayoutDashboard, Cpu, Thermometer, Bell, FileText, Users, ShieldCheck, Activity, Settings2, Map, Settings, X, LogOut, Snowflake
 } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
+import { useAuthStore } from '../../store/auth'
 
 interface NavItem {
   to: string
   label: string
   icon: typeof LayoutDashboard
   exact?: boolean
-  adminOnly?: boolean
+  // Shown only to users holding this permission (Admin holds all).
+  permission?: string
 }
 
 const NAV_GROUPS: { label: string | null; items: NavItem[] }[] = [
@@ -26,7 +28,7 @@ const NAV_GROUPS: { label: string | null; items: NavItem[] }[] = [
     label: 'Monitorowanie',
     items: [
       { to: '/devices', label: 'Sterowniki', icon: Cpu },
-      { to: '/configuration', label: 'Konfiguracja', icon: Settings2, adminOnly: true },
+      { to: '/configuration', label: 'Konfiguracja', icon: Settings2, permission: 'config:write' },
       { to: '/sensors', label: 'Czujniki', icon: Thermometer },
       { to: '/alerts', label: 'Alerty', icon: Bell },
       { to: '/logs', label: 'Logi', icon: FileText },
@@ -35,9 +37,9 @@ const NAV_GROUPS: { label: string | null; items: NavItem[] }[] = [
   {
     label: 'Administracja',
     items: [
-      { to: '/users', label: 'Użytkownicy', icon: Users, adminOnly: true },
-      { to: '/roles', label: 'Role i uprawnienia', icon: ShieldCheck, adminOnly: true },
-      { to: '/diagnostics', label: 'Diagnostyka', icon: Activity, adminOnly: true },
+      { to: '/users', label: 'Użytkownicy', icon: Users, permission: 'user:manage' },
+      { to: '/roles', label: 'Role i uprawnienia', icon: ShieldCheck, permission: 'user:manage' },
+      { to: '/diagnostics', label: 'Diagnostyka', icon: Activity, permission: 'system:manage' },
       { to: '/settings', label: 'Ustawienia', icon: Settings },
     ],
   },
@@ -46,7 +48,10 @@ const NAV_GROUPS: { label: string | null; items: NavItem[] }[] = [
 interface Props { onClose?: () => void }
 
 export function Sidebar({ onClose }: Props) {
-  const { user, logout, isAdmin } = useAuth()
+  const { user, logout } = useAuth()
+  const can = useAuthStore((s) => s.can)
+  // Subscribing to the user re-renders the menu when roles change.
+  useAuthStore((s) => s.user)
   // Primitive selector: re-renders only when the number changes.
   const alarmCount = useDeviceStore((s) =>
     s.devices.reduce((n, d) => n + deviceSummary(d, s.liveReadings[d.id] ?? {}).activeAlarms.length, 0))
@@ -67,7 +72,7 @@ export function Sidebar({ onClose }: Props) {
 
       <nav className="flex-1 overflow-y-auto py-3 px-2">
         {NAV_GROUPS.map((group, gi) => {
-          const items = group.items.filter((item) => !item.adminOnly || isAdmin)
+          const items = group.items.filter((item) => !item.permission || can(item.permission))
           if (items.length === 0) return null
           return (
             <div key={gi} className={gi > 0 ? 'mt-4' : ''}>

@@ -1,5 +1,5 @@
 from typing import Optional, List
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class PermissionOut(BaseModel):
@@ -11,13 +11,14 @@ class PermissionOut(BaseModel):
 
 
 class RoleCreate(BaseModel):
-    name: str
-    description: Optional[str] = None
+    name: str = Field(min_length=1, max_length=64)
+    description: Optional[str] = Field(default=None, max_length=256)
     permission_ids: List[int] = []
 
 
 class RoleUpdate(BaseModel):
-    description: Optional[str] = None
+    name: Optional[str] = Field(default=None, min_length=1, max_length=64)
+    description: Optional[str] = Field(default=None, max_length=256)
     permission_ids: Optional[List[int]] = None
 
 
@@ -32,3 +33,5 @@ class RoleOut(BaseModel):
 
 class RoleWithPermissionsOut(RoleOut):
     permissions: List[PermissionOut] = []
+    # Filled by the Roles API only (how many accounts use the role).
+    user_count: Optional[int] = None
