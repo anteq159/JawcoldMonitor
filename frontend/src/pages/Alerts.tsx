@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
-import { Bell, CheckCircle, Plus, Trash2, Download } from 'lucide-react'
+import { Bell, CheckCircle, Plus, Trash2, Download, Pencil } from 'lucide-react'
+import { useSearchParams } from 'react-router-dom'
 import { getAlertRules, getAlertEvents, acknowledgeEvent, deleteAlertRule, createAlertRule, updateAlertRule } from '../api/alerts'
 import { getHardwareAlarms, acknowledgeHardwareAlarm, type HardwareAlarmEvent } from '../api/hardwareAlarms'
 import { downloadAlerts } from '../api/export'
@@ -56,6 +57,21 @@ export default function Alerts() {
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState<'events' | 'hardware' | 'rules'>('events')
   const [showAdd, setShowAdd] = useState(false)
+  const [editRule, setEditRule] = useState<AlertRule | null>(null)
+  const [prefill, setPrefill] = useState<{ deviceId: number; paramName: string } | null>(null)
+  const [params, setParams] = useSearchParams()
+  // Arrived from a device's measurement tile ("+ alarm"): open a new rule
+  // for that device and parameter straight away.
+  useEffect(() => {
+    const dev = params.get('urzadzenie')
+    const param = params.get('parametr')
+    if (dev && param) {
+      setTab('rules')
+      setPrefill({ deviceId: Number(dev), paramName: param })
+      setShowAdd(true)
+      setParams({}, { replace: true })
+    }
+  }, [])
   const [showExport, setShowExport] = useState(false)
 
   const [filterSeverity, setFilterSeverity] = useState('')
@@ -248,6 +264,11 @@ export default function Alerts() {
                   </label>
                 )}
                 {canManage && (
+                  <button onClick={() => setEditRule(r)} className="text-ink-muted hover:text-accent transition-colors" title="Edytuj regułę">
+                    <Pencil size={14} />
+                  </button>
+                )}
+                {canManage && (
                   <button onClick={() => setConfirmDeleteRule(r)} className="text-ink-muted hover:text-crit transition-colors" title="Usuń regułę">
                     <Trash2 size={14} />
                   </button>
@@ -266,7 +287,14 @@ export default function Alerts() {
         onConfirm={() => { if (confirmDeleteRule) delRule(confirmDeleteRule.id); setConfirmDeleteRule(null) }}
         onClose={() => setConfirmDeleteRule(null)}
       />
-      <AddRuleModal open={showAdd} onClose={() => setShowAdd(false)} devices={devices} onAdded={load} />
+      <RuleModal
+        open={showAdd || !!editRule}
+        onClose={() => { setShowAdd(false); setEditRule(null); setPrefill(null) }}
+        devices={devices}
+        onSaved={load}
+        rule={editRule}
+        prefill={prefill}
+      />
       <ExportAlertsModal open={showExport} onClose={() => setShowExport(false)} />
     </div>
   )
@@ -321,8 +349,12 @@ function ExportAlertsModal({ open, onClose }: { open: boolean; onClose: () => vo
   )
 }
 
-function AddRuleModal({ open, onClose, devices, onAdded }: {
-  open: boolean; onClose: () => void; devices: Device[]; onAdded: () => void
+// Create and edit in one form. A rule opened from a device's measurement
+// tile arrives with the device and parameter already chosen (?nowa_regula).
+function RuleModal({ open, onClose, devices, onSaved, rule, prefill }: {
+  open: boolean; onClose: () => void; devices: Device[]; onSaved: () => void
+  rule?: AlertRule | null
+  prefill?: { deviceId: number; paramName: string } | null
 }) {
   const [deviceId, setDeviceId] = useState('')
   const [paramName, setParamName] = useState('')
@@ -330,151 +362,173 @@ function AddRuleModal({ open, onClose, devices, onAdded }: {
   const [condition, setCondition] = useState('gt')
   const [threshold, setThreshold] = useState('')
   const [severity, setSeverity] = useState('warning')
-  const [category, setCategory] = useState('Inne')
+  const [category, setCategory] = useState('Temperatura')
   const [notifyChannels, setNotifyChannels] = useState<string[]>([])
   const [delayMinutes, setDelayMinutes] = useState('0')
   const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    if (!open) return
+    setDeviceId(rule?.device_id ? String(rule.device_id) : prefill ? String(prefill.deviceId) : '')
+    setParamName(rule?.parameter_name ?? prefill?.paramName ?? '')
+    setName(rule?.name ?? '')
+    setCondition(rule?.condition ?? 'gt')
+    setThreshold(rule?.threshold_value != null ? String(rule.threshold_value) : '')
+    setSeverity(rule?.severity ?? 'warning')
+    setCategory(rule?.category ?? 'Temperatura')
+    setNotifyChannels(rule?.notify_channels ?? [])
+    setDelayMinutes(rule ? String(Math.round((rule.delay_seconds ?? 0) / 60)) : '0')
+  }, [open, rule, prefill])
 
   const toggleChannel = (ch: string) =>
     setNotifyChannels((prev) => prev.includes(ch) ? prev.filter(c => c !== ch) : [...prev, ch])
 
   const liveReadings = useDeviceStore((s) => s.liveReadings)
   const selectedDevice = devices.find(d => String(d.id) === deviceId)
-  // Live readings (whatever the manufacturer driver reports), not the
-  // separate device.parameters list - that's been empty for every
-  // auto-discovered device since Stage 1.2, which meant this dropdown was
-  // always empty too (silently falling back to a free-text field below).
-  const parameters = selectedDevice ? Object.keys(liveReadings[selectedDevice.id] ?? {}) : []
+  // Profile registers (stable, complete) plus whatever the device reports
+  // live - the live list alone was empty until the first scan arrived.
+  const parameters = selectedDevice
+    ? Array.from(new Set([
+        ...(selectedDevice.profile?.registers?.map((r) => r.name) ?? []),
+        ...Object.keys(liveReadings[selectedDevice.id] ?? {}),
+      ])).filter((n) => !selectedDevice.hidden_parameters.includes(n))
+    : []
+  const label = (n: string) => selectedDevice?.parameter_aliases[n] ?? n
+  const currentValue = selectedDevice ? liveReadings[selectedDevice.id]?.[paramName] : undefined
 
-  const handleDeviceChange = (id: string) => {
-    setDeviceId(id)
-    setParamName('')
+  // An empty name is filled in from the rule itself - one field less to
+  // think about, and the alarm list still reads well.
+  const autoName = () => {
+    if (!paramName || threshold === '') return ''
+    return `${label(paramName)} ${CONDITION_SYMBOLS[condition] ?? condition} ${threshold}`
   }
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
+    const common = {
+      name: name.trim() || autoName(),
+      condition,
+      threshold_value: Number(threshold),
+      severity: severity as 'info' | 'warning' | 'critical',
+      category,
+      notify_channels: notifyChannels,
+      delay_seconds: Math.max(0, Math.round(Number(delayMinutes) * 60) || 0),
+    }
     try {
-      await createAlertRule({
-        device_id: Number(deviceId) || undefined,
-        parameter_name: paramName,
-        name,
-        condition,
-        threshold_value: Number(threshold),
-        severity: severity as 'info' | 'warning' | 'critical',
-        category,
-        notify_channels: notifyChannels,
-        delay_seconds: Math.max(0, Math.round(Number(delayMinutes) * 60) || 0),
-      })
-      onAdded(); onClose()
-      setDeviceId(''); setParamName(''); setName(''); setThreshold(''); setCategory('Inne'); setNotifyChannels([]); setDelayMinutes('0')
+      if (rule) {
+        await updateAlertRule(rule.id, common)
+        toast.success('Reguła zapisana')
+      } else {
+        await createAlertRule({ device_id: Number(deviceId) || undefined, parameter_name: paramName, ...common })
+        toast.success('Reguła dodana')
+      }
+      onSaved(); onClose()
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail ?? 'Nie udało się zapisać reguły')
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <Modal open={open} onClose={onClose} title="Dodaj regułę alertu">
+    <Modal open={open} onClose={onClose} title={rule ? `Edytuj regułę — ${rule.name}` : 'Nowa reguła alarmu'}>
       <form onSubmit={submit} className="space-y-3">
-        <div>
-          <label className="block text-xs text-ink-muted mb-1">Urządzenie</label>
-          <select value={deviceId} onChange={e => handleDeviceChange(e.target.value)} required
-            className="input">
-            <option value="">Wybierz urządzenie…</option>
-            {devices.map(d => <option key={d.id} value={d.id}>{d.name} (adres {d.modbus_address})</option>)}
-          </select>
-        </div>
-
-        {deviceId && (
+        <div className="grid sm:grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs text-ink-muted mb-1">Urządzenie</label>
+            <select value={deviceId} onChange={e => { setDeviceId(e.target.value); setParamName('') }} required disabled={!!rule}
+              className="input disabled:opacity-60">
+              <option value="">Wybierz urządzenie…</option>
+              {devices.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+            </select>
+          </div>
           <div>
             <label className="block text-xs text-ink-muted mb-1">Parametr</label>
-            {parameters.length > 0 ? (
-              <select value={paramName} onChange={e => setParamName(e.target.value)} required className="input">
+            {parameters.length > 0 || rule ? (
+              <select value={paramName} onChange={e => setParamName(e.target.value)} required disabled={!!rule} className="input disabled:opacity-60">
                 <option value="">Wybierz parametr…</option>
-                {parameters.map(name => {
-                  const unit = selectedDevice ? liveReadings[selectedDevice.id]?.[name]?.unit : null
-                  return <option key={name} value={name}>{name}{unit ? ` (${unit})` : ''}</option>
-                })}
+                {(parameters.includes(paramName) || !paramName ? parameters : [paramName, ...parameters]).map(n => (
+                  <option key={n} value={n}>{label(n)}</option>
+                ))}
               </select>
             ) : (
-              <input value={paramName} onChange={e => setParamName(e.target.value)} required
-                placeholder="np. Temperature" className="input" />
+              <input value={paramName} onChange={e => setParamName(e.target.value)} required disabled={!deviceId}
+                placeholder="najpierw wybierz urządzenie" className="input" />
+            )}
+            {currentValue && (
+              <p className="text-[11px] text-ink-muted mt-1">Teraz: {currentValue.value} {currentValue.unit ?? ''}</p>
             )}
           </div>
-        )}
-
-        <div>
-          <label className="block text-xs text-ink-muted mb-1">Nazwa reguły</label>
-          <input value={name} onChange={e => setName(e.target.value)} required placeholder="np. Wysoka temperatura" className="input" />
         </div>
 
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="block text-xs text-ink-muted mb-1">Warunek</label>
+            <label className="block text-xs text-ink-muted mb-1">Alarm, gdy wartość jest</label>
             <select value={condition} onChange={e => setCondition(e.target.value)} className="input">
-              <option value="gt">&gt; (powyżej)</option>
-              <option value="lt">&lt; (poniżej)</option>
-              <option value="eq">= (równy)</option>
-              <option value="ne">≠ (różny od)</option>
+              <option value="gt">powyżej (&gt;)</option>
+              <option value="lt">poniżej (&lt;)</option>
+              <option value="eq">równa (=)</option>
+              <option value="ne">różna od (≠)</option>
             </select>
           </div>
           <div>
-            <label className="block text-xs text-ink-muted mb-1">Wartość progowa</label>
+            <label className="block text-xs text-ink-muted mb-1">Próg</label>
             <input type="number" step="any" value={threshold} onChange={e => setThreshold(e.target.value)} required className="input" />
           </div>
         </div>
 
         <div className="grid grid-cols-2 gap-3">
           <div>
+            <label className="block text-xs text-ink-muted mb-1">Opóźnienie (min)</label>
+            <input type="number" min={0} max={1440} step="1" value={delayMinutes} onChange={e => setDelayMinutes(e.target.value)} className="input" />
+          </div>
+          <div>
             <label className="block text-xs text-ink-muted mb-1">Ważność</label>
             <select value={severity} onChange={e => setSeverity(e.target.value)} className="input">
-              <option value="info">Info</option>
-              <option value="warning">Warning</option>
-              <option value="critical">Critical</option>
+              <option value="info">Informacja</option>
+              <option value="warning">Ostrzeżenie</option>
+              <option value="critical">Krytyczny</option>
             </select>
           </div>
+        </div>
+        <p className="text-[11px] text-ink-muted -mt-1">
+          Opóźnienie: alarm dopiero, gdy warunek trwa nieprzerwanie tyle minut — np. 30–45 min dla temperatury komory,
+          żeby odszranianie nie dawało fałszywych alarmów. 0 = natychmiast.
+        </p>
+
+        <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="block text-xs text-ink-muted mb-1">Kategoria</label>
             <select value={category} onChange={e => setCategory(e.target.value)} className="input">
               {ALERT_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
           </div>
-        </div>
-
-        <div>
-          <label className="block text-xs text-ink-muted mb-1">Opóźnienie alarmu (min)</label>
-          <input type="number" min={0} max={1440} step="1" value={delayMinutes} onChange={e => setDelayMinutes(e.target.value)} className="input" />
-          <p className="text-[11px] text-ink-muted mt-1">
-            Alarm zgłaszany dopiero, gdy warunek trwa nieprzerwanie tyle minut — np. 30–45 min dla temperatury komory,
-            żeby odszranianie nie wywoływało fałszywych alarmów. 0 = natychmiast.
-          </p>
-        </div>
-
-        <div>
-          <label className="block text-xs text-ink-muted mb-1">Powiadomienia (konfiguracja SMTP/Telegram: Ustawienia → Konfiguracja systemu)</label>
-          <div className="flex gap-4">
-            {[['email', 'E-mail'], ['telegram', 'Telegram']].map(([value, label]) => (
-              <label key={value} className="flex items-center gap-1.5 text-sm text-ink-body">
-                <input
-                  type="checkbox"
-                  checked={notifyChannels.includes(value)}
-                  onChange={() => toggleChannel(value)}
-                  className="rounded border-border-strong bg-surface text-accent focus:ring-0"
-                />
-                {label}
-              </label>
-            ))}
+          <div>
+            <label className="block text-xs text-ink-muted mb-1">Nazwa (opcjonalnie)</label>
+            <input value={name} onChange={e => setName(e.target.value)} placeholder={autoName() || 'np. Za ciepło w komorze'} className="input" />
           </div>
         </div>
 
+        <div>
+          <label className="block text-xs text-ink-muted mb-1">Powiadomienia</label>
+          <div className="flex gap-4">
+            {[['email', 'E-mail'], ['telegram', 'Telegram']].map(([value, lbl]) => (
+              <label key={value} className="flex items-center gap-1.5 text-sm text-ink-body">
+                <input type="checkbox" checked={notifyChannels.includes(value)} onChange={() => toggleChannel(value)}
+                  className="rounded border-border-strong bg-surface text-accent focus:ring-0" />
+                {lbl}
+              </label>
+            ))}
+          </div>
+          <p className="text-[11px] text-ink-muted mt-1">Serwer poczty i bot Telegram: Ustawienia → Konfiguracja.</p>
+        </div>
+
         <div className="flex gap-3 pt-2">
-          <button type="submit" disabled={loading || !deviceId || !paramName}
-            className="flex-1 bg-accent hover:bg-accent-strong disabled:opacity-40 text-white text-sm py-2 rounded-lg transition-colors">
-            {loading ? 'Zapisywanie…' : 'Dodaj regułę'}
+          <button type="submit" disabled={loading} className="flex-1 bg-accent hover:bg-accent-strong disabled:opacity-50 text-white text-sm py-2 rounded-lg">
+            {loading ? 'Zapisywanie…' : rule ? 'Zapisz' : 'Dodaj regułę'}
           </button>
-          <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-ink-muted border border-border rounded-lg">
-            Anuluj
-          </button>
+          <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-ink-muted border border-border rounded-lg">Anuluj</button>
         </div>
       </form>
     </Modal>

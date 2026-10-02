@@ -1,5 +1,7 @@
 import { useState } from 'react'
-import { AlertTriangle, CheckCircle2, ChevronDown, ChevronUp } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { AlertTriangle, BellPlus, CheckCircle2, ChevronDown, ChevronUp } from 'lucide-react'
+import { useAuthStore } from '../../store/auth'
 import { useDeviceStore } from '../../store/devices'
 import { useSeedLatestReadings } from '../../hooks/useSeedLatestReadings'
 import { Card } from '../UI/Card'
@@ -32,6 +34,7 @@ interface Item {
 export function LiveOverview({ deviceId, registers, hiddenNames, aliases, units }: Props) {
   const readings = useDeviceStore((s) => s.liveReadings[deviceId])
   const [showSettings, setShowSettings] = useState(false)
+  const canManageAlerts = useAuthStore((s) => s.can('alert:manage'))
 
   // Seed from the last stored values - live readings otherwise only appear
   // with the next WebSocket scan, leaving the page empty for up to a cycle.
@@ -86,7 +89,18 @@ export function LiveOverview({ deviceId, registers, hiddenNames, aliases, units 
                 const missing = isProbeMissing(m.value, m.unit)
                 return (
                   <div key={m.name} className="bg-surface-2 border border-border rounded-lg p-3">
-                    <p className="text-xs text-ink-muted mb-1 truncate" title={m.label}>{m.label}</p>
+                    <div className="flex items-start justify-between gap-1 mb-1">
+                      <p className="text-xs text-ink-muted truncate" title={m.label}>{m.label}</p>
+                      {canManageAlerts && (
+                        <Link
+                          to={`/alerts?urzadzenie=${deviceId}&parametr=${encodeURIComponent(m.name)}`}
+                          className="text-ink-muted/50 hover:text-accent shrink-0"
+                          title={`Ustaw alarm dla „${m.label}”`}
+                        >
+                          <BellPlus size={13} />
+                        </Link>
+                      )}
+                    </div>
                     {missing ? (
                       <p className="text-sm text-ink-muted py-1" title={`Odczyt ${m.value} — wejście bez podłączonej sondy`}>brak sondy</p>
                     ) : (

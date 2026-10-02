@@ -21,6 +21,7 @@ class AlertRuleCreate(BaseModel):
 class AlertRuleUpdate(BaseModel):
     name: Optional[str] = None
     enabled: Optional[bool] = None
+    condition: Optional[str] = None
     threshold_value: Optional[float] = None
     threshold_min: Optional[float] = None
     threshold_max: Optional[float] = None

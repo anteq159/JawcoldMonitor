@@ -27,8 +27,8 @@ const RANGES: { label: string; value: TimeRange }[] = [
   { label: '1 rok', value: '1y' },
 ]
 
-// Fixed layout, not a drag/resize grid: right column (recent events, Raspberry
-// actions) is narrow and utility-focused, left column (2/3 width) is the
+// Fixed layout, not a drag/resize grid: right column (Raspberry Pi, recent
+// events) is narrow and utility-focused, left column (2/3 width) is the
 // main monitoring content - favorite parameters, a multi-series parameter
 // chart, then the controller list. On narrow screens the columns stack,
 // left column first.
@@ -108,8 +108,8 @@ export default function Dashboard() {
         </div>
 
         <div className="space-y-4">
-          {canReadLogs && <RecentEventsWidget />}
           <RpiMonitorWidget />
+          {canReadLogs && <RecentEventsWidget />}
         </div>
       </div>
     </div>

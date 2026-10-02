@@ -35,3 +35,6 @@ class UserUpdate(BaseModel):
     is_active: Optional[bool] = None
     role_ids: Optional[List[int]] = None
     must_change_password: Optional[bool] = None
+    # Admin password reset: becomes a temporary password - the user has to
+    # change it at the next login.
+    new_password: Optional[str] = None

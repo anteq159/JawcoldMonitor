@@ -1,7 +1,7 @@
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
 
 from app.core.database import get_db
@@ -36,6 +36,11 @@ async def create_user(
     existing = await db.execute(select(User).where(User.username == body.username))
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="Nazwa użytkownika zajęta")
+    if len(body.password) < 6:
+        raise HTTPException(status_code=400, detail="Hasło musi mieć co najmniej 6 znaków")
+    if body.email and await db.scalar(select(User.id).where(User.email == body.email)):
+        # Unique column - used to surface as a bare 500.
+        raise HTTPException(status_code=400, detail="Ten adres e-mail ma już inne konto")
     user = User(
         username=body.username,
         email=body.email,
@@ -78,6 +83,32 @@ async def update_user(
     if not user:
         raise HTTPException(status_code=404, detail="Użytkownik nie znaleziony")
     old_value = {"email": user.email, "is_active": user.is_active, "role_ids": [r.id for r in user.roles]}
+
+    # Lock-out guards: an admin switching off their own account, or the
+    # last active admin losing the role, left nobody able to administer
+    # the panel (fixable only in the database).
+    if user_id == current_user.id and body.is_active is False:
+        raise HTTPException(status_code=400, detail="Nie można dezaktywować własnego konta")
+    admin_role = await db.scalar(select(Role).where(Role.name == "Admin"))
+    is_admin_now = any(r.name == "Admin" for r in user.roles)
+    loses_admin = is_admin_now and (
+        body.is_active is False
+        or (body.role_ids is not None and admin_role is not None and admin_role.id not in body.role_ids)
+    )
+    if loses_admin:
+        from app.models.user import user_roles
+        other_admins = await db.scalar(
+            select(func.count(User.id))
+            .join(user_roles, user_roles.c.user_id == User.id)
+            .where(user_roles.c.role_id == admin_role.id, User.is_active == True, User.id != user_id)
+        )
+        if not other_admins:
+            raise HTTPException(status_code=400, detail="To jedyny aktywny administrator - najpierw nadaj rolę Admin komuś innemu")
+    if body.new_password is not None:
+        if len(body.new_password) < 6:
+            raise HTTPException(status_code=400, detail="Hasło musi mieć co najmniej 6 znaków")
+        user.password_hash = hash_password(body.new_password)
+        user.must_change_password = True
     if body.email is not None:
         user.email = body.email
     if body.is_active is not None:
@@ -92,7 +123,8 @@ async def update_user(
     await record_audit(
         db, current_user.id, "user.update", "user", user_id,
         old_value=old_value,
-        new_value={"email": body.email, "is_active": body.is_active, "role_ids": body.role_ids},
+        new_value={"email": body.email, "is_active": body.is_active, "role_ids": body.role_ids,
+                   "password_reset": body.new_password is not None},
         ip_address=client_ip(request),
     )
     await db.commit()

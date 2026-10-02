@@ -24,6 +24,7 @@ from app.services.system_stats import get_system_stats
 from app.services import notifications
 from app.drivers.registry import get_driver
 from app.drivers.base import decode_active_alarms
+from app.services.register_category import register_category, BINARY_TYPES
 
 logger = logging.getLogger(__name__)
 
@@ -531,71 +532,97 @@ async def _check_alerts(db: AsyncSession, device_id, sensor_id, readings: dict):
         logger.warning("Alert check error: %s", e)
 
 
+# Codes for alarm flags (profile registers of category "alarm") live above
+# every manufacturer alarm-code table so the two never collide.
+FLAG_CODE_BASE = 100000
+
+
+def _active_device_alarms(device: Device, readings: dict) -> Dict[int, tuple]:
+    """{code: (name, description, severity)} of everything the controller
+    currently reports as wrong:
+    - the manufacturer alarm/status register decoded by its driver (Etap 3.3),
+    - every individual alarm flag of the profile (sensor fault, LO/HI...).
+      Before 1.26 only the summary register was watched, so a sensor fault
+      showed up on the device page but was never logged, notified or listed
+      under "Alarmy sterowników"."""
+    active: Dict[int, tuple] = {}
+    profile = getattr(device, "profile", None)
+    if not profile:
+        return active
+    alarm_register = next((r for r in profile.registers if r.is_alarm_register), None)
+    if alarm_register and alarm_register.name in readings and profile.manufacturer:
+        driver_cls = get_driver(profile.manufacturer)
+        if driver_cls:
+            raw_value = int(readings[alarm_register.name]["value"])
+            for alarm in decode_active_alarms(driver_cls(), raw_value):
+                active[alarm.code] = (alarm.name, alarm.description, alarm.severity)
+    hidden = set(device.hidden_parameters or [])
+    aliases = device.parameter_aliases or {}
+    for reg in profile.registers:
+        if reg.is_alarm_register or reg.name in hidden or reg.name not in readings:
+            continue
+        if register_category(reg) != "alarm" or reg.register_type not in BINARY_TYPES:
+            continue
+        if readings[reg.name]["value"]:
+            offset = 50000 if reg.register_type == "discrete_input" else 0
+            label = aliases.get(reg.name, reg.name)
+            active[FLAG_CODE_BASE + offset + reg.address] = (label, "Flaga alarmowa sterownika", "warning")
+    return active
+
+
 async def _check_hardware_alarms(db: AsyncSession, device: Device, readings: dict):
     """Distinct from _check_alerts(): that's threshold rules the user
-    configured against parameter values. This reads the controller's own
-    reported alarm/status register - Etap 3.3 - and surfaces what the
-    device itself says is wrong (e.g. "E1: Awaria sondy B1"), alongside
-    the threshold alarms, not instead of them. Edge-triggered the same way:
-    logs once per code becoming active, once per code clearing, not every
-    scan cycle a steady alarm stays up."""
+    configured against parameter values. This surfaces what the controller
+    itself says is wrong (e.g. "E1: Awaria sondy B1", "Alarm niskiej
+    temperatury (LO)"), alongside the threshold alarms, not instead of
+    them. Edge-triggered: logs once per code becoming active, once per code
+    clearing, not every scan cycle a steady alarm stays up."""
     try:
-        profile = getattr(device, "profile", None)
-        if not profile or not profile.manufacturer:
-            return
-        alarm_register = next((r for r in profile.registers if r.is_alarm_register), None)
-        if not alarm_register or alarm_register.name not in readings:
-            return
-        driver_cls = get_driver(profile.manufacturer)
-        if not driver_cls:
-            return
-
-        raw_value = int(readings[alarm_register.name]["value"])
-        active_alarms = decode_active_alarms(driver_cls(), raw_value)
-        active_codes = {a.code for a in active_alarms}
+        active = _active_device_alarms(device, readings)
+        active_codes = set(active)
         previously_active = _active_hw_alarms.get(device.id, set())
 
-        newly_active = [a for a in active_alarms if a.code not in previously_active]
+        newly_active = [code for code in active if code not in previously_active]
         newly_resolved = previously_active - active_codes
 
-        for alarm in newly_active:
+        for code in newly_active:
+            name, description, severity = active[code]
             db.add(EventLog(
                 event_type="hardware_alarm_triggered",
                 device_id=device.id,
-                message=f"{device.name}: alarm sterownika {alarm.name} — {alarm.description}",
+                message=f"{device.name}: alarm sterownika {name} — {description}",
             ))
             # Persistent, acknowledgeable state (Etap: zatwierdzanie alarmu)
             # - separate from EventLog, which is an append-only audit trail
             # with no notion of "currently active" or "dealt with".
             db.add(HardwareAlarmEvent(
-                device_id=device.id, code=alarm.code, name=alarm.name,
-                description=alarm.description, severity=alarm.severity,
+                device_id=device.id, code=code, name=name,
+                description=description, severity=severity,
             ))
             await ws_manager.broadcast(ws_events.hardware_alarm(
-                device.id, device.name, alarm.code, alarm.name, alarm.description, alarm.severity, "active",
+                device.id, device.name, code, name, description, severity, "active",
             ))
             await notifications.notify_system(
                 f"[JawcoldMonitor] Alarm sterownika: {device.name}",
-                f"{device.name}: {alarm.name} — {alarm.description}",
+                f"{device.name}: {name} — {description}",
             )
         if newly_resolved:
-            # Codes alone are enough to log/broadcast a clear message even
-            # though known_alarm_codes() would need a second lookup for
-            # the human-readable name - keep this path cheap.
-            db.add(EventLog(
-                event_type="hardware_alarm_resolved",
-                device_id=device.id,
-                message=f"{device.name}: alarm sterownika ustąpił (kod {sorted(newly_resolved)})",
-            ))
             open_rows = await db.execute(select(HardwareAlarmEvent).where(
                 HardwareAlarmEvent.device_id == device.id,
                 HardwareAlarmEvent.code.in_(newly_resolved),
                 HardwareAlarmEvent.active == True,
             ))
             now = datetime.now(timezone.utc)
+            names = []
             for row in open_rows.scalars():
                 row.active = False
                 row.resolved_at = now
+                names.append(row.name)
+            db.add(EventLog(
+                event_type="hardware_alarm_resolved",
+                device_id=device.id,
+                message=f"{device.name}: ustąpił alarm sterownika {', '.join(sorted(names)) or sorted(newly_resolved)}",
+            ))
             await ws_manager.broadcast(ws_events.hardware_alarm(
                 device.id, device.name, min(newly_resolved), "", "", "info", "resolved",
             ))
