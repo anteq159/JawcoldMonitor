@@ -119,8 +119,7 @@ function SystemSettingsSection() {
     <Card title="Konfiguracja systemu">
       <div className="p-5 space-y-5">
         <p className="text-xs text-ink-muted">
-          Wartości z .env są punktem startowym — zmiany zapisane tutaj mają pierwszeństwo
-          i działają od razu (pola oznaczone „restart" po ponownym uruchomieniu).
+          Wartości z .env są punktem startowym — zmiany zapisane tutaj mają pierwszeństwo i działają od razu.
         </p>
         {loading ? <p className="text-sm text-ink-muted">Ładowanie…</p> : categories.map((cat) => (
           <div key={cat}>
@@ -385,9 +384,15 @@ function BackupSection() {
     setRestoring(true)
     try {
       const s = await restoreBackup(confirmFile)
-      const total = s.profiles_created + s.profiles_updated + s.devices_created + s.devices_updated
-        + s.sensors_created + s.sensors_updated + s.rules_created + s.rules_updated
-      toast.success(`Przywrócono konfigurację (${total} pozycji)`)
+      const parts = [
+        [s.devices_created + s.devices_updated, 'sterowniki'],
+        [s.profiles_created + s.profiles_updated, 'profile'],
+        [s.sensors_created + s.sensors_updated, 'czujniki'],
+        [s.rules_created + s.rules_updated, 'reguły'],
+        [(s.lines_created ?? 0) + (s.lines_updated ?? 0), 'linie RS485'],
+        [s.settings_restored ?? 0, 'ustawienia'],
+      ].filter(([n]) => (n as number) > 0).map(([n, label]) => `${label}: ${n}`)
+      toast.success(`Przywrócono konfigurację — ${parts.join(', ') || 'brak zmian'}. Hasła i tokeny (SMTP, Telegram, SMS) wpisz ponownie, jeśli to nowe urządzenie.`, { duration: 10000 })
     } catch (err: any) {
       toast.error(err.response?.data?.detail ?? 'Błąd przywracania kopii zapasowej')
     } finally {

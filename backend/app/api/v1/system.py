@@ -228,6 +228,10 @@ async def update_runtime_settings(
         ))
         await db.commit()
 
+    if "MODBUS_TIMEOUT" in changed:
+        # Line drivers are rebuilt with the new timeout - no restart.
+        from app.services import scanner
+        await scanner.reload_lines()
     restart_needed = any(k in EDITABLE_SETTINGS and EDITABLE_SETTINGS[k].restart_required for k in changed)
     compose_apply_required = any(k in ENV_FILE_SETTINGS for k in changed)
     return {

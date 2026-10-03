@@ -82,7 +82,7 @@ def get_rs485_driver():
 # RS485 lines (models.BusLine): one driver per enabled line, keyed by line
 # id. Each driver has its own bus lock, so lines are polled in parallel.
 _line_drivers: Dict[int, object] = {}
-# (port, baudrate, parity, stopbits) a driver was built with - a reload
+# (port, baudrate, parity, stopbits, timeout) a driver was built with - a reload
 # keeps the driver (and its open port) of every line that did not change,
 # so editing one line never interrupts reads on another.
 _line_config: Dict[int, tuple] = {}
@@ -118,7 +118,7 @@ async def reload_lines():
         wanted = {}
         for line in lines:
             if line.enabled:
-                wanted[line.id] = (line.port, line.baudrate, (line.parity or "N").upper()[:1], line.stopbits)
+                wanted[line.id] = (line.port, line.baudrate, (line.parity or "N").upper()[:1], line.stopbits, settings.MODBUS_TIMEOUT)
         stale = [lid for lid in _line_drivers if _line_config.get(lid) != wanted.get(lid)]
         for lid in stale:
             driver = _line_drivers.pop(lid)
@@ -139,8 +139,8 @@ async def reload_lines():
                 driver = MockRS485Driver()
             else:
                 from app.drivers.rs485.modbus_rtu import ModbusRTUDriver
-                port, baudrate, parity, stopbits = config
-                driver = ModbusRTUDriver(port, baudrate, settings.MODBUS_TIMEOUT, stopbits, parity)
+                port, baudrate, parity, stopbits, timeout = config
+                driver = ModbusRTUDriver(port, baudrate, timeout, stopbits, parity)
             _line_drivers[lid] = driver
             _line_config[lid] = config
         _rs485_driver = _line_drivers.get(_default_line_id)

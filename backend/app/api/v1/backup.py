@@ -52,4 +52,8 @@ async def restore_backup(
     except (json.JSONDecodeError, ValidationError) as e:
         raise HTTPException(status_code=400, detail=f"Nieprawidłowy plik kopii zapasowej: {e}")
 
-    return await import_backup(db, payload)
+    summary = await import_backup(db, payload)
+    # Restored RS485 lines take effect without a restart.
+    from app.services import scanner
+    await scanner.reload_lines()
+    return summary

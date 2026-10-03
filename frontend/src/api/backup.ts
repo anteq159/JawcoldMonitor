@@ -12,6 +12,9 @@ export interface RestoreSummary {
   sensors_updated: number
   rules_created: number
   rules_updated: number
+  lines_created?: number
+  lines_updated?: number
+  settings_restored?: number
 }
 
 export const restoreBackup = (file: File): Promise<RestoreSummary> => {
