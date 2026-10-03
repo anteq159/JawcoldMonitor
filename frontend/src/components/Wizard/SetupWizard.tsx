@@ -11,14 +11,6 @@ import type { Sensor } from '../../types/sensor'
 
 const COMPLETED_KEY = 'jawcold-wizard-completed'
 
-export function isWizardCompleted(): boolean {
-  try {
-    return localStorage.getItem(COMPLETED_KEY) === '1'
-  } catch {
-    return true
-  }
-}
-
 const STEPS = ['Witaj', 'Komunikacja', 'Wykrywanie', 'Podsumowanie'] as const
 
 export function SetupWizard() {

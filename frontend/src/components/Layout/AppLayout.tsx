@@ -6,7 +6,9 @@ import { getDevices } from '../../api/devices'
 import { Toaster } from 'react-hot-toast'
 import { useWebSocket } from '../../hooks/useWebSocket'
 import { NewDeviceModal } from '../Alerts/NewDeviceModal'
-import { SetupWizard, isWizardCompleted } from '../Wizard/SetupWizard'
+// The setup wizard no longer opens by itself on first login - only from
+// Ustawienia > Aktualizacje i Raspberry ("Uruchom kreator ...").
+import { SetupWizard } from '../Wizard/SetupWizard'
 import { getFavorites, getFavoriteParameters } from '../../api/favorites'
 import { getMe } from '../../api/auth'
 import { useDeviceStore } from '../../store/devices'
@@ -41,7 +43,6 @@ export function AppLayout() {
   const location = useLocation()
   const setFavoriteIds = useDeviceStore((s) => s.setFavoriteIds)
   const setFavoriteParameters = useDeviceStore((s) => s.setFavoriteParameters)
-  const setWizardOpen = useDeviceStore((s) => s.setWizardOpen)
   useWebSocket()
 
   useEffect(() => {
@@ -65,7 +66,6 @@ export function AppLayout() {
     if (!useDeviceStore.getState().devices.length) {
       getDevices().then((d) => useDeviceStore.getState().setDevices(d)).catch(() => {})
     }
-    if (!isWizardCompleted()) setWizardOpen(true)
   }, [])
 
   const title = Object.entries(TITLES).find(([path]) =>
