@@ -16,7 +16,8 @@ całość w Dockerze.
   (jakość karty ma realne znaczenie — to najczęstszy punkt awarii).
 - Obsługiwane sterowniki: Carel (MPXPRO, MPXone, IR33, PJEZ, PicoIR,
   zawór EVD evolution), Danfoss (AK-CC55 Compact / Single Coil, AK-CC 250,
-  EKC 202/302, VLT FC 102), Eliwell (IDPlus 974, ID Next, EWPC),
+  EKC 202/302, VLT FC 102), Eliwell (IDPlus 974, ID Next, EWPC — instrukcja:
+  [`docs/Eliwell.md`](docs/Eliwell.md)),
   **Schneider Electric Altivar ATV320** (falownik — instrukcja:
   [`docs/Schneider-ATV320.md`](docs/Schneider-ATV320.md)) oraz własne profile.
 - **Adapter USB ↔ RS485** (np. na układzie CH340 lub FT232). Po podłączeniu
@@ -387,9 +388,9 @@ panelu do internetu.
 
 | Objaw | Co sprawdzić |
 |---|---|
-| Brak portu `/dev/ttyUSB0` | `ls /dev/ttyUSB*`, `dmesg \| tail` po wpięciu adaptera; inne przejściówki potrafią zgłosić się jako `ttyACM0` — popraw `RS485_PORTS` |
+| Brak portu `/dev/ttyUSB0` | `ls /dev/ttyUSB*`, `dmesg \| tail` po wpięciu adaptera; inne przejściówki potrafią zgłosić się jako `ttyACM0` — popraw port linii w Ustawienia → Konfiguracja → Linie RS485 |
 | Urządzenia nie odpowiadają | zamień żyły A/B; terminatory; wspólny baud; unikalne adresy; zasilanie sterowników. **Carel MPXPRO wymaga 2 bitów stopu** — ustaw `RS485_STOPBITS=2`, bez tego nie odpowiadają mimo poprawnego okablowania |
-| Wszystkie urządzenia nagle offline | czy adapter jest widoczny: `ls /dev/serial/by-id/`; czy `RS485_PORTS` (Ustawienia → RS485) wskazuje właściwy port |
+| Wszystkie urządzenia nagle offline | czy adapter jest widoczny: `ls /dev/serial/by-id/`; czy linia w Ustawienia → Konfiguracja → Linie RS485 wskazuje właściwy port (widżet „Magistrala" pokazuje „brak portu") |
 | Karta SD się zapełnia | `READINGS_RETENTION_DAYS` (patrz niżej) — domyślnie 90 dni surowych odczytów; starsze dni TimescaleDB kompresuje, a 15-minutowe średnie zostają na stałe |
 | Losowe przekłamania odczytów | brak terminatorów, topologia gwiazdy, kabel równolegle do siłowych |
 | Czujniki DS18B20 niewidoczne | włączony 1-Wire w raspi-config; `ls /sys/bus/w1/devices/` powinno pokazać `28-...` |
@@ -410,7 +411,7 @@ o których najłatwiej zapomnieć:
 | `KNOWN_SCAN_INTERVAL` | `10` | co ile sekund odpytywane są znane urządzenia. Pojedynczy sterownik może mieć własny interwał (ikona zegara w jego szczegółach) |
 | `OFFLINE_POLL_INTERVAL` | `60` | sterownik ze statusem offline jest odpytywany najwyżej co tyle sekund (każde zapytanie do milczącego adresu blokuje magistralę na pełny timeout) |
 | `RS485_STOPBITS` | `1` | liczba bitów stopu; **Carel MPXPRO wymaga `2`** |
-| `RS485_PORTS` | `/dev/ttyUSB0` | port adaptera RS485; niektóre przejściówki zgłaszają się jako `/dev/ttyACM0` |
+| `RS485_PORTS` | `/dev/ttyUSB0` | port adaptera RS485 przy pierwszym starcie (zostaje „Linią 1"); kolejne linie z innymi prędkościami dodaje się w panelu: Ustawienia → Konfiguracja → Linie RS485 |
 | `DISCOVERY_MAX_ADDRESS` | `32` | do jakiego adresu Modbus sięga automatyczne wykrywanie |
 | `OFFLINE_ALARM_MINUTES` | `5` | po ilu minutach ciszy urządzenie wywołuje alarm (`0` wyłącza) |
 | `DISK_ALARM_PERCENT` | `90` | próg alarmu zapełnienia dysku |

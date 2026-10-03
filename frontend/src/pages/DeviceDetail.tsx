@@ -8,6 +8,7 @@ import type { Device } from '../types/device'
 import type { ParameterReadings } from '../types/reading'
 import { LiveOverview } from '../components/Devices/LiveOverview'
 import { DeviceEventsCard } from '../components/Devices/DeviceEventsCard'
+import { DeviceLineChip } from '../components/Devices/DeviceLineChip'
 import { registerCategory, isBinaryCategory, isChartedByDefault, type RegisterCategory } from '../utils/registers'
 import { TimeSeriesChart } from '../components/Charts/TimeSeriesChart'
 import { DeviceStatusBadge } from '../components/Devices/DeviceStatusBadge'
@@ -257,6 +258,7 @@ export default function DeviceDetail() {
               {lastSeen && <> · ostatni odczyt {lastSeen.toLocaleString('pl-PL', { dateStyle: 'short', timeStyle: 'medium' })}</>}
             </p>
             <ManufacturerBadge profile={device.profile} />
+            <DeviceLineChip device={device} canWrite={canWrite} onChanged={setDevice} />
             {editingInterval ? (
               <div className="flex items-center gap-1">
                 <input

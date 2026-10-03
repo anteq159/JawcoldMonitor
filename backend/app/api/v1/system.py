@@ -36,7 +36,12 @@ async def rs485_status(
     offline = await db.execute(select(func.count(Device.id)).where(Device.status == "offline"))
     total_sensors = await db.execute(select(func.count(Sensor.id)))
     unacked_alerts = await db.execute(select(func.count(AlertEvent.id)).where(AlertEvent.acknowledged == False))
+    from app.api.v1.lines import _counts, _line_out
+    from app.models.bus_line import BusLine
+    line_rows = (await db.execute(select(BusLine).order_by(BusLine.id))).scalars().all()
+    counts = await _counts(db)
     return {
+        "lines": [_line_out(line, counts) for line in line_rows],
         "devices_online": online.scalar(),
         "devices_offline": offline.scalar(),
         "sensors_total": total_sensors.scalar(),
@@ -141,6 +146,8 @@ async def list_runtime_settings(
     )
     out = []
     for key, meta in EDITABLE_SETTINGS.items():
+        if meta.hidden:
+            continue
         current = getattr(settings, key)
         out.append({
             "key": key,

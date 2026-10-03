@@ -22,6 +22,20 @@ async def list_profiles(
     return result.scalars().all()
 
 
+@router.get("/bus-requirements")
+async def bus_requirements(_: User = Depends(get_current_user)):
+    """Serial-port requirements per manufacturer driver (allowed speeds,
+    parity, stop bits, factory frame) - the add/edit device forms warn when
+    a controller is put on a line it cannot talk on."""
+    import app.drivers.manufacturers  # noqa: F401 - registers drivers
+    from app.drivers.registry import all_drivers
+    return {
+        name: cls.bus_requirements
+        for name, cls in all_drivers().items()
+        if getattr(cls, "bus_requirements", None)
+    }
+
+
 @router.get("/{profile_id}", response_model=DeviceProfileOut)
 async def get_profile(
     profile_id: int,

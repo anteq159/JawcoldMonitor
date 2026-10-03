@@ -84,6 +84,29 @@ DEFAULT_ROLE_DESCRIPTIONS = {
 }
 
 
+async def _ensure_bus_lines():
+    """First start with RS485 lines: turn the old single-port settings
+    (RS485_PORTS + speed/parity/stop bits) into line rows, and put every
+    device without a line on the first one."""
+    from app.models.bus_line import BusLine
+    from app.models.device import Device
+    async with AsyncSessionLocal() as db:
+        lines = (await db.execute(select(BusLine).order_by(BusLine.id))).scalars().all()
+        if not lines:
+            ports = settings.rs485_port_list or (["podgląd"] if settings.PREVIEW_MODE else [])
+            for i, port in enumerate(ports, start=1):
+                db.add(BusLine(
+                    name=f"Linia {i}", port=port, baudrate=settings.RS485_BAUDRATE,
+                    parity=(settings.RS485_PARITY or "N").upper()[:1], stopbits=settings.RS485_STOPBITS,
+                ))
+            await db.flush()
+            lines = (await db.execute(select(BusLine).order_by(BusLine.id))).scalars().all()
+        if lines:
+            from sqlalchemy import update
+            await db.execute(update(Device).where(Device.line_id.is_(None)).values(line_id=lines[0].id))
+        await db.commit()
+
+
 async def _init_defaults():
     async with AsyncSessionLocal() as db:
         # Upsert permissions
@@ -327,6 +350,7 @@ async def lifespan(app: FastAPI):
     from app.models.app_setting import AppSetting  # noqa: F401 - mapper registration
     async with AsyncSessionLocal() as db:
         await load_overrides(db)
+    await _ensure_bus_lines()
     scanner_task = asyncio.create_task(scanner_loop())
     yield
     scanner_task.cancel()

@@ -2,13 +2,14 @@ import { useEffect, useState } from 'react'
 import { Cpu, MemoryStick, HardDrive, Thermometer, Radio } from 'lucide-react'
 import { useDeviceStore } from '../../../store/devices'
 import { getServicesStatus, getRS485Status } from '../../../api/system'
+import type { BusLine } from '../../../api/lines'
 import { Card } from '../../UI/Card'
 import type { ServiceStatus } from '../../../types/websocket'
 
 export function RpiMonitorWidget() {
   const stats = useDeviceStore((s) => s.systemStats)
   const [services, setServices] = useState<ServiceStatus[]>([])
-  const [rs485, setRs485] = useState<{ devices_online: number; devices_offline: number } | null>(null)
+  const [rs485, setRs485] = useState<{ devices_online: number; devices_offline: number; lines?: BusLine[] } | null>(null)
 
   useEffect(() => {
     const load = () => {
@@ -49,12 +50,25 @@ export function RpiMonitorWidget() {
 
         <div className="border-t border-border pt-3 space-y-1.5">
           <p className="text-xs font-semibold text-ink-muted uppercase tracking-wide mb-1.5">Magistrala</p>
-          <div className="flex items-center justify-between">
-            <span className="text-ink-body text-xs flex items-center gap-1.5"><Radio size={12} /> RS485 / Modbus RTU</span>
-            <span className="text-xs text-ink-muted">
-              {rs485 ? `${rs485.devices_online} online · ${rs485.devices_offline} offline` : '—'}
-            </span>
-          </div>
+          {rs485?.lines && rs485.lines.length > 0 ? rs485.lines.map((l) => (
+            <div key={l.id} className="flex items-center justify-between gap-2">
+              <span className="text-ink-body text-xs flex items-center gap-1.5 min-w-0">
+                <Radio size={12} className={!l.enabled ? 'text-ink-muted' : l.port_present ? 'text-good' : 'text-crit'} />
+                <span className="truncate">{l.name}</span>
+                <span className="text-ink-muted shrink-0">{l.frame}</span>
+              </span>
+              <span className={`text-xs shrink-0 ${!l.enabled ? 'text-ink-muted' : !l.port_present ? 'text-crit' : 'text-ink-muted'}`}>
+                {!l.enabled ? 'wyłączona' : !l.port_present ? 'brak portu' : `${l.devices_online} online · ${l.devices_offline} offline`}
+              </span>
+            </div>
+          )) : (
+            <div className="flex items-center justify-between">
+              <span className="text-ink-body text-xs flex items-center gap-1.5"><Radio size={12} /> RS485 / Modbus RTU</span>
+              <span className="text-xs text-ink-muted">
+                {rs485 ? `${rs485.devices_online} online · ${rs485.devices_offline} offline` : '—'}
+              </span>
+            </div>
+          )}
         </div>
       </div>
     </Card>

@@ -84,6 +84,11 @@ class CarelMPXDriver(AbstractControllerDriver):
     """
 
     manufacturer = "Carel MPX"
+    bus_requirements = {
+        "baudrates": [19200], "parities": ["N"], "stopbits": [2],
+        "factory": "19200 8N2",
+        "note": "MPXPRO komunikuje się z ramką 19200 8N2 (sprawdzone na sterowniku). Adres ustawia parametr H0.",
+    }
     # Reads of more than 16 registers are refused with exception 3 (probed
     # on the live controller 2026-10-02).
     max_read_words = 16

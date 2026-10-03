@@ -33,6 +33,11 @@ class CarelEvdEvolutionDriver(AbstractControllerDriver):
     set), 19200 bit/s by default - fits a bus shared with Carel MPXPRO."""
 
     manufacturer = "Carel EVD evolution"
+    bus_requirements = {
+        "baudrates": [4800, 9600, 19200], "parities": ["N"], "stopbits": [2],
+        "factory": "19200 8N2",
+        "note": "Format 8N2 jest stały; prędkość 4800/9600/19200 w ustawieniach sieci sterownika (domyślnie 19200).",
+    }
 
     def default_register_map(self) -> List[RegisterMapEntry]:
         return [

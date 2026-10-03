@@ -42,6 +42,11 @@ class SchneiderAtv320Driver(AbstractControllerDriver):
     (CONF > FULL > COM > MODBUS NETWORK), plus a unique Add."""
 
     manufacturer = "Schneider Electric ATV320"
+    bus_requirements = {
+        "baudrates": [4800, 9600, 19200, 38400], "parities": ["N", "E", "O"], "stopbits": [1, 2],
+        "factory": "19200 8E1",
+        "note": "Fabrycznie 19200 8E1; tbr i tFO w menu CONF > FULL > COM > MODBUS NETWORK.",
+    }
 
     def default_register_map(self) -> List[RegisterMapEntry]:
         return [

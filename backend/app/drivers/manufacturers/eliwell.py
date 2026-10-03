@@ -25,6 +25,16 @@ class EliwellDriver(AbstractControllerDriver):
     MPXPRO)."""
 
     manufacturer = "Eliwell"
+    bus_requirements = {
+        "baudrates": [9600], "parities": ["N", "E", "O"], "stopbits": [1, 2],
+        "factory": "9600 8N1",
+        "note": "IDPlus pracuje tylko z prędkością 9600 b/s - potrzebna osobna linia, gdy MPXPRO chodzi na 19200. "
+                "W sterowniku: PtS = d (Modbus), adres FAA×16+dEA (nie 0), parzystość Pty, bity stopu StP; "
+                "port TTL podłącza się przez BusAdapter 150.",
+    }
+    # Parameters (16384-32767, visibility 49152+) answer only single-
+    # register reads (manual: "Read 1 single register for parameters").
+    single_read_ranges = ((16384, 32767), (49152, 65535))
     max_read_words = 12
 
     def default_register_map(self) -> List[RegisterMapEntry]:

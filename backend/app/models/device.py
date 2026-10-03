@@ -4,6 +4,7 @@ from sqlalchemy import String, Integer, Float, DateTime, ForeignKey
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.base import Base, TimestampMixin
+from app.models import bus_line  # noqa: F401 - registers bus_lines for the line_id FK
 
 
 class Device(Base, TimestampMixin):
@@ -14,6 +15,8 @@ class Device(Base, TimestampMixin):
     modbus_address: Mapped[int] = mapped_column(Integer, nullable=False)
     poll_interval_seconds: Mapped[Optional[int]] = mapped_column(Integer)
     profile_id: Mapped[Optional[int]] = mapped_column(ForeignKey("device_profiles.id"))
+    # RS485 line the controller hangs on; None = the first line.
+    line_id: Mapped[Optional[int]] = mapped_column(ForeignKey("bus_lines.id", ondelete="SET NULL"))
     status: Mapped[str] = mapped_column(String(16), default="unknown")
     recognition_status: Mapped[str] = mapped_column(String(16), default="recognized")
     detected_manufacturer: Mapped[Optional[str]] = mapped_column(String(128))

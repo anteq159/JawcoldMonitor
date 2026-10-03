@@ -46,6 +46,7 @@ export interface Device {
   modbus_address: number
   poll_interval_seconds: number | null
   profile_id: number | null
+  line_id: number | null
   status: 'online' | 'offline' | 'unknown'
   recognition_status: 'recognized' | 'unrecognized'
   detected_manufacturer: string | null
@@ -68,6 +69,7 @@ export interface DeviceCreate {
   name: string
   modbus_address: number
   profile_id?: number | null
+  line_id?: number | null
   location?: string
   group_name?: string
   description?: string

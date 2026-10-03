@@ -106,7 +106,7 @@ _DEFAULT_MAX_WORDS = 100
 UNMAPPED_RETRY_SECONDS = 1800
 
 
-def _plan_reads(registers, max_gap: int, max_words: int = _DEFAULT_MAX_WORDS) -> List[dict]:
+def _plan_reads(registers, max_gap: int, max_words: int = _DEFAULT_MAX_WORDS, single_ranges=()) -> List[dict]:
     """Turn a register map into as few Modbus requests as possible.
 
     Two levels of grouping, never mixing register_type (each type is a
@@ -139,10 +139,25 @@ def _plan_reads(registers, max_gap: int, max_words: int = _DEFAULT_MAX_WORDS) ->
         subbatches: List[list] = []
         current: list = []
         next_expected = None
+        def alone(r) -> bool:
+            return not is_bit and any(lo <= r.address <= hi for lo, hi in single_ranges)
+
         for reg in ordered:
             width = _width(reg, reg_type)
             # <= rather than ==: bit-variables of one status word share an
             # address and must land in the same request, not one each.
+            # Registers in a single-read range share a request only with
+            # bit-variables of the same address.
+            if current and alone(reg) and reg.address != current[0].address:
+                subbatches.append(current)
+                current = [reg]
+                next_expected = reg.address + width
+                continue
+            if current and alone(current[0]) and reg.address != current[0].address:
+                subbatches.append(current)
+                current = [reg]
+                next_expected = reg.address + width
+                continue
             if current and reg.address <= next_expected and (
                 is_bit or reg.address + width - current[0].address <= span_cap
             ):
@@ -159,6 +174,9 @@ def _plan_reads(registers, max_gap: int, max_words: int = _DEFAULT_MAX_WORDS) ->
         merged: List[List[list]] = []
         for batch in subbatches:
             b_start, b_count = _span(batch, reg_type)
+            if alone(batch[0]) or (merged and alone(merged[-1][0][0])):
+                merged.append([batch])
+                continue
             if merged and max_gap > 0:
                 group_start = merged[-1][0][0].address
                 last_start, last_count = _span(merged[-1][-1], reg_type)
@@ -192,15 +210,20 @@ _READ_METHOD = {
 }
 
 
-def _driver_max_words(profile) -> int:
-    """Request-size limit a manufacturer driver declares up front, so the
-    first cycles don't have to discover it."""
+def _driver_hint(profile, name: str, default=None):
+    """A read-planning hint a manufacturer driver declares up front
+    (max_read_words, single_read_ranges), so the first cycles don't have
+    to discover it."""
     manufacturer = getattr(profile, "manufacturer", None)
     if not manufacturer:
-        return 0
+        return default
     from app.drivers.registry import get_driver
     driver_cls = get_driver(manufacturer)
-    return getattr(driver_cls, "max_read_words", 0) if driver_cls else 0
+    return getattr(driver_cls, name, default) if driver_cls else default
+
+
+def _driver_max_words(profile) -> int:
+    return _driver_hint(profile, "max_read_words", 0) or 0
 
 
 class ModbusRTUDriver(AbstractRS485Driver):
@@ -286,6 +309,46 @@ class ModbusRTUDriver(AbstractRS485Driver):
             # check of a device whose register reads all failed.
             return True
 
+    async def identify_device(self, address: int) -> Dict[str, str]:
+        """Modbus function 43/14 "Read Device Identification" (basic: vendor,
+        product code, revision). Eliwell controllers that implement it
+        answer "INVENSYS" (Technical Support Bulletin 18), Schneider drives
+        "Schneider Electric". Many controllers do not support it - then
+        {} and discovery names the device by its address as before."""
+        async with self._lock:
+            if not await self._ensure_connected():
+                return {}
+            ctx = self._client.ctx
+            saved = ctx.retries
+            ctx.retries = 0
+            try:
+                r = await self._client.read_device_information(read_code=1, object_id=0, device_id=address)
+            except Exception:
+                return {}
+            finally:
+                ctx.retries = saved
+        info = getattr(r, "information", None) if not r.isError() else None
+        if not info:
+            return {}
+
+        def text(key: int) -> str:
+            value = info.get(key, b"")
+            if isinstance(value, list):
+                value = b"".join(value)
+            return value.decode("ascii", errors="replace").strip() if isinstance(value, bytes) else str(value).strip()
+
+        vendor, product, revision = text(0), text(1), text(2)
+        brand = "Eliwell" if vendor.upper() in ("INVENSYS", "ELIWELL") else vendor
+        manufacturer = brand
+        if brand.startswith("Schneider") and "ATV320" in product.upper():
+            manufacturer = "Schneider Electric ATV320"
+        label = " ".join(x for x in (brand, product) if x)
+        return {
+            "manufacturer": manufacturer,
+            "name": f"{label} #{address}" if label else f"Urządzenie #{address}",
+            "identity": " / ".join(x for x in (vendor, product, revision) if x),
+        }
+
     async def _read_span(self, unit: int, reg_type: str, start: int, count: int, regs: list, result: Dict[str, dict]) -> str:
         """One Modbus request covering [start, start+count); decodes every
         register in `regs` by its address offset from `start` (gaps in a
@@ -347,8 +410,9 @@ class ModbusRTUDriver(AbstractRS485Driver):
             for key in [k for k, until in unmapped.items() if until <= now]:
                 del unmapped[key]
             registers = [r for r in profile.registers if (r.register_type, r.address) not in unmapped]
+            single_ranges = tuple(_driver_hint(profile, "single_read_ranges", ()) or ())
             answered = False
-            for group in _plan_reads(registers, max_gap, max_words):
+            for group in _plan_reads(registers, max_gap, max_words, single_ranges):
                 outcome = await self._read_span(
                     unit, group["type"], group["start"], group["count"], group["regs"], result,
                 )
@@ -458,6 +522,11 @@ class ModbusRTUDriver(AbstractRS485Driver):
             try:
                 if len(words) == 1:
                     r = await self._client.write_register(register_address, words[0], device_id=modbus_address)
+                    if r.isError() and getattr(r, "exception_code", 0) == 1:
+                        # "Illegal function": Eliwell (and other) controllers
+                        # implement only function 16 for writes, also for
+                        # a single register.
+                        r = await self._client.write_registers(register_address, words, device_id=modbus_address)
                 else:
                     r = await self._client.write_registers(register_address, words, device_id=modbus_address)
             except Exception as e:

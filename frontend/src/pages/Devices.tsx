@@ -1,6 +1,7 @@
 import { memo, useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { RefreshCw, Plus, WifiOff, AlertTriangle, Trash2, Search, Cpu, Pencil, Check } from 'lucide-react'
+import { getLines, getBusRequirements, lineMismatch, type BusLine, type BusRequirement } from '../api/lines'
 import toast from 'react-hot-toast'
 import {
   getDevices, createDevice, updateDevice, deleteDevice, discoverDevices,
@@ -27,6 +28,7 @@ interface Prefill {
   name: string
   address: number
   profileId: number | null
+  lineId: number | null
 }
 
 export default function Devices() {
@@ -109,17 +111,8 @@ export default function Devices() {
       )}
 
       {tab === 'add' && canWrite && (
-        <div className="space-y-4">
-          <DiscoveredDevicesSection
-            knownAddresses={devices.map((d) => d.modbus_address)}
-            onPick={(candidate) => setPrefill({
-              name: candidate.suggested_name,
-              address: candidate.modbus_address,
-              profileId: candidate.matched_profile_id,
-            })}
-          />
-          <AddDeviceForm prefill={prefill} onAdded={() => { refresh(); setTab('list') }} />
-        </div>
+        <AddDeviceTab devices={devices} prefill={prefill} setPrefill={setPrefill}
+          onAdded={() => { refresh(); setTab('list') }} />
       )}
     </div>
   )
@@ -286,10 +279,50 @@ const DeviceCard = memo(function DeviceCard(
   )
 })
 
-function AddDeviceForm({ prefill, onAdded }: { prefill: Prefill | null; onAdded: () => void }) {
+// The "Dodaj urządzenie" tab: lines and per-driver bus requirements are
+// loaded once here and shared by the bus scan and the form.
+function AddDeviceTab({ devices, prefill, setPrefill, onAdded }: {
+  devices: Device[]; prefill: Prefill | null; setPrefill: (p: Prefill) => void; onAdded: () => void
+}) {
+  const [lines, setLines] = useState<BusLine[]>([])
+  const [requirements, setRequirements] = useState<Record<string, BusRequirement>>({})
+  const [lineId, setLineId] = useState<number | null>(null)
+  useEffect(() => {
+    getLines().then((ls) => {
+      setLines(ls)
+      setLineId((ls.find((l) => l.is_default && l.enabled) ?? ls.find((l) => l.enabled) ?? ls[0])?.id ?? null)
+    }).catch(() => {})
+    getBusRequirements().then(setRequirements).catch(() => {})
+  }, [])
+  const defaultLine = lines.find((l) => l.is_default)?.id ?? null
+  const onLine = (id: number | null) => devices
+    .filter((d) => (d.line_id ?? defaultLine) === id)
+    .map((d) => d.modbus_address)
+
+  return (
+    <div className="space-y-4">
+      <DiscoveredDevicesSection
+        lines={lines} lineId={lineId} setLineId={setLineId}
+        knownAddresses={onLine(lineId)}
+        onPick={(candidate) => setPrefill({
+          name: candidate.suggested_name,
+          address: candidate.modbus_address,
+          profileId: candidate.matched_profile_id,
+          lineId: candidate.line_id ?? lineId,
+        })}
+      />
+      <AddDeviceForm prefill={prefill} lines={lines} requirements={requirements} defaultLineId={lineId} onAdded={onAdded} />
+    </div>
+  )
+}
+
+function AddDeviceForm({ prefill, lines, requirements, defaultLineId, onAdded }: {
+  prefill: Prefill | null; lines: BusLine[]; requirements: Record<string, BusRequirement>; defaultLineId: number | null; onAdded: () => void
+}) {
   const [name, setName] = useState('')
   const [address, setAddress] = useState(1)
   const [profileId, setProfileId] = useState('')
+  const [lineId, setLineId] = useState<number | null>(null)
   const [profiles, setProfiles] = useState<DeviceProfileDetail[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -297,13 +330,20 @@ function AddDeviceForm({ prefill, onAdded }: { prefill: Prefill | null; onAdded:
   useEffect(() => {
     getDeviceProfiles().then(setProfiles).catch(() => {})
   }, [])
+  useEffect(() => { if (lineId == null) setLineId(defaultLineId) }, [defaultLineId])
 
   useEffect(() => {
     if (!prefill) return
     setName(prefill.name)
     setAddress(prefill.address)
     setProfileId(prefill.profileId != null ? String(prefill.profileId) : '')
+    if (prefill.lineId != null) setLineId(prefill.lineId)
   }, [prefill])
+
+  const profile = profiles.find((p) => String(p.id) === profileId)
+  const requirement = profile?.manufacturer ? requirements[profile.manufacturer] : undefined
+  const line = lines.find((l) => l.id === lineId)
+  const mismatch = lineMismatch(requirement, line)
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -313,6 +353,7 @@ function AddDeviceForm({ prefill, onAdded }: { prefill: Prefill | null; onAdded:
       await createDevice({
         name, modbus_address: address,
         profile_id: profileId ? Number(profileId) : null,
+        line_id: lineId,
       })
       setName(''); setAddress(1); setProfileId('')
       onAdded()
@@ -343,9 +384,27 @@ function AddDeviceForm({ prefill, onAdded }: { prefill: Prefill | null; onAdded:
           <Field label="Adres Modbus (1–247)">
             <input type="number" value={address} onChange={(e) => setAddress(Number(e.target.value))} min={1} max={247} required className="input" />
           </Field>
-          <p className="text-xs text-ink-muted">
-            Port i prędkość magistrali są wspólne dla wszystkich sterowników — Ustawienia → Konfiguracja → RS485.
-          </p>
+          {lines.length > 1 && (
+            <Field label="Linia RS485">
+              <select value={lineId ?? ''} onChange={(e) => setLineId(Number(e.target.value))} className="input">
+                {lines.map((l) => (
+                  <option key={l.id} value={l.id} disabled={!l.enabled}>{l.name} — {l.frame}{l.enabled ? '' : ' (wyłączona)'}</option>
+                ))}
+              </select>
+            </Field>
+          )}
+          {mismatch ? (
+            <p className="flex gap-2 text-xs text-warn bg-warn-bg border border-warn/20 rounded-lg px-3 py-2">
+              <AlertTriangle size={14} className="shrink-0 mt-0.5" />
+              <span>{mismatch} Dodaj osobną linię w Ustawienia → Konfiguracja → Linie RS485 albo zmień ustawienia w sterowniku.</span>
+            </p>
+          ) : requirement ? (
+            <p className="text-xs text-ink-muted">Fabrycznie {requirement.factory}. {requirement.note}</p>
+          ) : (
+            <p className="text-xs text-ink-muted">
+              Prędkość i format ramki ustawia się dla linii — Ustawienia → Konfiguracja → Linie RS485.
+            </p>
+          )}
           {error && <p className="text-sm text-crit">{error}</p>}
           <button type="submit" disabled={loading}
             className="w-full bg-accent hover:bg-accent-strong disabled:opacity-50 text-white text-sm py-2.5 rounded-lg transition-colors">
@@ -357,7 +416,8 @@ function AddDeviceForm({ prefill, onAdded }: { prefill: Prefill | null; onAdded:
   )
 }
 
-function DiscoveredDevicesSection({ knownAddresses, onPick }: {
+function DiscoveredDevicesSection({ lines, lineId, setLineId, knownAddresses, onPick }: {
+  lines: BusLine[]; lineId: number | null; setLineId: (id: number) => void
   knownAddresses: number[]; onPick: (candidate: DiscoveredDevice) => void
 }) {
   const [candidates, setCandidates] = useState<DiscoveredDevice[]>([])
@@ -367,7 +427,7 @@ function DiscoveredDevicesSection({ knownAddresses, onPick }: {
   const scan = async () => {
     setScanning(true)
     try {
-      setCandidates(await discoverDevices())
+      setCandidates(await discoverDevices(lineId ?? undefined))
       setScanned(true)
     } catch {
       toast.error('Błąd skanowania magistrali')
@@ -376,7 +436,7 @@ function DiscoveredDevicesSection({ knownAddresses, onPick }: {
     }
   }
 
-  useEffect(() => { scan() }, [])
+  useEffect(() => { if (lineId != null || lines.length === 0) scan() }, [lineId])
 
   // knownAddresses changes whenever a device is added/removed elsewhere -
   // a candidate just added should disappear from this list without
@@ -399,6 +459,11 @@ function DiscoveredDevicesSection({ knownAddresses, onPick }: {
       <p className="text-xs text-ink-muted mb-4">
         Urządzenia odpowiadające na magistrali RS485, których jeszcze nie ma na liście urządzeń.
       </p>
+      {lines.length > 1 && (
+        <select value={lineId ?? ''} onChange={(e) => setLineId(Number(e.target.value))} className="input mb-4" aria-label="Linia do przeszukania">
+          {lines.filter((l) => l.enabled).map((l) => <option key={l.id} value={l.id}>Szukaj na: {l.name} — {l.frame}</option>)}
+        </select>
+      )}
 
       {!scanning && scanned && visible.length === 0 && (
         <p className="text-sm text-ink-muted py-2">Brak nowych urządzeń na magistrali.</p>

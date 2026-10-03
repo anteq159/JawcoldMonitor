@@ -38,6 +38,7 @@ async def list_devices(
 
 @router.get("/discover", response_model=List[DiscoveredDeviceOut])
 async def discover_devices(
+    line_id: Optional[int] = None,
     db: AsyncSession = Depends(get_db),
     # device:write, not just login: this triggers active scan traffic on
     # the RS485 bus and only exists as part of the add-device flow.
@@ -50,11 +51,11 @@ async def discover_devices(
     in the devices table yet, so the user can review/name/assign a
     profile before anything is saved, rather than a row appearing with a
     placeholder name and a silently-guessed profile."""
-    driver = scanner.get_rs485_driver()
+    line_id = line_id or scanner.default_line_id()
+    driver = scanner.driver_for(line_id=line_id)
     if not driver:
         return []
-    result = await db.execute(select(Device.modbus_address))
-    known = set(result.scalars().all())
+    known = await scanner.known_addresses(line_id)
     try:
         found_addresses = await driver.scan_range(1, settings.DISCOVERY_MAX_ADDRESS, known)
     except Exception:
@@ -65,6 +66,8 @@ async def discover_devices(
         mock_info = {}
         if hasattr(driver, "get_mock_device_info"):
             mock_info = driver.get_mock_device_info(addr)
+        elif hasattr(driver, "identify_device"):
+            mock_info = await driver.identify_device(addr)
         manufacturer = mock_info.get("manufacturer")
 
         matched_profile_id = None
@@ -79,12 +82,29 @@ async def discover_devices(
 
         out.append(DiscoveredDeviceOut(
             modbus_address=addr,
+            line_id=line_id,
             suggested_name=mock_info.get("name", f"Urządzenie #{addr}"),
             detected_manufacturer=manufacturer,
             matched_profile_id=matched_profile_id,
             matched_profile_name=matched_profile_name,
         ))
     return out
+
+
+async def _check_address_free(db: AsyncSession, address: int, line_id: Optional[int], device_id: Optional[int] = None) -> None:
+    """One Modbus address per line - two controllers answering the same
+    address on one bus garble every reply. The same address on two
+    different lines is fine."""
+    from app.models.bus_line import BusLine
+    if line_id is not None and not await db.get(BusLine, line_id):
+        raise HTTPException(status_code=400, detail="Nie ma takiej linii RS485")
+    default = scanner.default_line_id()
+    rows = (await db.execute(
+        select(Device.id, Device.name, Device.line_id).where(Device.modbus_address == address)
+    )).all()
+    for other_id, name, other_line in rows:
+        if other_id != device_id and (other_line or default) == (line_id or default):
+            raise HTTPException(status_code=400, detail=f"Adres {address} na tej linii ma już „{name}”")
 
 
 @router.get("/{device_id}", response_model=DeviceOut)
@@ -106,7 +126,10 @@ async def create_device(
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_permission("device:write")),
 ):
-    device = Device(**body.model_dump())
+    data = body.model_dump()
+    data["line_id"] = data.get("line_id") or scanner.default_line_id()
+    await _check_address_free(db, data["modbus_address"], data["line_id"])
+    device = Device(**data)
     db.add(device)
     await db.commit()
     await db.refresh(device)
@@ -124,7 +147,10 @@ async def update_device(
     device = result.scalar_one_or_none()
     if not device:
         raise HTTPException(status_code=404, detail="Urządzenie nie znalezione")
-    for k, v in body.model_dump(exclude_none=True).items():
+    changes = body.model_dump(exclude_none=True)
+    if "line_id" in changes and changes["line_id"] != device.line_id:
+        await _check_address_free(db, device.modbus_address, changes["line_id"], device.id)
+    for k, v in changes.items():
         setattr(device, k, v)
     if body.profile_id is not None and device.recognition_status == "unrecognized":
         # Closes the "unrecognized controller" loop: assigning a profile
@@ -186,9 +212,9 @@ async def write_register(
     if not register.writable:
         raise HTTPException(status_code=400, detail=f"Zmienna '{body.name}' jest tylko do odczytu")
 
-    driver = scanner.get_rs485_driver()
+    driver = scanner.driver_for(device)
     if not driver:
-        raise HTTPException(status_code=503, detail="Sterownik komunikacji RS485 nie jest zainicjalizowany")
+        raise HTTPException(status_code=503, detail="Linia RS485 tego sterownika jest wyłączona lub nie jest skonfigurowana")
 
     # Value before the change, for the event log ("2.0 → 5.0") - the newest
     # stored reading of this register.

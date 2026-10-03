@@ -19,6 +19,7 @@ from app.models.base import Base  # noqa: E402
 import app.models.user  # noqa: E402,F401
 import app.models.device_profile  # noqa: E402,F401
 import app.models.device  # noqa: E402,F401
+import app.models.bus_line  # noqa: E402,F401
 import app.models.sensor  # noqa: E402,F401
 import app.models.parameter  # noqa: E402,F401
 import app.models.reading  # noqa: E402,F401

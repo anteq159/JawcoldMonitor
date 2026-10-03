@@ -3,10 +3,11 @@ import toast from 'react-hot-toast'
 import { Link, useSearchParams } from 'react-router-dom'
 import { Download, Upload, Wand2, Bell, Send } from 'lucide-react'
 import { Card } from '../components/UI/Card'
+import { BusLinesCard } from '../components/Settings/BusLinesCard'
 import { ConfirmDialog } from '../components/UI/ConfirmDialog'
 import { downloadReadings, downloadAlerts } from '../api/export'
 import { downloadBackup, restoreBackup } from '../api/backup'
-import { getUpdateInfo, getRuntimeSettings, getSerialPorts, updateRuntimeSettings, powerAction, type UpdateInfo, type RuntimeSetting, type PowerAction } from '../api/system'
+import { getUpdateInfo, getRuntimeSettings, updateRuntimeSettings, powerAction, type UpdateInfo, type RuntimeSetting, type PowerAction } from '../api/system'
 import { useDeviceStore } from '../store/devices'
 import { useAuthStore } from '../store/auth'
 import { isNotificationSupported, getNotificationPermission, requestNotificationPermission } from '../utils/notifications'
@@ -48,6 +49,7 @@ export default function Settings() {
         ))}
       </div>
 
+      {tab === 'system' && <BusLinesCard />}
       {tab === 'system' && <SystemSettingsSection />}
       {tab === 'notifications' && <NotificationsSection />}
       {tab === 'notifications' && canSettings && <AlarmChannelsLinkCard />}
@@ -84,12 +86,8 @@ function SystemSettingsSection() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
 
-  const [ports, setPorts] = useState<string[]>([])
   const load = () => getRuntimeSettings().then(setSettings).finally(() => setLoading(false))
-  useEffect(() => {
-    load()
-    getSerialPorts().then((r) => setPorts(r.ports)).catch(() => {})
-  }, [])
+  useEffect(() => { load() }, [])
 
   const currentValue = (s: RuntimeSetting) => dirty[s.key] !== undefined ? dirty[s.key] : s.value
   const setValue = (key: string, value: string) => setDirty((d) => ({ ...d, [key]: value }))
@@ -104,7 +102,7 @@ function SystemSettingsSection() {
       toast.success(res.compose_apply_required
         ? 'Zapisano. Nowy port panelu zadziała po „~/JawcoldMonitor/scripts/jawcold apply" na Raspberry (lub ponownym uruchomieniu install.sh).'
         : res.restart_required
-        ? 'Zapisano. Zmiany portu RS485 zadziałają po restarcie aplikacji.'
+        ? 'Zapisano. Zmiana zadziała po restarcie aplikacji.'
         : 'Ustawienia zapisane i zastosowane')
     } catch (err: any) {
       toast.error(err.response?.data?.detail ?? 'Błąd zapisu ustawień')
@@ -162,7 +160,6 @@ function SystemSettingsSection() {
                       value={currentValue(s)}
                       onChange={(e) => setValue(s.key, e.target.value)}
                       placeholder={s.secret ? (s.is_set ? '••••••• (ustawione — wpisz aby zmienić)' : 'nie ustawione') : undefined}
-                      list={s.key === 'RS485_PORTS' ? 'rs485-ports' : undefined}
                       className="input"
                     />
                   )}
@@ -172,11 +169,6 @@ function SystemSettingsSection() {
             </div>
           </div>
         ))}
-        {/* Detected adapters as suggestions for "Port RS485" - stable
-            /dev/serial/by-id names first; any path can still be typed. */}
-        <datalist id="rs485-ports">
-          {ports.map((p) => <option key={p} value={p} />)}
-        </datalist>
         <button
           onClick={save}
           disabled={saving || Object.keys(dirty).length === 0}

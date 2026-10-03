@@ -92,6 +92,12 @@ class AbstractControllerDriver(ABC):
     # profile still resolves.
     threshold_registers: Dict[str, tuple] = {}
 
+    # What the controller's serial port can do, from its manual: allowed
+    # baud rates / parities / stop bits (None = no restriction known),
+    # the factory frame and a hint where it is set. The panel warns when a
+    # device is put on a line it cannot talk on.
+    bus_requirements: Optional[Dict] = None
+
     def chart_thresholds(self, values: Dict[str, float]) -> List[ChartThreshold]:
         """Reference lines for the chart from the controller's current
         setpoints, keyed by role from threshold_registers. Default: none."""

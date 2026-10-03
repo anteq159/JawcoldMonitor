@@ -74,28 +74,85 @@ def get_last_tick() -> Optional[datetime]:
 
 
 def get_rs485_driver():
-    """Current RS485 driver instance (mock or real ModbusRTUDriver),
-    whichever mode is active - used by the register-write endpoint so it
-    doesn't need to know which mode is running."""
+    """Driver of the first RS485 line - kept for callers that predate
+    multiple lines; per-device code uses driver_for()."""
     return _rs485_driver
 
 
+# RS485 lines (models.BusLine): one driver per enabled line, keyed by line
+# id. Each driver has its own bus lock, so lines are polled in parallel.
+_line_drivers: Dict[int, object] = {}
+# (port, baudrate, parity, stopbits) a driver was built with - a reload
+# keeps the driver (and its open port) of every line that did not change,
+# so editing one line never interrupts reads on another.
+_line_config: Dict[int, tuple] = {}
+_default_line_id: Optional[int] = None
+_lines_lock = asyncio.Lock()
+
+
+def driver_for(device=None, line_id: Optional[int] = None):
+    """Driver of the line a device (or line id) is on; devices without a
+    line belong to the first one. None when that line is disabled."""
+    if device is not None:
+        line_id = getattr(device, "line_id", None)
+    return _line_drivers.get(line_id or _default_line_id)
+
+
+def line_drivers() -> Dict[int, object]:
+    return dict(_line_drivers)
+
+
+def default_line_id() -> Optional[int]:
+    return _default_line_id
+
+
+async def reload_lines():
+    """(Re)build line drivers from the bus_lines table - at startup and
+    after every change on the Linie RS485 card, without a restart."""
+    global _rs485_driver, _default_line_id
+    from app.models.bus_line import BusLine
+    async with _lines_lock:
+        async with AsyncSessionLocal() as db:
+            lines = (await db.execute(select(BusLine).order_by(BusLine.id))).scalars().all()
+        _default_line_id = lines[0].id if lines else None
+        wanted = {}
+        for line in lines:
+            if line.enabled:
+                wanted[line.id] = (line.port, line.baudrate, (line.parity or "N").upper()[:1], line.stopbits)
+        stale = [lid for lid in _line_drivers if _line_config.get(lid) != wanted.get(lid)]
+        for lid in stale:
+            driver = _line_drivers.pop(lid)
+            _line_config.pop(lid, None)
+            if hasattr(driver, "close"):
+                try:
+                    await driver.close()
+                except Exception:
+                    pass
+        for lid, config in wanted.items():
+            if lid in _line_drivers:
+                continue
+            if settings.PREVIEW_MODE:
+                # The simulated controllers live on the first line only.
+                if lid != min(wanted):
+                    continue
+                from app.drivers.rs485.mock import MockRS485Driver
+                driver = MockRS485Driver()
+            else:
+                from app.drivers.rs485.modbus_rtu import ModbusRTUDriver
+                port, baudrate, parity, stopbits = config
+                driver = ModbusRTUDriver(port, baudrate, settings.MODBUS_TIMEOUT, stopbits, parity)
+            _line_drivers[lid] = driver
+            _line_config[lid] = config
+        _rs485_driver = _line_drivers.get(_default_line_id)
+
+
 def init_drivers():
-    global _rs485_driver, _dallas_driver
+    global _dallas_driver
     if settings.PREVIEW_MODE:
-        from app.drivers.rs485.mock import MockRS485Driver
         from app.drivers.dallas.mock import MockDallasDriver
-        _rs485_driver = MockRS485Driver()
         _dallas_driver = MockDallasDriver()
     else:
-        from app.drivers.rs485.modbus_rtu import ModbusRTUDriver
         from app.drivers.dallas.w1 import W1DallasDriver
-        ports = settings.rs485_port_list
-        if ports:
-            _rs485_driver = ModbusRTUDriver(
-                ports[0], settings.RS485_BAUDRATE, settings.MODBUS_TIMEOUT, settings.RS485_STOPBITS,
-                settings.RS485_PARITY.upper()[:1],
-            )
         _dallas_driver = W1DallasDriver()
 
 
@@ -114,6 +171,7 @@ async def _rehydrate_active_hw_alarms():
 async def scanner_loop():
     global _last_tick
     init_drivers()
+    await reload_lines()
     await _rehydrate_active_hw_alarms()
     while True:
         try:
@@ -148,24 +206,26 @@ async def _scan_known_devices():
     # 60s to save bus time), falling back to KNOWN_SCAN_INTERVAL when unset.
     # Checking each device's due-ness is a cheap in-memory comparison; the
     # actual Modbus round trip only happens for devices that are due.
-    if not _rs485_driver:
+    if not _line_drivers:
         return
     async with AsyncSessionLocal() as db:
-        result = await db.execute(select(Device.id, Device.poll_interval_seconds, Device.status))
+        result = await db.execute(select(Device.id, Device.poll_interval_seconds, Device.status, Device.line_id))
         rows = result.all()
 
     # Drop per-device state for devices that no longer exist. Besides the
     # slow leak, a device re-added under a recycled id would otherwise
     # inherit the previous one's offline/hardware-alarm state and either
     # miss an alarm or fire a spurious "back online".
-    live_ids = {device_id for device_id, _, _ in rows}
+    live_ids = {row[0] for row in rows}
     for state in (_last_known_scan, _active_hw_alarms, _offline_since):
         for stale_id in [k for k in state if k not in live_ids]:
             del state[stale_id]
     _offline_alarmed.intersection_update(live_ids)
 
     due_ids = []
-    for device_id, poll_interval, status in rows:
+    for device_id, poll_interval, status, line_id in rows:
+        if driver_for(line_id=line_id) is None:
+            continue  # its line is switched off
         interval = poll_interval or settings.KNOWN_SCAN_INTERVAL
         if status == "offline":
             # A controller that is switched off or disconnected answers
@@ -207,10 +267,13 @@ async def _scan_one_device(device_id: int):
                 # for devices with no profile/registers and the arbiter
                 # when every read failed (a device that answers with
                 # Modbus exceptions is online but misconfigured).
+                driver = driver_for(device)
+                if driver is None:
+                    return
                 readings_data: dict = {}
                 profile = getattr(device, "profile", None)
                 if profile and profile.registers:
-                    readings_data = await _rs485_driver.read_parameters(device)
+                    readings_data = await driver.read_parameters(device)
                     # Per-device unit overrides (e.g. MPXPRO S6/S7 carrying a
                     # pressure probe instead of NTC): applied at the source so
                     # stored history, WS broadcast, alerts and exports all
@@ -219,7 +282,7 @@ async def _scan_one_device(device_id: int):
                     for param_name, unit in unit_overrides.items():
                         if unit and param_name in readings_data:
                             readings_data[param_name]["unit"] = unit
-                is_online = bool(readings_data) or await _rs485_driver.ping(device.modbus_address)
+                is_online = bool(readings_data) or await driver.ping(device.modbus_address)
 
                 old_status = device.status
                 new_status = "online" if is_online else "offline"
@@ -277,29 +340,42 @@ async def _maybe_discovery():
     if _discovery_task and not _discovery_task.done():
         return  # previous sweep still in progress
     _last_discovery = datetime.now(timezone.utc)
-    if not _rs485_driver:
+    if not _line_drivers:
         return
     _discovery_task = asyncio.create_task(_run_discovery())
 
 
+async def known_addresses(line_id: int) -> set:
+    """Addresses already taken on one line (devices without a line count
+    for the first line)."""
+    async with AsyncSessionLocal() as db:
+        rows = (await db.execute(select(Device.modbus_address, Device.line_id))).all()
+    return {addr for addr, lid in rows if (lid or _default_line_id) == line_id}
+
+
 async def _run_discovery():
+    # Lines are separate buses: sweep them side by side.
+    await asyncio.gather(*(_discover_line(lid, drv) for lid, drv in line_drivers().items()))
+
+
+async def _discover_line(line_id: int, driver):
     # The bus sweep takes seconds; don't hold a DB transaction open
     # ("idle in transaction") for all of it.
-    async with AsyncSessionLocal() as db:
-        result = await db.execute(select(Device.modbus_address))
-        known = set(result.scalars().all())
+    known = await known_addresses(line_id)
     try:
-        new_addresses = await _rs485_driver.scan_range(1, settings.DISCOVERY_MAX_ADDRESS, known)
+        new_addresses = await driver.scan_range(1, settings.DISCOVERY_MAX_ADDRESS, known)
     except Exception as e:
-        logger.warning("Discovery error: %s", e)
+        logger.warning("Discovery error (line %s): %s", line_id, e)
         return
     if not new_addresses:
         return
     async with AsyncSessionLocal() as db:
         for addr in new_addresses:
             mock_info = {}
-            if hasattr(_rs485_driver, "get_mock_device_info"):
-                mock_info = _rs485_driver.get_mock_device_info(addr)
+            if hasattr(driver, "get_mock_device_info"):
+                mock_info = driver.get_mock_device_info(addr)
+            elif hasattr(driver, "identify_device"):
+                mock_info = await driver.identify_device(addr)
 
             profile_id = None
             manufacturer = mock_info.get("manufacturer")
@@ -318,6 +394,7 @@ async def _run_discovery():
             device = Device(
                 name=mock_info.get("name", f"Urządzenie #{addr}"),
                 modbus_address=addr,
+                line_id=line_id,
                 profile_id=profile_id,
                 status="online",
                 recognition_status=recognition_status,

@@ -81,6 +81,11 @@ class _DanfossAkCc55Base(AbstractControllerDriver):
     opening, superheat...) are kept: a register the controller refuses is
     skipped automatically by the RS485 driver and re-tried later."""
 
+    bus_requirements = {
+        "baudrates": None, "parities": ["N", "E", "O"], "stopbits": [1, 2],
+        "factory": "8E1, prędkość wykrywana automatycznie",
+        "note": "Adres i format ustawia się wyświetlaczem AK-UI55 lub aplikacją AK-CC55 Connect.",
+    }
     alarm_pnus: List[tuple] = []
     extra_readouts: List[RegisterMapEntry] = []
     model = ""

@@ -21,13 +21,15 @@ export const deleteDevice = (id: number) => api.delete(`/devices/${id}`)
 
 export interface DiscoveredDevice {
   modbus_address: number
+  line_id: number | null
   suggested_name: string
   detected_manufacturer: string | null
   matched_profile_id: number | null
   matched_profile_name: string | null
 }
 
-export const discoverDevices = (): Promise<DiscoveredDevice[]> => api.get('/devices/discover').then((r) => r.data)
+export const discoverDevices = (lineId?: number): Promise<DiscoveredDevice[]> =>
+  api.get('/devices/discover', { params: lineId ? { line_id: lineId } : undefined, timeout: 60000 }).then((r) => r.data)
 
 export interface RegisterWriteResult {
   name: string

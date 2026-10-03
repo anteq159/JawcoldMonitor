@@ -38,6 +38,9 @@ class SettingMeta:
     type: str           # "int" | "float" | "bool" | "str"
     restart_required: bool = False
     secret: bool = False  # render as a password field
+    # Kept for .env/app_settings compatibility but not shown: superseded
+    # by the Linie RS485 card (they only seed the first line).
+    hidden: bool = False
 
 
 EDITABLE_SETTINGS: Dict[str, SettingMeta] = {
@@ -49,10 +52,10 @@ EDITABLE_SETTINGS: Dict[str, SettingMeta] = {
     "DALLAS_SCAN_INTERVAL": SettingMeta("Odczyt czujników Dallas co (s)", "Skanowanie", "int"),
     "READINGS_RETENTION_DAYS": SettingMeta("Przechowuj szczegółowe odczyty (dni, 0 = bez kasowania)", "Skanowanie", "int"),
     # RS485 (restart)
-    "RS485_PORTS": SettingMeta("Port RS485", "RS485", "str", restart_required=True),
-    "RS485_BAUDRATE": SettingMeta("Prędkość transmisji (baud)", "RS485", "int", restart_required=True),
-    "RS485_STOPBITS": SettingMeta("Bity stopu (1 lub 2)", "RS485", "int", restart_required=True),
-    "RS485_PARITY": SettingMeta("Parzystość (N, E lub O)", "RS485", "str", restart_required=True),
+    "RS485_PORTS": SettingMeta("Port RS485", "RS485", "str", restart_required=True, hidden=True),
+    "RS485_BAUDRATE": SettingMeta("Prędkość transmisji (baud)", "RS485", "int", restart_required=True, hidden=True),
+    "RS485_STOPBITS": SettingMeta("Bity stopu (1 lub 2)", "RS485", "int", restart_required=True, hidden=True),
+    "RS485_PARITY": SettingMeta("Parzystość (N, E lub O)", "RS485", "str", restart_required=True, hidden=True),
     "MODBUS_TIMEOUT": SettingMeta("Czas oczekiwania na odpowiedź sterownika (s)", "RS485", "float", restart_required=True),
     # Read dynamically on every scan cycle - no restart needed.
     "MODBUS_BATCH_MAX_GAP": SettingMeta("Scalanie odczytów: maks. przerwa adresów (0 = wył.)", "RS485", "int"),

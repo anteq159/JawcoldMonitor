@@ -42,6 +42,7 @@ class DeviceOut(BaseModel):
     modbus_address: int
     poll_interval_seconds: Optional[int] = None
     profile_id: Optional[int] = None
+    line_id: Optional[int] = None
     status: str
     recognition_status: str = "recognized"
     detected_manufacturer: Optional[str] = None
@@ -66,6 +67,7 @@ class DeviceCreate(BaseModel):
     name: str
     modbus_address: int
     profile_id: Optional[int] = None
+    line_id: Optional[int] = None
     location: Optional[str] = None
     group_name: Optional[str] = None
     description: Optional[str] = None
@@ -77,6 +79,7 @@ class DeviceUpdate(BaseModel):
     group_name: Optional[str] = None
     description: Optional[str] = None
     profile_id: Optional[int] = None
+    line_id: Optional[int] = None
     poll_interval_seconds: Optional[int] = None
     hidden_parameters: Optional[List[str]] = None
     parameter_aliases: Optional[Dict[str, str]] = None
@@ -143,6 +146,7 @@ class ManufacturerLookupResult(BaseModel):
 
 class DiscoveredDeviceOut(BaseModel):
     modbus_address: int
+    line_id: Optional[int] = None
     suggested_name: str
     detected_manufacturer: Optional[str] = None
     matched_profile_id: Optional[int] = None
