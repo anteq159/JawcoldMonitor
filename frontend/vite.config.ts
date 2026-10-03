@@ -11,7 +11,7 @@ export default defineConfig({
         // updates instead of re-downloading them inside a new app chunk
         // every time the app code changes.
         manualChunks: {
-          echarts: ['echarts', 'echarts-for-react'],
+          echarts: ['echarts/core', 'echarts/charts', 'echarts/components', 'echarts/renderers', 'echarts-for-react/lib/core'],
           react: ['react', 'react-dom', 'react-router-dom'],
         },
       },

@@ -1,4 +1,5 @@
-import ReactECharts from 'echarts-for-react'
+import ReactEChartsCore from 'echarts-for-react/lib/core'
+import echarts from '../../utils/echarts'
 import type { ParameterReadings } from '../../types/reading'
 import type { ChartThreshold } from '../../api/readings'
 
@@ -167,5 +168,5 @@ export function TimeSeriesChart({ data, height = 300, title, hiddenSeries = [], 
     series,
   }
 
-  return <ReactECharts option={option} style={{ height }} notMerge />
+  return <ReactEChartsCore echarts={echarts} option={option} style={{ height }} notMerge />
 }

@@ -1,4 +1,5 @@
-import ReactECharts from 'echarts-for-react'
+import ReactEChartsCore from 'echarts-for-react/lib/core'
+import echarts from '../../utils/echarts'
 import type { ReadingPoint } from '../../types/reading'
 
 interface Props {
@@ -58,5 +59,5 @@ export function Sparkline({ data, unit, color = '#2B6CB0', height = 90 }: Props)
     ],
   }
 
-  return <ReactECharts option={option} style={{ height }} notMerge />
+  return <ReactEChartsCore echarts={echarts} option={option} style={{ height }} notMerge />
 }
