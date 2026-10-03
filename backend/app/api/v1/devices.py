@@ -211,6 +211,12 @@ async def write_register(
         raise HTTPException(status_code=404, detail=f"Nie znaleziono zmiennej '{body.name}' w profilu urządzenia")
     if not register.writable:
         raise HTTPException(status_code=400, detail=f"Zmienna '{body.name}' jest tylko do odczytu")
+    if register.bit is not None:
+        # A bit shares its word with other flags - writing the word would
+        # overwrite them too.
+        raise HTTPException(status_code=400, detail="Zapis pojedynczego bitu rejestru nie jest obsługiwany")
+    if register.register_type == "coil" and body.value not in (0, 1):
+        raise HTTPException(status_code=400, detail="Ta zmienna przyjmuje tylko 0 (wył.) lub 1 (wł.)")
 
     driver = scanner.driver_for(device)
     if not driver:
@@ -233,6 +239,8 @@ async def write_register(
         )
     except NotImplementedError as e:
         raise HTTPException(status_code=501, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Błąd zapisu do urządzenia: {e}")
 

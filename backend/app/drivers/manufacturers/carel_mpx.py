@@ -93,7 +93,27 @@ class CarelMPXDriver(AbstractControllerDriver):
     # on the live controller 2026-10-02).
     max_read_words = 16
 
+    # Read-only on purpose although they sit among the parameters: the
+    # firmware version is a readout, and H0 is the controller's own bus
+    # address - changing it from the panel would cut the panel off.
+    READ_ONLY_PARAMETERS = {138, 217}
+
     def default_register_map(self) -> List[RegisterMapEntry]:
+        """Every parameter and setpoint of the manual's table is settable
+        (from the keypad and over Modbus), so all of them are writable here;
+        the controller itself rejects values outside its range (e.g. St below
+        r1) and the panel reads the value back after each write."""
+        registers = self._register_map()
+        for reg in registers:
+            if reg.address in self.READ_ONLY_PARAMETERS and reg.register_type == "holding":
+                reg.writable = False
+            elif reg.register_type == "holding" and reg.category in ("parameter", "setpoint"):
+                reg.writable = True
+            elif reg.register_type == "coil" and reg.address == 93:  # A1, on/off parameter
+                reg.writable = True
+        return registers
+
+    def _register_map(self) -> List[RegisterMapEntry]:
         return [
             # --- measurements (analogue, x0.1) - confirmed live 2026-07-09 ---
             RegisterMapEntry(address=7, name="Sonda 1", unit="°C", data_type="int16", scale_factor=0.1, register_type="holding"),

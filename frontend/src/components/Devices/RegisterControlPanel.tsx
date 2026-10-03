@@ -209,7 +209,24 @@ export function RegisterControlPanel({
                   {r.description && <p className="text-xs text-ink-muted font-normal">{r.description}</p>}
                 </td>
                 <td className="px-3 py-2 align-top">
-                  {isEditing ? (
+                  {isEditing && (r.register_type === 'coil' || isBinaryCategory(category)) ? (
+                    // On/off parameter (coil): pick the state, no number typing.
+                    <div className="flex items-center gap-1.5">
+                      {[1, 0].map((v) => (
+                        <button key={v} disabled={saving}
+                          onClick={() => {
+                            if (live && live.value === v) { setEditing(null); return }
+                            setPendingWrite({ register: r, value: v })
+                          }}
+                          className={`text-xs px-2.5 py-1 rounded-md border transition-colors ${live?.value === v ? 'bg-accent text-white border-accent' : 'border-border text-ink-body hover:border-accent'}`}>
+                          {v ? 'WŁ. (1)' : 'WYŁ. (0)'}
+                        </button>
+                      ))}
+                      <button onClick={cancelEdit} className="text-ink-muted hover:text-ink transition-colors" title="Anuluj">
+                        <X size={15} />
+                      </button>
+                    </div>
+                  ) : isEditing ? (
                     <div className="flex items-center gap-1.5">
                       <input
                         type="number"
@@ -260,7 +277,7 @@ export function RegisterControlPanel({
                   )}
                 </td>
                 <td className="px-5 py-2 text-right align-top">
-                  {r.writable && canWrite ? (
+                  {r.writable && canWrite && r.bit == null ? (
                     !isEditing && (
                       <button onClick={() => startEdit(r)} className="text-ink-muted hover:text-accent transition-colors" title="Zmień wartość">
                         <Pencil size={14} />

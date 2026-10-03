@@ -500,14 +500,13 @@ class ModbusRTUDriver(AbstractRS485Driver):
         scale_factor: float = 1.0,
         register_type: str = "holding",
     ) -> None:
+        if register_type == "coil":
+            await self._write_coil(modbus_address, register_address, value)
+            return
         if register_type != "holding":
-            # No current profile has a writable coil/input register - real
-            # MPXone data does have some (e.g. PMP, manual valve
-            # positioning), but writing to the wrong Modbus object type
-            # silently would be worse than refusing outright.
-            raise NotImplementedError(
-                f"Zapis do rejestru typu '{register_type}' nie jest jeszcze obsługiwany"
-            )
+            # Input registers and discrete inputs are read-only by the
+            # Modbus definition itself.
+            raise ValueError(f"Rejestru typu '{register_type}' nie da się zapisać (tylko odczyt wg Modbus)")
         raw_value = value / scale_factor if scale_factor else value
         try:
             words = _encode(raw_value, data_type)
@@ -564,6 +563,28 @@ class ModbusRTUDriver(AbstractRS485Driver):
                 raise ValueError(
                     f"Zapis nie został potwierdzony: ustawiono {value}, sterownik zwraca {round(actual, 3)}"
                 )
+
+    async def _write_coil(self, modbus_address: int, coil: int, value: float) -> None:
+        """On/off parameter (e.g. MPXPRO A1) - function 5, then read back."""
+        if value not in (0, 1):
+            raise ValueError("Ta zmienna przyjmuje tylko 0 (wył.) lub 1 (wł.)")
+        state = bool(value)
+        async with self._lock:
+            if not await self._ensure_connected():
+                raise ConnectionError(f"Brak połączenia z portem {self._port}")
+            try:
+                r = await self._client.write_coil(coil, state, device_id=modbus_address)
+            except Exception as e:
+                raise ConnectionError(f"Błąd komunikacji przy zapisie {coil}: {e}") from e
+            if r.isError():
+                raise ValueError(f"Sterownik odrzucił zapis zmiennej {coil}: {r}")
+            try:
+                verify = await self._client.read_coils(coil, count=1, device_id=modbus_address)
+            except Exception:
+                logger.warning("Zapis coil %d (urządzenie %d) wysłany, odczyt weryfikujący nie powiódł się", coil, modbus_address)
+                return
+            if not verify.isError() and bool(verify.bits[0]) != state:
+                raise ValueError(f"Zapis nie został potwierdzony: ustawiono {int(state)}, sterownik zwraca {int(bool(verify.bits[0]))}")
 
     async def close(self):
         if self._client and self._client.connected:
